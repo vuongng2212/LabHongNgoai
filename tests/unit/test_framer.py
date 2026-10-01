@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from ir_terminal.protocol.constants import (
@@ -11,6 +13,7 @@ from ir_terminal.protocol.constants import (
     Opcode,
 )
 from ir_terminal.protocol.framer import (
+    compute_crc32,
     pack_frame,
     parse_frames_from_buffer,
 )
@@ -73,6 +76,13 @@ class TestFramer:
             pack_frame(seq=256, opcode=Opcode.DATA_CHUNK, payload=b"test")
         with pytest.raises(ValueError, match="must be in range 0..255"):
             pack_frame(seq=-1, opcode=Opcode.DATA_CHUNK, payload=b"test")
+
+    def test_invalid_opcode_raises_error(self) -> None:
+        """Verifies that opcodes outside 0..255 raise ValueError."""
+        with pytest.raises(ValueError, match="Opcode 256 must be in range 0..255"):
+            pack_frame(seq=0, opcode=256, payload=b"test")
+        with pytest.raises(ValueError, match="Opcode -1 must be in range 0..255"):
+            pack_frame(seq=0, opcode=-1, payload=b"test")
 
     def test_corrupted_crc_is_rejected(self) -> None:
         """Verifies that bit errors in payload or header cause packet to be dropped."""
@@ -143,3 +153,34 @@ class TestFramer:
         assert packets2[0].seq == 7
         assert packets2[0].payload == b"Long message payload"
         assert rem2 == b""
+
+    def test_empty_buffer_returns_empty(self) -> None:
+        """Verifies parsing empty byte string returns empty list and empty bytes."""
+        packets, rem = parse_frames_from_buffer(b"")
+        assert len(packets) == 0
+        assert rem == b""
+
+    def test_garbage_only_buffer(self) -> None:
+        """Verifies buffer with only noise without SOF delimiter."""
+        noise = b"\x01\x02\x03\x04\x05"
+        packets, rem = parse_frames_from_buffer(noise)
+        assert len(packets) == 0
+        assert rem == noise[-1:]
+
+    def test_corrupted_header_payload_length_exceeds_max(self) -> None:
+        """Verifies false-positive SOF with payload_len > MAX_PAYLOAD_SIZE is skipped."""
+        # Header with payload_len = 1000 (> 512)
+        fake_header = struct.pack("<HBBH", SOF_MAGIC, 1, Opcode.DATA_CHUNK, 1000)
+        valid_frame = pack_frame(seq=2, opcode=Opcode.PING, payload=b"")
+
+        stream = fake_header + valid_frame
+        packets, rem = parse_frames_from_buffer(stream)
+        assert len(packets) == 1
+        assert packets[0].seq == 2
+        assert packets[0].opcode == Opcode.PING
+        assert rem == b""
+
+    def test_compute_crc32_deterministic(self) -> None:
+        """Verifies IEEE 802.3 CRC32 checksum calculation."""
+        crc = compute_crc32(b"123456789")
+        assert crc == 0xCBF43926

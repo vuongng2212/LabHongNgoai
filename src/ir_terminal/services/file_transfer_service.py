@@ -15,6 +15,7 @@ from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
     DEFAULT_ACK_TIMEOUT_SEC,
     MAX_RETRY_COUNT,
+    AckStatus,
     Opcode,
 )
 from ir_terminal.protocol.file_payloads import (
@@ -168,8 +169,13 @@ class FileTransferService(QObject):
             self._set_state(TransferState.ABORTED)
             self.transfer_failed.emit("Transfer cancelled by user")
 
-    def _send_current_chunk(self) -> None:
-        """Transmits current binary chunk."""
+    def _send_current_chunk(self, new_seq: bool = True) -> None:
+        """Transmits current binary chunk.
+
+        Args:
+            new_seq: True to increment sequence number for a new chunk;
+                False to reuse current sequence number for retransmission.
+        """
         start_offset = self._current_chunk_idx * self._chunk_size
         end_offset = min(start_offset + self._chunk_size, self._file_size)
         chunk_data = self._file_data[start_offset:end_offset]
@@ -179,7 +185,9 @@ class FileTransferService(QObject):
             chunk_data=chunk_data,
         )
 
-        self._seq = (self._seq + 1) % 256
+        if new_seq:
+            self._seq = (self._seq + 1) % 256
+
         self._serial_manager.send_packet(
             seq=self._seq,
             opcode=Opcode.DATA_CHUNK,
@@ -187,14 +195,20 @@ class FileTransferService(QObject):
         )
         self._ack_timer.start()
 
-    def _send_file_end(self) -> None:
-        """Transmits completion verification frame."""
+    def _send_file_end(self, new_seq: bool = True) -> None:
+        """Transmits completion verification frame.
+
+        Args:
+            new_seq: True to increment sequence number; False for retransmission.
+        """
         self._set_state(TransferState.FINALIZING)
         end_payload = FileEndPayload(
             file_crc32=self._file_crc32,
             total_bytes_sent=self._bytes_transferred,
         )
-        self._seq = (self._seq + 1) % 256
+        if new_seq:
+            self._seq = (self._seq + 1) % 256
+
         self._serial_manager.send_packet(
             seq=self._seq,
             opcode=Opcode.TRANSFER_END,
@@ -213,15 +227,40 @@ class FileTransferService(QObject):
             self._on_nack_received(pkt)
 
     def _on_ack_received(self, pkt: Packet) -> None:
-        """Handles successful ACK."""
+        """Handles successful ACK with sequence and status verification."""
+        if self._state not in (
+            TransferState.HANDSHAKING,
+            TransferState.TRANSFERRING,
+            TransferState.FINALIZING,
+        ):
+            return
+
         try:
             ack_info = AckPayload.unpack(pkt.payload)
             acked_seq = ack_info.acked_seq
+            status = ack_info.status
         except Exception:
             acked_seq = pkt.seq
+            status = AckStatus.OK
 
-        if acked_seq != self._seq and acked_seq != 0:
+        if acked_seq != self._seq:
             logger.debug("Stale ACK received: expected seq %d, got %d", self._seq, acked_seq)
+            return
+
+        if status != AckStatus.OK:
+            logger.warning("Remote receiver reported error status %d for seq %d", status, acked_seq)
+            self._ack_timer.stop()
+            self._retry_count += 1
+            if self._retry_count > MAX_RETRY_COUNT:
+                self._set_state(TransferState.FAILED)
+                self.transfer_failed.emit(
+                    f"Transfer failed: Remote error status {status} after {MAX_RETRY_COUNT} retries"
+                )
+                logger.error(
+                    "File transfer aborted due to persistent remote error status %d", status
+                )
+                return
+            self._retransmit()
             return
 
         self._ack_timer.stop()
@@ -229,7 +268,7 @@ class FileTransferService(QObject):
 
         if self._state == TransferState.HANDSHAKING:
             self._set_state(TransferState.TRANSFERRING)
-            self._send_current_chunk()
+            self._send_current_chunk(new_seq=True)
 
         elif self._state == TransferState.TRANSFERRING:
             # Advance progress
@@ -250,9 +289,9 @@ class FileTransferService(QObject):
 
             self._current_chunk_idx += 1
             if self._current_chunk_idx < self._total_chunks:
-                self._send_current_chunk()
+                self._send_current_chunk(new_seq=True)
             else:
-                self._send_file_end()
+                self._send_file_end(new_seq=True)
 
         elif self._state == TransferState.FINALIZING:
             elapsed = max(time.time() - self._start_time, 0.001)
@@ -263,13 +302,36 @@ class FileTransferService(QObject):
             logger.info("File transfer complete: '%s' in %.2fs (%s)", fname, elapsed, crc_hex)
 
     def _on_nack_received(self, pkt: Packet) -> None:
-        """Handles NACK request by immediately retransmitting."""
+        """Handles NACK request by retransmitting up to retry limit."""
+        if self._state not in (
+            TransferState.HANDSHAKING,
+            TransferState.TRANSFERRING,
+            TransferState.FINALIZING,
+        ):
+            return
+
         logger.warning("NACK received from remote receiver for seq %d", pkt.seq)
         self._ack_timer.stop()
+        self._retry_count += 1
+        if self._retry_count > MAX_RETRY_COUNT:
+            self._set_state(TransferState.FAILED)
+            self.transfer_failed.emit(
+                f"Transfer failed: Max retries ({MAX_RETRY_COUNT}) exceeded on NACK"
+            )
+            logger.error("File transfer aborted due to excessive NACKs")
+            return
+
         self._retransmit()
 
     def _on_ack_timeout(self) -> None:
         """Handles Stop-and-Wait ACK timeout."""
+        if self._state not in (
+            TransferState.HANDSHAKING,
+            TransferState.TRANSFERRING,
+            TransferState.FINALIZING,
+        ):
+            return
+
         self._retry_count += 1
         if self._retry_count > MAX_RETRY_COUNT:
             self._set_state(TransferState.FAILED)
@@ -288,7 +350,7 @@ class FileTransferService(QObject):
         self._retransmit()
 
     def _retransmit(self) -> None:
-        """Retransmits current packet based on active state."""
+        """Retransmits current unacknowledged packet using existing sequence number."""
         if self._state == TransferState.HANDSHAKING:
             if self._current_file_path:
                 start_payload = FileStartPayload(
@@ -306,7 +368,7 @@ class FileTransferService(QObject):
                 self._ack_timer.start()
 
         elif self._state == TransferState.TRANSFERRING:
-            self._send_current_chunk()
+            self._send_current_chunk(new_seq=False)
 
         elif self._state == TransferState.FINALIZING:
-            self._send_file_end()
+            self._send_file_end(new_seq=False)

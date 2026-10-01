@@ -8,6 +8,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+from ir_terminal.protocol.constants import AckStatus
+
 
 @dataclass(frozen=True)
 class FileStartPayload:
@@ -145,7 +147,7 @@ class AckPayload:
     """
 
     acked_seq: int
-    status: int = 0  # 0: OK, 1: CRC_ERROR, 2: OUT_OF_ORDER
+    status: int = AckStatus.OK  # 0: OK, 1: CRC_ERROR, 2: OUT_OF_ORDER
 
     def pack(self) -> bytes:
         """Packs ACK payload."""

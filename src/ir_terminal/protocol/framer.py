@@ -54,6 +54,8 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
         raise ValueError(f"Payload size {payload_len} exceeds max allowed {MAX_PAYLOAD_SIZE} bytes")
     if not (0 <= seq <= 255):
         raise ValueError(f"Sequence number {seq} must be in range 0..255")
+    if not (0 <= opcode <= 255):
+        raise ValueError(f"Opcode {opcode} must be in range 0..255")
 
     # =========================================================================
     # PACKET HEADER STRUCTURE (Total: 6 bytes)

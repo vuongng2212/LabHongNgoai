@@ -45,17 +45,20 @@ class MockSerialPort(ITransport):
         self._loss_rate = simulated_loss_rate
         self._is_open = False
         self._rx_buffer = ByteRingBuffer(capacity=65536)
+        self._tx_buffer = b""
         self._los_blocked = False
 
     def open(self) -> None:
         """Opens virtual mock serial connection."""
         self._is_open = True
         self._rx_buffer.clear()
+        self._tx_buffer = b""
 
     def close(self) -> None:
         """Closes virtual mock serial connection."""
         self._is_open = False
         self._rx_buffer.clear()
+        self._tx_buffer = b""
 
     @property
     def is_open(self) -> bool:
@@ -92,7 +95,10 @@ class MockSerialPort(ITransport):
             return len(data)
 
         # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond
-        packets, _ = parse_frames_from_buffer(data)
+        self._tx_buffer += data
+        packets, remaining = parse_frames_from_buffer(self._tx_buffer)
+        self._tx_buffer = remaining
+
         for pkt in packets:
             if pkt.opcode == Opcode.PING:
                 self._handle_ping_packet(pkt.seq, pkt.payload)
@@ -115,8 +121,9 @@ class MockSerialPort(ITransport):
         """Echoes back chat response from Station Bravo node."""
         if self._latency_s > 0:
             time.sleep(self._latency_s)
-        # ACK the chat frame
-        ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=b"\x00\x00")
+        # ACK the chat frame with matching sequence number
+        ack_payload = bytes([seq, 0])
+        ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
         self._rx_buffer.write(ack_frame)
 
     def _handle_file_ack(self, seq: int) -> None:

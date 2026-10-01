@@ -9,7 +9,7 @@ from typing import ClassVar
 from PySide6.QtCore import QObject, Signal
 
 from ir_terminal.core.serial_manager import SerialManager
-from ir_terminal.protocol.constants import Opcode
+from ir_terminal.protocol.constants import MAX_PAYLOAD_SIZE, Opcode
 from ir_terminal.protocol.packet import Packet
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,10 @@ class ChatService(QObject):
             return
 
         payload = clean_text.encode("utf-8")
+        if len(payload) > MAX_PAYLOAD_SIZE:
+            payload = payload[:MAX_PAYLOAD_SIZE]
+            clean_text = payload.decode("utf-8", errors="ignore")
+
         self._seq = (self._seq + 1) % 256
 
         self._serial_manager.send_packet(

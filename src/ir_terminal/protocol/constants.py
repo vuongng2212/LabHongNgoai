@@ -59,6 +59,15 @@ class Opcode:
     TRANSFER_RESUME: int = 0x33  # Resume transmission from last verified sequence
 
 
+class AckStatus:
+    """Acknowledgment status codes for Stop-and-Wait ARQ (1 byte uint8)."""
+
+    OK: int = 0x00  # Packet successfully received and verified
+    CRC_ERROR: int = 0x01  # CRC-32 checksum mismatch
+    OUT_OF_ORDER: int = 0x02  # Sequence number out of expected order
+    TIMEOUT: int = 0x03  # Transmission timeout / retry limit exceeded
+
+
 # ==============================================================================
 # 3. TIMEOUTS & RETRY LIMITS
 # ==============================================================================
