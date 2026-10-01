@@ -1,4 +1,4 @@
-"""Stop-and-Wait ARQ Optical File Transfer Service."""
+"""Stop-and-Wait ARQ Optical File Transfer Service with disk persistence and tagged IoT logs."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from ir_terminal.protocol.file_payloads import (
     FileStartPayload,
 )
 from ir_terminal.protocol.packet import Packet
+from ir_terminal.services.storage_service import StorageService
+from ir_terminal.utils.logger import LogTag
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ class TransferState(Enum):
 
 
 class FileTransferService(QObject):
-    """Orchestrates optical file upload/download via Stop-and-Wait ARQ."""
+    """Orchestrates optical file upload/download via Stop-and-Wait ARQ and records logs to disk."""
 
     progress_updated: ClassVar[Signal] = Signal(
         int, float, float, int, int
@@ -53,10 +55,16 @@ class FileTransferService(QObject):
     transfer_failed: ClassVar[Signal] = Signal(str)  # (reason)
     state_changed: ClassVar[Signal] = Signal(str)  # (state_name)
 
-    def __init__(self, serial_manager: SerialManager, chunk_size: int = 240) -> None:
+    def __init__(
+        self,
+        serial_manager: SerialManager,
+        chunk_size: int = 240,
+        storage_service: StorageService | None = None,
+    ) -> None:
         super().__init__()
         self._serial_manager = serial_manager
         self._chunk_size = chunk_size
+        self._storage = storage_service or StorageService()
 
         self._state = TransferState.IDLE
         self._current_file_path: Path | None = None
@@ -88,7 +96,7 @@ class FileTransferService(QObject):
     def _set_state(self, new_state: TransferState) -> None:
         self._state = new_state
         self.state_changed.emit(new_state.name)
-        logger.info("FileTransfer state -> %s", new_state.name)
+        logger.info("%s FileTransfer state -> %s", LogTag.ARQ_ENGINE, new_state.name)
 
     def start_transfer(self, file_path_str: str) -> None:
         """Starts transmitting a file over optical link."""
@@ -98,18 +106,26 @@ class FileTransferService(QObject):
             TransferState.FAILED,
             TransferState.ABORTED,
         ):
-            logger.warning("Cannot start transfer: currently busy in %s", self._state.name)
+            logger.warning(
+                "%s Cannot start transfer: busy in state %s",
+                LogTag.FILE_SVC,
+                self._state.name,
+            )
             return
 
         file_path = Path(file_path_str)
         if not file_path.exists() or not file_path.is_file():
-            self.transfer_failed.emit(f"File not found: {file_path_str}")
+            err_msg = f"File not found: {file_path_str}"
+            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            self.transfer_failed.emit(err_msg)
             return
 
         try:
             self._file_data = file_path.read_bytes()
         except Exception as e:
-            self.transfer_failed.emit(f"Failed to read file: {e}")
+            err_msg = f"Failed to read file: {e}"
+            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            self.transfer_failed.emit(err_msg)
             return
 
         self._current_file_path = file_path
@@ -145,7 +161,8 @@ class FileTransferService(QObject):
         )
         self._ack_timer.start()
         logger.info(
-            "Initiated file transfer: '%s' (%d bytes, %d chunks, CRC 0x%08X)",
+            "%s Initiated file transfer: '%s' (%d bytes, %d chunks, CRC 0x%08X)",
+            LogTag.FILE_SVC,
             file_path.name,
             self._file_size,
             self._total_chunks,
@@ -168,6 +185,7 @@ class FileTransferService(QObject):
             )
             self._set_state(TransferState.ABORTED)
             self.transfer_failed.emit("Transfer cancelled by user")
+            logger.info("%s Transfer aborted by user", LogTag.FILE_SVC)
 
     def _send_current_chunk(self, new_seq: bool = True) -> None:
         """Transmits current binary chunk.
@@ -194,6 +212,14 @@ class FileTransferService(QObject):
             payload=chunk_payload.pack(),
         )
         self._ack_timer.start()
+        logger.debug(
+            "%s Sent Chunk %d/%d (Seq #%d, %d bytes)",
+            LogTag.ARQ_ENGINE,
+            self._current_chunk_idx + 1,
+            self._total_chunks,
+            self._seq,
+            len(chunk_data),
+        )
 
     def _send_file_end(self, new_seq: bool = True) -> None:
         """Transmits completion verification frame.
@@ -215,6 +241,12 @@ class FileTransferService(QObject):
             payload=end_payload.pack(),
         )
         self._ack_timer.start()
+        logger.info(
+            "%s Sent TRANSFER_END (Seq #%d, CRC 0x%08X)",
+            LogTag.FILE_SVC,
+            self._seq,
+            self._file_crc32,
+        )
 
     def _handle_packet(self, pkt: object) -> None:
         """Processes incoming ACK/NACK frames."""
@@ -244,21 +276,30 @@ class FileTransferService(QObject):
             status = AckStatus.OK
 
         if acked_seq != self._seq:
-            logger.debug("Stale ACK received: expected seq %d, got %d", self._seq, acked_seq)
+            logger.debug(
+                "%s Stale ACK received: expected seq %d, got %d",
+                LogTag.ARQ_ENGINE,
+                self._seq,
+                acked_seq,
+            )
             return
 
         if status != AckStatus.OK:
-            logger.warning("Remote receiver reported error status %d for seq %d", status, acked_seq)
+            logger.warning(
+                "%s Remote receiver reported error status %d for seq %d",
+                LogTag.ARQ_ENGINE,
+                status,
+                acked_seq,
+            )
             self._ack_timer.stop()
             self._retry_count += 1
             if self._retry_count > MAX_RETRY_COUNT:
                 self._set_state(TransferState.FAILED)
-                self.transfer_failed.emit(
+                err_msg = (
                     f"Transfer failed: Remote error status {status} after {MAX_RETRY_COUNT} retries"
                 )
-                logger.error(
-                    "File transfer aborted due to persistent remote error status %d", status
-                )
+                self.transfer_failed.emit(err_msg)
+                logger.error("%s %s", LogTag.ARQ_ENGINE, err_msg)
                 return
             self._retransmit()
             return
@@ -271,7 +312,6 @@ class FileTransferService(QObject):
             self._send_current_chunk(new_seq=True)
 
         elif self._state == TransferState.TRANSFERRING:
-            # Advance progress
             start_offset = self._current_chunk_idx * self._chunk_size
             end_offset = min(start_offset + self._chunk_size, self._file_size)
             chunk_len = end_offset - start_offset
@@ -295,11 +335,33 @@ class FileTransferService(QObject):
 
         elif self._state == TransferState.FINALIZING:
             elapsed = max(time.time() - self._start_time, 0.001)
+            speed_kbps = (self._bytes_transferred / 1024.0) / elapsed
             crc_hex = f"0x{self._file_crc32:08X}"
             fname = self._current_file_path.name if self._current_file_path else "file"
+            fpath = str(self._current_file_path) if self._current_file_path else ""
             self._set_state(TransferState.COMPLETED)
+
+            # Persist transfer record into hard drive SQLite database
+            self._storage.save_file_transfer(
+                filename=fname,
+                file_path=fpath,
+                direction="TX",
+                size_bytes=self._bytes_transferred,
+                crc32_hex=crc_hex,
+                speed_kbps=round(speed_kbps, 2),
+                duration_sec=round(elapsed, 2),
+                status="SUCCESS",
+            )
+
             self.transfer_completed.emit(fname, self._bytes_transferred, elapsed, crc_hex)
-            logger.info("File transfer complete: '%s' in %.2fs (%s)", fname, elapsed, crc_hex)
+            logger.info(
+                "%s File transfer complete: '%s' in %.2fs (Speed: %.2f KB/s, CRC: %s)",
+                LogTag.FILE_SVC,
+                fname,
+                elapsed,
+                speed_kbps,
+                crc_hex,
+            )
 
     def _on_nack_received(self, pkt: Packet) -> None:
         """Handles NACK request by retransmitting up to retry limit."""
@@ -310,15 +372,14 @@ class FileTransferService(QObject):
         ):
             return
 
-        logger.warning("NACK received from remote receiver for seq %d", pkt.seq)
+        logger.warning("%s NACK received from remote for seq %d", LogTag.ARQ_ENGINE, pkt.seq)
         self._ack_timer.stop()
         self._retry_count += 1
         if self._retry_count > MAX_RETRY_COUNT:
             self._set_state(TransferState.FAILED)
-            self.transfer_failed.emit(
-                f"Transfer failed: Max retries ({MAX_RETRY_COUNT}) exceeded on NACK"
-            )
-            logger.error("File transfer aborted due to excessive NACKs")
+            err_msg = f"Transfer failed: Max retries ({MAX_RETRY_COUNT}) exceeded on NACK"
+            self.transfer_failed.emit(err_msg)
+            logger.error("%s %s", LogTag.ARQ_ENGINE, err_msg)
             return
 
         self._retransmit()
@@ -335,14 +396,14 @@ class FileTransferService(QObject):
         self._retry_count += 1
         if self._retry_count > MAX_RETRY_COUNT:
             self._set_state(TransferState.FAILED)
-            self.transfer_failed.emit(
-                f"Transfer failed: ACK timeout after {MAX_RETRY_COUNT} retries"
-            )
-            logger.error("File transfer aborted due to excessive ACK timeouts")
+            err_msg = f"Transfer failed: ACK timeout after {MAX_RETRY_COUNT} retries"
+            self.transfer_failed.emit(err_msg)
+            logger.error("%s %s", LogTag.ARQ_ENGINE, err_msg)
             return
 
         logger.warning(
-            "ACK timeout (retry %d/%d) for state %s",
+            "%s ACK timeout (retry %d/%d) for state %s",
+            LogTag.ARQ_ENGINE,
             self._retry_count,
             MAX_RETRY_COUNT,
             self._state.name,

@@ -1,4 +1,4 @@
-// Chat Viewport Controller
+// Chat Viewport Controller with persistent database history loading
 function initChatController() {
   const chatInput = document.querySelector('#view-chat input[type="text"]');
   const sendBtn = document.querySelector('#view-chat button.bg-primary-container');
@@ -9,8 +9,8 @@ function initChatController() {
 
   function doSend() {
     const text = chatInput.value.trim();
-    if (!text || !bridge) return;
-    bridge.sendChat(text);
+    if (!text || !window.bridge) return;
+    window.bridge.sendChat(text);
     chatInput.value = '';
   }
 
@@ -21,16 +21,33 @@ function initChatController() {
     }
   });
 
-  if (bridge) {
-    bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
+  if (window.bridge) {
+    window.bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
       appendChatMessage(text, timeStr, isOutgoing);
     });
 
-    bridge.chatFrameInspected.connect((hexDump, seq, opcode, len) => {
+    window.bridge.chatFrameInspected.connect((hexDump, seq, opcode, len) => {
       if (hexDumpElem) {
         hexDumpElem.innerText = `[FRAME SEQ #${seq} | CMD 0x${opcode.toString(16).padStart(2, '0').toUpperCase()} | LEN ${len}B]\n` + hexDump;
       }
     });
+
+    // Load persisted chat history from local hard drive SQLite database
+    if (typeof window.bridge.getChatHistory === 'function') {
+      window.bridge.getChatHistory((historyJson) => {
+        try {
+          const messages = JSON.parse(historyJson);
+          if (Array.isArray(messages) && messages.length > 0 && chatContainer) {
+            chatContainer.innerHTML = '';
+            messages.forEach(msg => {
+              appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing);
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse chat history JSON:', err);
+        }
+      });
+    }
   }
 
   function appendChatMessage(text, timeStr, isOutgoing) {

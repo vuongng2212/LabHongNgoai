@@ -15,6 +15,8 @@ from ir_terminal.protocol.constants import Opcode
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.chat_service import ChatService
 from ir_terminal.services.file_transfer_service import FileTransferService
+from ir_terminal.services.storage_service import StorageService
+from ir_terminal.utils.logger import LogTag
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +46,18 @@ class BackendBridge(QObject):
     transferFailed: ClassVar[Signal] = Signal(str)  # (reason)
     transferStateChanged: ClassVar[Signal] = Signal(str)  # (state)
 
-    def __init__(self, serial_manager: SerialManager) -> None:
+    def __init__(
+        self,
+        serial_manager: SerialManager,
+        storage_service: StorageService | None = None,
+    ) -> None:
         super().__init__()
         self._serial_manager = serial_manager
-        self._chat_service = ChatService(self._serial_manager)
-        self._file_service = FileTransferService(self._serial_manager)
+        self._storage = storage_service or StorageService()
+        self._chat_service = ChatService(self._serial_manager, self._storage)
+        self._file_service = FileTransferService(
+            self._serial_manager, storage_service=self._storage
+        )
 
         self._last_ping_time: float = 0.0
         self._ping_seq: int = 1
@@ -100,13 +109,18 @@ class BackendBridge(QObject):
     @Slot(str, int)
     def connectPort(self, port_name: str, baudrate: int) -> None:
         """Connects to specified Serial or Mock COM port."""
-        logger.info("JS requested connect to %s @ %d bps", port_name, baudrate)
+        logger.info(
+            "%s Connect requested: port=%s baudrate=%d",
+            LogTag.HW_SERIAL,
+            port_name,
+            baudrate,
+        )
         self._serial_manager.connect_port(port_name, baudrate)
 
     @Slot()
     def disconnectPort(self) -> None:
         """Disconnects current Serial connection."""
-        logger.info("JS requested disconnect")
+        logger.info("%s Disconnect requested by UI", LogTag.HW_SERIAL)
         self._serial_manager.disconnect_port()
 
     @Slot()
@@ -115,6 +129,7 @@ class BackendBridge(QObject):
         self._ping_seq = (self._ping_seq + 1) % 256
         self._last_ping_time = time.time()
         self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=b"IR_PING")
+        logger.info("%s Transmitted PING frame (Seq #%d)", LogTag.PROTO_FRAME, self._ping_seq)
 
     @Slot(str)
     def sendChat(self, text: str) -> None:
@@ -141,3 +156,15 @@ class BackendBridge(QObject):
             "All Files (*.*);;Documents (*.pdf;*.docx;*.txt);;Images (*.png;*.jpg;*.bin)",
         )
         return path
+
+    @Slot(result=str)
+    def getChatHistory(self) -> str:
+        """Retrieves durable chat history from SQLite database as JSON string."""
+        history = self._storage.get_chat_history(limit=200)
+        return json.dumps(history)
+
+    @Slot(result=str)
+    def getFileHistory(self) -> str:
+        """Retrieves durable file transfer logs from SQLite database as JSON string."""
+        transfers = self._storage.get_file_transfers(limit=50)
+        return json.dumps(transfers)
