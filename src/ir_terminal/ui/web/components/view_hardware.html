@@ -131,24 +131,23 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-space-md items-center py-1">
 <!-- Concentric Circular Alignment Gauge -->
 <div class="flex flex-col items-center justify-center p-space-sm bg-surface-container-low/50 rounded-xl border border-black/[0.04] relative">
-<div class="relative w-36 h-36 flex items-center justify-center">
-<!-- Concentric Circles Background -->
-<div class="absolute inset-0 rounded-full border border-dashed border-outline-variant/60"></div>
-<div class="absolute inset-3 rounded-full border border-outline-variant/30"></div>
-<div class="absolute inset-7 rounded-full border border-dashed border-outline-variant/40"></div>
+<div class="relative w-32 h-32 flex items-center justify-center">
+<!-- Clean Inner Target Reticle Rings -->
+<div class="absolute inset-4 rounded-full border border-dashed border-outline-variant/40 pointer-events-none"></div>
+<div class="absolute inset-8 rounded-full border border-outline-variant/30 pointer-events-none"></div>
 <!-- Synthetic Vector Ring Dial -->
-<svg class="w-32 h-32 -rotate-90 transform" viewbox="0 0 100 100">
-<circle cx="50" cy="50" fill="none" r="42" stroke="#E2E8F0" stroke-width="7"></circle>
-<circle cx="50" cy="50" fill="none" r="42" stroke="#2563EB" stroke-dasharray="264" stroke-dashoffset="16" stroke-linecap="round" stroke-width="7"></circle>
+<svg class="w-full h-full -rotate-90 transform" viewbox="0 0 100 100">
+<circle cx="50" cy="50" fill="none" r="40" stroke="#E2E8F0" stroke-width="6.5"></circle>
+<circle cx="50" cy="50" fill="none" r="40" stroke="#2563EB" stroke-dasharray="251.3" stroke-dashoffset="15.1" stroke-linecap="round" stroke-width="6.5"></circle>
 </svg>
 <!-- Center Dial Readout -->
-<div class="absolute inset-0 flex flex-col items-center justify-center">
+<div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
 <span class="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">94%</span>
 <span class="font-mono-caption text-mono-caption text-secondary font-bold tracking-wider">ALIGNED</span>
 </div>
 <!-- Target Crosshairs -->
-<div class="absolute top-1 bottom-1 w-px bg-primary/20 pointer-events-none"></div>
-<div class="absolute left-1 right-1 h-px bg-primary/20 pointer-events-none"></div>
+<div class="absolute top-2 bottom-2 w-px bg-primary/20 pointer-events-none"></div>
+<div class="absolute left-2 right-2 h-px bg-primary/20 pointer-events-none"></div>
 </div>
 <div class="text-[11px] text-outline font-mono-caption mt-1">Azimuth: +0.4° | Elevation: -0.1°</div>
 </div>
