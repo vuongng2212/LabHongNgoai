@@ -62,7 +62,7 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
     # Offset 0-1: Start of Frame (SOF) -> 0xAA55 (uint16, Little-Endian: 0x55, 0xAA)
     # Offset 2  : Sequence Number      -> 0x00..0xFF (uint8)
     # Offset 3  : Opcode / Command     -> uint8
-    # Offset 4-5: Payload Length (N)   -> uint16 (Little-Endian)
+    # Offset 4-5: Payload Length (N)   -> uint16 (Little-Endian, bytes)
     # =========================================================================
     header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq, opcode, payload_len)
 
@@ -72,7 +72,7 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
 
     # =========================================================================
     # PACKET FOOTER STRUCTURE (Total: 6 bytes)
-    # Offset 0-3: CRC-32 Checksum      -> uint32 (Little-Endian)
+    # Offset 0-3: CRC-32 Checksum      -> uint32 (Little-Endian, IEEE 802.3)
     # Offset 4-5: End of Frame (EOF)   -> 0x55AA (uint16, Little-Endian: 0xAA, 0x55)
     # =========================================================================
     footer_bytes = struct.pack("<IH", crc_val, EOF_MAGIC)
@@ -97,6 +97,11 @@ def parse_frames_from_buffer(buffer: bytes) -> tuple[list[Packet], bytes]:
     """
     packets: list[Packet] = []
     idx = 0
+
+    # =========================================================================
+    # SOF PATTERN (2 bytes)
+    # Offset 0-1: Start of Frame -> 0xAA55 (uint16, Little-Endian: 0x55, 0xAA)
+    # =========================================================================
     sof_bytes = struct.pack("<H", SOF_MAGIC)
 
     while idx < len(buffer):
@@ -118,8 +123,13 @@ def parse_frames_from_buffer(buffer: bytes) -> tuple[list[Packet], bytes]:
             # Incomplete header; wait for more bytes in next cycle
             return packets, buffer[idx:]
 
-        # 3. Unpack header fields
-        # Offset 0-1: SOF, Offset 2: SEQ, Offset 3: OPCODE, Offset 4-5: LEN
+        # =====================================================================
+        # 3. PACKET HEADER UNPACK (Total: 6 bytes)
+        # Offset 0-1: SOF     -> uint16 (Little-Endian magic)
+        # Offset 2  : SEQ     -> uint8 (0..255)
+        # Offset 3  : OPCODE  -> uint8 (Command code)
+        # Offset 4-5: LEN     -> uint16 (Little-Endian, Payload size)
+        # =====================================================================
         _, seq, opcode, payload_len = struct.unpack("<HBBH", buffer[idx : idx + HEADER_SIZE])
 
         # Sanity check payload length to avoid memory denial or parsing garbage
@@ -142,7 +152,11 @@ def parse_frames_from_buffer(buffer: bytes) -> tuple[list[Packet], bytes]:
         footer_offset = idx + HEADER_SIZE + payload_len
         footer_raw = buffer[footer_offset : footer_offset + FOOTER_SIZE]
 
-        # Unpack footer (Offset 0-3: CRC32, Offset 4-5: EOF)
+        # =====================================================================
+        # PACKET FOOTER UNPACK (Total: 6 bytes)
+        # Offset 0-3: CRC-32  -> uint32 (Little-Endian, IEEE 802.3 checksum)
+        # Offset 4-5: EOF     -> uint16 (Little-Endian, 0x55AA magic)
+        # =====================================================================
         rx_crc, rx_eof = struct.unpack("<IH", footer_raw)
 
         # 6. Validate EOF magic delimiter (0x55AA)

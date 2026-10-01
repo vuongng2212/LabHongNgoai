@@ -13,6 +13,7 @@ from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.mock_serial import MockSerialPort
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
 from ir_terminal.protocol.framer import parse_frames_from_buffer
+from ir_terminal.utils.logger import LogTag
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,18 @@ class PySerialTransport(ITransport):
     """Concrete wrapper around pyserial conforming to ITransport interface."""
 
     def __init__(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
+        """Initializes PySerial transport.
+
+        Args:
+            port_name: Serial device port identifier (e.g. '/dev/ttyUSB0' or 'COM3').
+            baudrate: Baud rate for the physical UART connection.
+        """
         self._port_name = port_name
         self._baudrate = baudrate
         self._serial: serial.Serial | None = None
 
     def open(self) -> None:
+        """Opens physical serial port connection."""
         self._serial = serial.Serial(
             port=self._port_name,
             baudrate=self._baudrate,
@@ -37,21 +45,39 @@ class PySerialTransport(ITransport):
         )
 
     def close(self) -> None:
+        """Closes physical serial port connection."""
         if self._serial and self._serial.is_open:
             self._serial.close()
         self._serial = None
 
     @property
     def is_open(self) -> bool:
+        """Returns True if physical serial port is currently open."""
         return bool(self._serial and self._serial.is_open)
 
     def write(self, data: bytes) -> int:
+        """Writes binary data to serial interface.
+
+        Args:
+            data: Raw bytes to transmit.
+
+        Returns:
+            Number of bytes written.
+        """
         if not self._serial or not self._serial.is_open:
             raise RuntimeError("Serial port not open for write")
         written = self._serial.write(data)
         return int(written) if written is not None else 0
 
     def read(self, size: int | None = None) -> bytes:
+        """Reads incoming bytes from serial buffer.
+
+        Args:
+            size: Number of bytes to read, or None to read all available.
+
+        Returns:
+            Extracted bytes sequence.
+        """
         if not self._serial or not self._serial.is_open:
             return b""
         read_size = self._serial.in_waiting if size is None else size
@@ -62,6 +88,7 @@ class PySerialTransport(ITransport):
 
     @property
     def in_waiting(self) -> int:
+        """Returns number of available bytes in the serial driver ring buffer."""
         if not self._serial or not self._serial.is_open:
             return 0
         waiting = self._serial.in_waiting
@@ -80,6 +107,7 @@ class SerialWorker(QObject):
     packet_received: ClassVar[Signal] = Signal(object)  # (Packet)
 
     def __init__(self) -> None:
+        """Initializes non-blocking serial worker instance."""
         super().__init__()
         self._transport: ITransport | None = None
         self._rx_accumulation = b""
@@ -87,10 +115,17 @@ class SerialWorker(QObject):
 
     @Slot(str, int)
     def open_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Opens physical or virtual serial connection and starts periodic polling."""
+        """Opens physical or virtual serial connection and starts periodic polling.
+
+        Args:
+            port_name: Target port identifier.
+            baudrate: Baud rate integer.
+        """
         try:
             self.close_port()
-            logger.info("Opening serial port: %s at %d bps", port_name, baudrate)
+            logger.info(
+                "%s Opening serial port: %s at %d bps", LogTag.HW_SERIAL, port_name, baudrate
+            )
 
             if port_name.startswith("MOCK"):
                 self._transport = MockSerialPort(port_name=port_name, baudrate=baudrate)
@@ -109,7 +144,9 @@ class SerialWorker(QObject):
             self.connected.emit(port_name, baudrate)
 
         except Exception as exc:
-            logger.exception("Failed to open serial port %s: %s", port_name, exc)
+            logger.exception(
+                "%s Failed to open serial port %s: %s", LogTag.HW_SERIAL, port_name, exc
+            )
             self.error_occurred.emit(f"Connection failed: {exc}")
 
     @Slot()
@@ -123,7 +160,7 @@ class SerialWorker(QObject):
             try:
                 self._transport.close()
             except Exception as exc:
-                logger.warning("Error during transport close: %s", exc)
+                logger.warning("%s Error during transport close: %s", LogTag.HW_SERIAL, exc)
 
         self._transport = None
         self._rx_accumulation = b""
@@ -131,7 +168,11 @@ class SerialWorker(QObject):
 
     @Slot(bytes)
     def send_bytes(self, data: bytes) -> None:
-        """Transmits raw binary bytes to the serial transport."""
+        """Transmits raw binary bytes to the serial transport.
+
+        Args:
+            data: Raw bytes to write out to UART.
+        """
         if not self._transport or not self._transport.is_open:
             self.error_occurred.emit("Cannot send data: Serial port is not connected")
             return
@@ -140,7 +181,7 @@ class SerialWorker(QObject):
             self._transport.write(data)
             self.raw_data_sent.emit(data)
         except Exception as exc:
-            logger.exception("Write error to serial port: %s", exc)
+            logger.exception("%s Write error to serial port: %s", LogTag.HW_SERIAL, exc)
             self.error_occurred.emit(f"Write error: {exc}")
 
     @Slot()
@@ -164,7 +205,7 @@ class SerialWorker(QObject):
                         self.packet_received.emit(pkt)
 
         except Exception as exc:
-            logger.exception("Serial read poll error: %s", exc)
+            logger.exception("%s Serial read poll error: %s", LogTag.HW_SERIAL, exc)
             self.error_occurred.emit(f"Read error: {exc}")
             self.close_port()
 

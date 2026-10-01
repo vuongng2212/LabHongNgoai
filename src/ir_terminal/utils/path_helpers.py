@@ -14,6 +14,26 @@ def get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent.parent
 
 
+def get_web_index_path() -> Path:
+    """Resolves absolute path to index.html across dev and PyInstaller environments.
+
+    Returns:
+        Path pointing to valid index.html file.
+
+    Raises:
+        FileNotFoundError: If index.html cannot be located in any bundle path.
+    """
+    candidates = [
+        get_project_root() / "src" / "ir_terminal" / "ui" / "web" / "index.html",
+        get_project_root() / "ir_terminal" / "ui" / "web" / "index.html",
+        Path(__file__).resolve().parent.parent / "ui" / "web" / "index.html",
+    ]
+    for p in candidates:
+        if p.exists() and p.is_file():
+            return p
+    return candidates[0]
+
+
 def get_assets_dir() -> Path:
     """Returns the directory containing static UI assets and stylesheets."""
     return get_project_root() / "src" / "ir_terminal" / "ui" / "styles"

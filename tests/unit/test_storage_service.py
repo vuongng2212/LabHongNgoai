@@ -55,6 +55,55 @@ class TestStorageService:
             assert transfers[0]["crc32_hex"] == "0xABCD1234"
             assert transfers[0]["status"] == "SUCCESS"
 
+    def test_telemetry_samples_and_csv_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test_terminal.db"
+            storage = StorageService(db_path=db_path)
+
+            sample_id = storage.save_telemetry_sample(
+                timestamp_epoch=1700000000.0,
+                throughput_kbps=9.85,
+                rtt_ms=34.2,
+                packet_loss_rate=0.0,
+                total_packets_sent=120,
+                total_packets_lost=0,
+            )
+            assert sample_id > 0
+
+            samples = storage.get_telemetry_history(limit=10)
+            assert len(samples) == 1
+            assert samples[0]["throughput_kbps"] == 9.85
+            assert samples[0]["rtt_ms"] == 34.2
+            assert samples[0]["total_packets_sent"] == 120
+
+            # Test CSV export
+            csv_path = Path(tmpdir) / "telemetry_out.csv"
+            csv_text = storage.export_telemetry_csv(csv_path)
+            assert "Throughput_KBps" in csv_text
+            assert "9.85" in csv_text
+            assert csv_path.exists()
+
+    def test_file_transfers_csv_export(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test_terminal.db"
+            storage = StorageService(db_path=db_path)
+
+            storage.save_file_transfer(
+                filename="data.bin",
+                file_path="/tmp/data.bin",
+                direction="TX",
+                size_bytes=1024,
+                crc32_hex="0x12345678",
+                speed_kbps=10.0,
+                duration_sec=0.1,
+                status="SUCCESS",
+            )
+            csv_path = Path(tmpdir) / "transfers_out.csv"
+            csv_text = storage.export_transfers_csv(csv_path)
+            assert "Filename" in csv_text
+            assert "data.bin" in csv_text
+            assert csv_path.exists()
+
     def test_settings_persistence(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "test_terminal.db"

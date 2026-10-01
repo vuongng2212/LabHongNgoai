@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
 from ir_terminal.core.backend_bridge import BackendBridge
 from ir_terminal.core.serial_manager import SerialManager
-from ir_terminal.utils.path_helpers import get_project_root
+from ir_terminal.utils.path_helpers import get_web_index_path
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,14 @@ class WebAppPage(QWebEnginePage):
         line_number: int,
         source_id: str,
     ) -> None:
+        """Forwards JavaScript console output to Python logger.
+
+        Args:
+            level: Log level enum.
+            message: Raw log text.
+            line_number: Line number of the JS file.
+            source_id: Source file URI or name.
+        """
         logger.debug("JS Console [%s:%d]: %s", source_id, line_number, message)
 
 
@@ -34,6 +42,11 @@ class WebMainWindow(QMainWindow):
     """Main Application Window hosting Chromium WebEngine and Python QWebChannel."""
 
     def __init__(self, serial_manager: SerialManager) -> None:
+        """Initializes main web application window.
+
+        Args:
+            serial_manager: Serial manager instance managing background I/O.
+        """
         super().__init__()
         self._serial_manager = serial_manager
         self._bridge = BackendBridge(self._serial_manager)
@@ -42,11 +55,13 @@ class WebMainWindow(QMainWindow):
         self._init_webengine()
 
     def _init_window(self) -> None:
+        """Configures window properties, minimum bounds, and title."""
         self.setWindowTitle("SpectraLink IR-OWC Workstation")
         self.resize(1380, 880)
         self.setMinimumSize(1100, 700)
 
     def _init_webengine(self) -> None:
+        """Instantiates WebEngine view, registers WebChannel bridge, and loads index.html."""
         central_widget = QWidget(self)
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -67,8 +82,8 @@ class WebMainWindow(QMainWindow):
         self._channel.registerObject("bridge", self._bridge)
         self._page.setWebChannel(self._channel)
 
-        # Load HTML
-        index_path = get_project_root() / "src" / "ir_terminal" / "ui" / "web" / "index.html"
+        # Load HTML index
+        index_path = get_web_index_path()
         self._view.load(QUrl.fromLocalFile(str(index_path.resolve())))
 
         layout.addWidget(self._view)
@@ -76,8 +91,10 @@ class WebMainWindow(QMainWindow):
 
     @property
     def bridge(self) -> BackendBridge:
+        """Returns the BackendBridge instance exposed to Chromium."""
         return self._bridge
 
     @property
     def web_view(self) -> QWebEngineView:
+        """Returns the inner QWebEngineView instance."""
         return self._view
