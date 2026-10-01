@@ -3,29 +3,33 @@
 import os
 import re
 
-REPLACEMENTS = [
-    ("â€¢", "•"),
-    ("â¢", "•"),
-    ("—€¢", "•"),
+EXPLICIT_REPLACEMENTS = [
+    # Corrupted BER formulas
+    ("10—»—¹", "10<sup>-9</sup>"),
+    ("10—»—¶", "10<sup>-6</sup>"),
+    ("10—»Â¹—°", "10<sup>-10</sup>"),
+    ("10â»â¹", "10<sup>-9</sup>"),
+    ("10â»â¶", "10<sup>-6</sup>"),
+    ("10â»Â¹â°", "10<sup>-10</sup>"),
+    ("10<sup>-9</sup>⁰", "10<sup>-10</sup>"),
+    ("10⁻⁹", "10<sup>-9</sup>"),
+    ("10⁻¹⁰", "10<sup>-10</sup>"),
+    ("10⁻⁶", "10<sup>-6</sup>"),
+    ("BER < 10—»—¹", "BER &lt; 10<sup>-9</sup>"),
+    ("BER &lt; 10—»—¹", "BER &lt; 10<sup>-9</sup>"),
+    ("BER > 10—»—¶", "BER &gt; 10<sup>-6</sup>"),
+    ("BER &gt; 10—»—¶", "BER &gt; 10<sup>-6</sup>"),
+    # Corrupted bullets
     ("—¢", "•"),
-    ("â€—", "—"),
-    ("â€”", "—"),
+    ("â¢", "•"),
+    ("â€¢", "•"),
+    ("—€¢", "•"),
+    # Corrupted dashes
     ("—€—", "—"),
+    ("â€”", "—"),
     ("â—", "—"),
     ("â€“", "–"),
-    ("â€¹", "‹"),
-    ("â€º", "›"),
-    ("â€¦", "…"),
-    ("â»Â¹â°", "⁻¹⁰"),
-    ("10—»Â¹—°", "10⁻¹⁰"),
-    ("—»Â¹—°", "⁻¹⁰"),
-    ("10â»â¹", "10⁻⁹"),
-    ("10â»Â¹â°", "10⁻¹⁰"),
-    ("10â»â¶", "10⁻⁶"),
-    ("10â»", "10⁻"),
-    ("â»â¹", "⁻⁹"),
-    ("â»â¶", "⁻⁶"),
-    ("—»", "⁻"),
+    # Corrupted greek and math symbols
     ("Î»:", "λ:"),
     ("Î»", "λ"),
     ("Â°C", "°C"),
@@ -34,14 +38,21 @@ REPLACEMENTS = [
     (" Ã ", " × "),
     ("Ã—", "×"),
     ("Ã", "×"),
-    ("â", "—"),
 ]
 
 
 def sanitize(text: str) -> str:
     res = text
-    for old, new in REPLACEMENTS:
+    for old, new in EXPLICIT_REPLACEMENTS:
         res = res.replace(old, new)
+
+    # General regex cleanup for any remaining patterns
+    res = re.sub(r"10[—â»⁻]+[¹⁹]", "10<sup>-9</sup>", res)
+    res = re.sub(r"10[—â»⁻]+[¶⁶]", "10<sup>-6</sup>", res)
+    res = re.sub(r"10[—â»⁻]+[⁰°]", "10<sup>-10</sup>", res)
+    res = re.sub(r"[—â€]+¢", "•", res)
+    res = re.sub(r"[\x80-\x9F]", "", res)
+
     # Ensure all select dropdowns have appearance-none for clean custom caret
     res = res.replace('<select class="', '<select class="appearance-none ')
     return res
