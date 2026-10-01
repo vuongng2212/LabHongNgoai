@@ -57,6 +57,13 @@
             "on-background": "#0b1c30",
             "surface-variant": "#d3e4fe"
           },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "0.875rem",
+            "full": "9999px"
+          },
           spacing: {
             "space-xs": "0.25rem",
             "margin": "1.25rem",
@@ -77,12 +84,39 @@
             "label-sm": ["Inter", "sans-serif"],
             "label-md": ["Inter", "sans-serif"],
             "title-sm": ["Inter", "sans-serif"]
+          },
+          fontSize: {
+            "headline-md": ["18px", { lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }],
+            "display-lg": ["32px", { lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600" }],
+            "body-md": ["13px", { lineHeight: "18px", letterSpacing: "0em", fontWeight: "400" }],
+            "body-lg": ["14px", { lineHeight: "20px", letterSpacing: "0em", fontWeight: "400" }],
+            "mono-caption": ["10px", { lineHeight: "12px", letterSpacing: "0.04em", fontWeight: "600" }],
+            "headline-lg": ["24px", { lineHeight: "32px", letterSpacing: "-0.015em", fontWeight: "600" }],
+            "mono-data": ["12px", { lineHeight: "16px", letterSpacing: "-0.01em", fontWeight: "500" }],
+            "label-sm": ["11px", { lineHeight: "14px", letterSpacing: "0.02em", fontWeight: "500" }],
+            "label-md": ["12px", { lineHeight: "16px", letterSpacing: "0.01em", fontWeight: "500" }],
+            "title-sm": ["14px", { lineHeight: "20px", letterSpacing: "-0.005em", fontWeight: "600" }]
           }
         }
       }
     }
   </script>
   <style>
+    /* Sleek Native Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.25);
+    }
     .traffic-dot:hover span {
       opacity: 0.6;
     }
@@ -265,7 +299,7 @@
 <div class="space-y-1.5">
 <label class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Target Port Interface</label>
 <div class="relative">
-<select class="w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
+<select class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
 <option selected="">COM4 - STM32F407 CDC (Virtual COM)</option>
 <option>COM3 - FTDI USB-to-UART Serial (Lab Scope)</option>
 <option>COM8 - Internal IrDA Testbed Loopback</option>
@@ -751,7 +785,7 @@
 <div class="flex items-center gap-space-md">
 <span>Total Session Optical Payloads: <strong class="text-on-surface">3.83 MB</strong></span>
 <span>—¢</span>
-<span>Average BER: <strong class="text-secondary">&lt; 1.4 × 10—»Â¹—°</strong></span>
+<span>Average BER: <strong class="text-secondary">&lt; 1.4 × 10⁻¹⁰</strong></span>
 <span>—¢</span>
 <span>Modulation: <strong class="text-on-surface">OOK-Manchester 1.25 Mbps</strong></span>
 </div>
@@ -1000,7 +1034,7 @@
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
 <span class="text-secondary font-semibold">Optimal Carrier SNR</span>
-<span class="text-on-surface-variant">(31.4 dB —¢ BER &lt; 10—»Â¹—°)</span>
+<span class="text-on-surface-variant">(31.4 dB • BER &lt; 10⁻¹⁰)</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">

@@ -1,14 +1,31 @@
-"""Component-based modular Web UI builder for IR-OWC Lab Terminal."""
+"""Component-based modular Web UI builder with Pixel-Perfect Design Matching for IR-OWC Lab Terminal."""
 
 import os
 import re
 
 REPLACEMENTS = [
+    ("â€¢", "•"),
     ("â¢", "•"),
-    ("â»â¹", "⁻⁹"),
+    ("—€¢", "•"),
+    ("—¢", "•"),
+    ("â€—", "—"),
+    ("â€”", "—"),
+    ("—€—", "—"),
+    ("â—", "—"),
+    ("â€“", "–"),
+    ("â€¹", "‹"),
+    ("â€º", "›"),
+    ("â€¦", "…"),
     ("â»Â¹â°", "⁻¹⁰"),
+    ("10—»Â¹—°", "10⁻¹⁰"),
+    ("—»Â¹—°", "⁻¹⁰"),
     ("10â»â¹", "10⁻⁹"),
     ("10â»Â¹â°", "10⁻¹⁰"),
+    ("10â»â¶", "10⁻⁶"),
+    ("10â»", "10⁻"),
+    ("â»â¹", "⁻⁹"),
+    ("â»â¶", "⁻⁶"),
+    ("—»", "⁻"),
     ("Î»:", "λ:"),
     ("Î»", "λ"),
     ("Â°C", "°C"),
@@ -16,9 +33,8 @@ REPLACEMENTS = [
     ("Â±", "±"),
     (" Ã ", " × "),
     ("Ã—", "×"),
-    ("â—", "—"),
-    ("â", "—"),
     ("Ã", "×"),
+    ("â", "—"),
 ]
 
 
@@ -26,6 +42,8 @@ def sanitize(text: str) -> str:
     res = text
     for old, new in REPLACEMENTS:
         res = res.replace(old, new)
+    # Ensure all select dropdowns have appearance-none for clean custom caret
+    res = res.replace('<select class="', '<select class="appearance-none ')
     return res
 
 
@@ -179,7 +197,6 @@ def build_modular_components() -> None:
         f.write(sidebar_nav)
 
     # 4. JS Controllers
-    # app.js
     app_js = """// Main Application Router & Controller
 document.addEventListener('DOMContentLoaded', () => {
   const navItems = document.querySelectorAll('.nav-item');
@@ -227,7 +244,6 @@ document.addEventListener('DOMContentLoaded', () => {
     with open(f"{js_dir}/app.js", "w", encoding="utf-8") as f:
         f.write(app_js)
 
-    # bridge_client.js
     bridge_client_js = """// QWebChannel Client Wrapper
 let bridge = null;
 let selectedBaud = 115200;
@@ -380,6 +396,13 @@ document.addEventListener('click', (e) => {
             "on-background": "#0b1c30",
             "surface-variant": "#d3e4fe"
           }},
+          borderRadius: {{
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "2xl": "0.875rem",
+            "full": "9999px"
+          }},
           spacing: {{
             "space-xs": "0.25rem",
             "margin": "1.25rem",
@@ -400,12 +423,39 @@ document.addEventListener('click', (e) => {
             "label-sm": ["Inter", "sans-serif"],
             "label-md": ["Inter", "sans-serif"],
             "title-sm": ["Inter", "sans-serif"]
+          }},
+          fontSize: {{
+            "headline-md": ["18px", {{ lineHeight: "24px", letterSpacing: "-0.01em", fontWeight: "600" }}],
+            "display-lg": ["32px", {{ lineHeight: "40px", letterSpacing: "-0.02em", fontWeight: "600" }}],
+            "body-md": ["13px", {{ lineHeight: "18px", letterSpacing: "0em", fontWeight: "400" }}],
+            "body-lg": ["14px", {{ lineHeight: "20px", letterSpacing: "0em", fontWeight: "400" }}],
+            "mono-caption": ["10px", {{ lineHeight: "12px", letterSpacing: "0.04em", fontWeight: "600" }}],
+            "headline-lg": ["24px", {{ lineHeight: "32px", letterSpacing: "-0.015em", fontWeight: "600" }}],
+            "mono-data": ["12px", {{ lineHeight: "16px", letterSpacing: "-0.01em", fontWeight: "500" }}],
+            "label-sm": ["11px", {{ lineHeight: "14px", letterSpacing: "0.02em", fontWeight: "500" }}],
+            "label-md": ["12px", {{ lineHeight: "16px", letterSpacing: "0.01em", fontWeight: "500" }}],
+            "title-sm": ["14px", {{ lineHeight: "20px", letterSpacing: "-0.005em", fontWeight: "600" }}]
           }}
         }}
       }}
     }}
   </script>
   <style>
+    /* Sleek Native Scrollbar */
+    ::-webkit-scrollbar {{
+      width: 6px;
+      height: 6px;
+    }}
+    ::-webkit-scrollbar-track {{
+      background: transparent;
+    }}
+    ::-webkit-scrollbar-thumb {{
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 9999px;
+    }}
+    ::-webkit-scrollbar-thumb:hover {{
+      background: rgba(0, 0, 0, 0.25);
+    }}
     .traffic-dot:hover span {{
       opacity: 0.6;
     }}
