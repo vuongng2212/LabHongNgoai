@@ -1,4 +1,4 @@
-"""QWebChannel Bridge exposing Python Core Engine to Web UI JavaScript."""
+"""QWebChannel Bridge exposing Python Core Engine & Services to Web UI JavaScript."""
 
 from __future__ import annotations
 
@@ -8,10 +8,13 @@ import time
 from typing import ClassVar
 
 from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtWidgets import QFileDialog
 
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import Opcode
 from ir_terminal.protocol.packet import Packet
+from ir_terminal.services.chat_service import ChatService
+from ir_terminal.services.file_transfer_service import FileTransferService
 
 logger = logging.getLogger(__name__)
 
@@ -26,24 +29,50 @@ class BackendBridge(QObject):
     pingResult: ClassVar[Signal] = Signal(float, int)  # (rtt_ms, seq)
     rawRxData: ClassVar[Signal] = Signal(str)  # hex string
     rawTxData: ClassVar[Signal] = Signal(str)  # hex string
+
+    # Chat Signals
     chatMessageReceived: ClassVar[Signal] = Signal(str, str, bool)  # (text, time, is_outgoing)
-    transferProgress: ClassVar[Signal] = Signal(int, float, str)  # (pct, speed_kbps, eta)
+    chatFrameInspected: ClassVar[Signal] = Signal(str, int, int, int)  # (hex, seq, cmd, len)
+
+    # File Transfer Signals
+    transferProgress: ClassVar[Signal] = Signal(
+        int, float, float, int, int
+    )  # (pct, speed_kbps, eta_sec, cur_chunk, total_chunks)
+    transferCompleted: ClassVar[Signal] = Signal(
+        str, int, float, str
+    )  # (filename, bytes_sent, elapsed_sec, crc_hex)
+    transferFailed: ClassVar[Signal] = Signal(str)  # (reason)
+    transferStateChanged: ClassVar[Signal] = Signal(str)  # (state)
 
     def __init__(self, serial_manager: SerialManager) -> None:
         super().__init__()
         self._serial_manager = serial_manager
+        self._chat_service = ChatService(self._serial_manager)
+        self._file_service = FileTransferService(self._serial_manager)
+
         self._last_ping_time: float = 0.0
         self._ping_seq: int = 1
 
-        self._wire_serial_manager()
+        self._wire_signals()
 
-    def _wire_serial_manager(self) -> None:
+    def _wire_signals(self) -> None:
+        # Serial Manager
         self._serial_manager.connected.connect(self.portConnected)
         self._serial_manager.disconnected.connect(self.portDisconnected)
         self._serial_manager.error_occurred.connect(self.errorOccurred)
         self._serial_manager.raw_rx.connect(self._on_raw_rx)
         self._serial_manager.raw_tx.connect(self._on_raw_tx)
         self._serial_manager.packet_received.connect(self._on_packet_received)
+
+        # Chat Service
+        self._chat_service.message_received.connect(self.chatMessageReceived)
+        self._chat_service.frame_inspected.connect(self.chatFrameInspected)
+
+        # File Transfer Service
+        self._file_service.progress_updated.connect(self.transferProgress)
+        self._file_service.transfer_completed.connect(self.transferCompleted)
+        self._file_service.transfer_failed.connect(self.transferFailed)
+        self._file_service.state_changed.connect(self.transferStateChanged)
 
     def _on_raw_rx(self, data: bytes) -> None:
         self.rawRxData.emit(data.hex(" ").upper())
@@ -60,13 +89,6 @@ class BackendBridge(QObject):
                 (time.time() - self._last_ping_time) * 1000.0 if self._last_ping_time > 0 else 32.0
             )
             self.pingResult.emit(rtt_ms, pkt.seq)
-
-        elif pkt.opcode == Opcode.DATA_TEXT:
-            try:
-                msg_text = pkt.payload.decode("utf-8")
-            except Exception:
-                msg_text = pkt.payload.hex(" ")
-            self.chatMessageReceived.emit(msg_text, time.strftime("%H:%M:%S"), False)
 
     # Slots callable from JavaScript
     @Slot(result=str)
@@ -96,12 +118,26 @@ class BackendBridge(QObject):
 
     @Slot(str)
     def sendChat(self, text: str) -> None:
-        """Transmits chat text packet over infrared beam."""
-        if not text.strip():
-            return
-        payload = text.encode("utf-8")
-        self._ping_seq = (self._ping_seq + 1) % 256
-        self._serial_manager.send_packet(
-            seq=self._ping_seq, opcode=Opcode.DATA_TEXT, payload=payload
+        """Transmits chat message via ChatService."""
+        self._chat_service.send_message(text)
+
+    @Slot(str)
+    def startFileTransfer(self, file_path: str) -> None:
+        """Starts optical file transfer."""
+        self._file_service.start_transfer(file_path)
+
+    @Slot()
+    def abortFileTransfer(self) -> None:
+        """Aborts current optical file transfer."""
+        self._file_service.abort_transfer()
+
+    @Slot(result=str)
+    def openFileDialog(self) -> str:
+        """Opens native file chooser dialog and returns selected path."""
+        path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select File for Optical Transmission",
+            "",
+            "All Files (*.*);;Documents (*.pdf;*.docx;*.txt);;Images (*.png;*.jpg;*.bin)",
         )
-        self.chatMessageReceived.emit(text, time.strftime("%H:%M:%S"), True)
+        return path

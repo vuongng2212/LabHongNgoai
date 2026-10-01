@@ -91,12 +91,15 @@ class MockSerialPort(ITransport):
             # Packet dropped by simulated atmospheric noise
             return len(data)
 
-        # Parse outgoing frame to detect commands like PING and auto-respond
+        # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond
         packets, _ = parse_frames_from_buffer(data)
         for pkt in packets:
             if pkt.opcode == Opcode.PING:
-                # Schedule auto PONG response
                 self._handle_ping_packet(pkt.seq, pkt.payload)
+            elif pkt.opcode == Opcode.DATA_TEXT:
+                self._handle_chat_packet(pkt.seq, pkt.payload)
+            elif pkt.opcode in (Opcode.TRANSFER_START, Opcode.DATA_CHUNK, Opcode.TRANSFER_END):
+                self._handle_file_ack(pkt.seq)
 
         return len(data)
 
@@ -107,6 +110,22 @@ class MockSerialPort(ITransport):
 
         pong_frame = pack_frame(seq=seq, opcode=Opcode.PONG, payload=payload)
         self._rx_buffer.write(pong_frame)
+
+    def _handle_chat_packet(self, seq: int, payload: bytes) -> None:
+        """Echoes back chat response from Station Bravo node."""
+        if self._latency_s > 0:
+            time.sleep(self._latency_s)
+        # ACK the chat frame
+        ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=b"\x00\x00")
+        self._rx_buffer.write(ack_frame)
+
+    def _handle_file_ack(self, seq: int) -> None:
+        """Sends ACK for file transfer chunk."""
+        if self._latency_s > 0:
+            time.sleep(min(self._latency_s, 0.015))  # Fast ACK for file throughput
+        ack_payload = bytes([seq, 0])
+        ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
+        self._rx_buffer.write(ack_frame)
 
     def read(self, size: int | None = None) -> bytes:
         """Reads received bytes from mock RX buffer.

@@ -523,6 +523,8 @@ document.addEventListener('click', (e) => {
   <!-- Scripts -->
   <script src="js/app.js"></script>
   <script src="js/bridge_client.js"></script>
+  <script src="js/chat_controller.js"></script>
+  <script src="js/file_controller.js"></script>
 </body>
 </html>
 """
