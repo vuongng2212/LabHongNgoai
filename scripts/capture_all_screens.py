@@ -1,14 +1,13 @@
 """Captures high-resolution pixel-perfect screenshots of all 4 views."""
 
 import os
-import sys
 import time
 
 os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-from PySide6.QtWidgets import QApplication
 from ir_terminal.app import create_app
+
 
 def capture_all() -> None:
     app, window = create_app()
@@ -41,6 +40,7 @@ def capture_all() -> None:
         print(f"Captured {view_id} -> {output_path} ({os.path.getsize(output_path)} bytes)")
 
     window._serial_manager.shutdown()
+
 
 if __name__ == "__main__":
     capture_all()

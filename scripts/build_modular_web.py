@@ -45,10 +45,18 @@ def build_modular_components() -> None:
     os.makedirs(js_dir, exist_ok=True)
 
     # 1. Extract Views
-    v1 = extract_section("ui_templates/apple_style/1_1_hardware_setup.html", r"<main[^>]*>(.*?)</main>")
-    v2 = extract_section("ui_templates/apple_style/2_2_file_transfer.html", r"<main[^>]*>(.*?)</main>")
-    v3 = extract_section("ui_templates/apple_style/3_3_realtime_chat.html", r"<main[^>]*>(.*?)</main>")
-    v4 = extract_section("ui_templates/apple_style/4_4_lab_telemetry.html", r"<main[^>]*>(.*?)</main>")
+    v1 = extract_section(
+        "ui_templates/apple_style/1_1_hardware_setup.html", r"<main[^>]*>(.*?)</main>"
+    )
+    v2 = extract_section(
+        "ui_templates/apple_style/2_2_file_transfer.html", r"<main[^>]*>(.*?)</main>"
+    )
+    v3 = extract_section(
+        "ui_templates/apple_style/3_3_realtime_chat.html", r"<main[^>]*>(.*?)</main>"
+    )
+    v4 = extract_section(
+        "ui_templates/apple_style/4_4_lab_telemetry.html", r"<main[^>]*>(.*?)</main>"
+    )
 
     with open(f"{comp_dir}/view_hardware.html", "w", encoding="utf-8") as f:
         f.write(v1)
