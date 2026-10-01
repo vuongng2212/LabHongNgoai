@@ -1,0 +1,78 @@
+[project]
+name = "ir-terminal"
+version = "0.1.0"
+description = "Desktop Application for IR Optical Wireless Communication (IR-OWC) Lab Terminal"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Nguyen Kasim", email = "kasim@example.com" }
+]
+dependencies = [
+    "pyside6>=6.7.0",
+    "pyserial>=3.5",
+    "pyqtgraph>=0.13.7",
+    "pydantic>=2.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-qt>=4.4.0",
+    "pytest-mock>=3.14.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.0",
+    "types-pyserial>=3.5.0",
+    "pyinstaller>=6.9.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ir_terminal"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "Q",    # flake8-quotes
+]
+ignore = [
+    "E501", # Line too long handled by formatter
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = [
+    "serial.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-v --strict-markers"

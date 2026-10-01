@@ -1,0 +1,60 @@
+<!-- Left Navigation Sidebar -->
+<aside class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0">
+  <div class="space-y-space-md">
+    <!-- Brand Block -->
+    <div class="flex items-center gap-space-sm px-1 py-1">
+      <div class="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center shadow-sm">
+        <span class="material-symbols-outlined text-[20px] text-white">radar</span>
+      </div>
+      <div class="leading-tight">
+        <div class="font-title-sm text-title-sm font-bold text-on-surface">SpectraLink IR-OWC</div>
+        <div class="font-mono-caption text-mono-caption text-on-surface-variant">Workstation v2.4.1</div>
+      </div>
+    </div>
+
+    <!-- Section Navigation Group -->
+    <div class="space-y-1">
+      <div class="px-space-xs py-1 text-mono-caption font-mono-caption text-outline font-semibold tracking-wider">
+        OPTICAL SUBSYSTEMS
+      </div>
+      <nav class="space-y-1" id="nav-menu">
+        <a data-target="view-hardware" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-primary-container text-white font-medium shadow-sm transition-all cursor-pointer">
+          <span class="material-symbols-outlined text-[18px]">tune</span>
+          <span class="font-label-md text-label-md">Hardware & Link</span>
+        </a>
+        <a data-target="view-file" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[18px]">swap_horiz</span>
+          <span class="font-label-md text-label-md">File Transfer</span>
+        </a>
+        <a data-target="view-chat" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[18px]">forum</span>
+          <span class="font-label-md text-label-md">Realtime Chat</span>
+        </a>
+        <a data-target="view-telemetry" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[18px]">terminal</span>
+          <span class="font-label-md text-label-md">Lab Diagnostics</span>
+        </a>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Sidebar Footer / Hardware Status Widget -->
+  <div class="bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.06] shadow-sm space-y-2">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-1.5">
+        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-secondary"></span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">HEALTH 99.8% ONLINE</span>
+      </div>
+      <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">NIR</span>
+    </div>
+    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2">
+      <div><span class="text-outline">FW:</span> v2.4.1-ARM (F407)</div>
+      <div class="truncate"><span class="text-outline">SN:</span> SL-880-STM407-RX04</div>
+      <div><span class="text-outline">λ:</span> 880nm Infrared LOS</div>
+    </div>
+    <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors">
+      <span class="material-symbols-outlined text-[14px]">adjust</span>
+      Calibrate Optics
+    </button>
+  </div>
+</aside>

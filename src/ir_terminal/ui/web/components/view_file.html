@@ -1,0 +1,277 @@
+
+<!-- Header Strip: Title, Description, and Live Optical Badges -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md bg-surface-container-lowest p-space-lg rounded-xl border border-outline-variant/30 shadow-sm">
+<div class="flex flex-col gap-0.5">
+<div class="flex items-center gap-2">
+<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight">File &amp; Media Transfer Station</h1>
+<span class="text-mono-caption font-mono-caption bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold uppercase">Ready</span>
+</div>
+<p class="text-body-md font-body-md text-on-surface-variant">
+              Transmit binary payloads, media packets, and documents over 880nm modulated direct LOS beam.
+            </p>
+</div>
+<!-- Optical Beam Telemetry Badges -->
+<div class="flex items-center gap-2 shrink-0">
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container border border-outline-variant/30">
+<span class="material-symbols-outlined text-[16px] text-tertiary" data-icon="adjust">adjust</span>
+<span class="text-mono-data font-mono-data text-on-surface font-semibold">880nm NIR Direct LOS</span>
+</div>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/20">
+<span class="material-symbols-outlined text-[16px] text-secondary" data-icon="lock">lock</span>
+<span class="text-mono-data font-mono-data text-secondary font-semibold">Link State: Locked (BER &lt; 10—»—¹)</span>
+</div>
+</div>
+</div>
+<!-- Top Grid: Dropzone (Left) + Active Transmission Card (Right) -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-space-lg">
+<!-- Column 1: Clean Dashed Dropzone -->
+<div class="bg-surface-container-lowest rounded-xl border-2 border-dashed border-primary/30 p-space-xl flex flex-col items-center justify-center text-center hover:border-primary/60 transition-all duration-200 group cursor-pointer shadow-sm relative min-h-[300px]">
+<div class="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center text-primary group-hover:scale-105 group-hover:bg-primary-container group-hover:text-on-primary-container transition-all duration-200 mb-space-md shadow-sm">
+<span class="material-symbols-outlined text-[28px]" data-icon="upload_file">upload_file</span>
+</div>
+<h3 class="text-headline-md font-headline-md text-on-surface mb-1">
+              Drop file to transmit across infrared beam (Max 2MB)
+            </h3>
+<p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
+              Supports PDF, images, firmware binaries, and raw packet captures
+            </p>
+<div class="flex flex-col sm:flex-row items-center gap-space-sm">
+<button class="h-[30px] px-space-lg rounded-lg bg-primary-container text-on-primary-container text-label-md font-label-md hover:bg-primary transition-colors flex items-center gap-1.5 shadow-sm active:scale-[0.98]">
+<span class="material-symbols-outlined text-[16px]" data-icon="folder_open">folder_open</span>
+<span>Browse Files</span>
+</button>
+<span class="text-mono-caption font-mono-caption text-on-surface-variant">or drag &amp; drop payload</span>
+</div>
+<!-- Optical Transfer Guard Note -->
+<div class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline">
+<span class="material-symbols-outlined text-[13px]" data-icon="verified_user">verified_user</span>
+<span>Payload automatically framed into 512-byte optical frames with CRC32</span>
+</div>
+</div>
+<!-- Column 2: Active Transmission Card -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/30 p-space-lg flex flex-col justify-between shadow-sm">
+<div>
+<!-- Card Header -->
+<div class="flex items-center justify-between pb-space-sm border-b border-outline-variant/20 mb-space-md">
+<div class="flex items-center gap-2">
+<div class="w-2.5 h-2.5 rounded-full bg-primary animate-ping"></div>
+<span class="text-title-sm font-title-sm font-semibold text-on-surface">Active Infrared Transmission</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="px-2 py-0.5 rounded text-mono-caption font-mono-caption bg-surface-container text-primary font-bold">CH-A (880nm)</span>
+<span class="text-mono-caption font-mono-caption bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-bold">STREAMING</span>
+</div>
+</div>
+<!-- File Identification -->
+<div class="flex items-start gap-space-md mb-space-md">
+<div class="w-12 h-12 rounded-xl bg-error-container/40 text-error flex items-center justify-center shrink-0 border border-error-container">
+<span class="material-symbols-outlined text-[24px]" data-icon="picture_as_pdf">picture_as_pdf</span>
+</div>
+<div class="flex flex-col flex-1 overflow-hidden">
+<div class="flex items-center justify-between">
+<span class="text-title-sm font-title-sm font-bold text-on-surface truncate">presentation_slides.pdf</span>
+<span class="text-mono-data font-mono-data font-semibold text-on-surface-variant">512 KB</span>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<span class="text-mono-caption font-mono-caption text-outline">SHA-256:</span>
+<span class="text-mono-caption font-mono-caption text-on-surface-variant font-mono bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/20">e3b0c442...89a1f9</span>
+</div>
+</div>
+</div>
+<!-- Progress Display -->
+<div class="flex flex-col gap-1.5 mb-space-lg">
+<div class="flex items-center justify-between text-mono-caption font-mono-caption">
+<span class="text-on-surface font-semibold">Optical Beam Transfer Progress</span>
+<span class="text-primary font-bold text-mono-data font-mono-data">75%</span>
+</div>
+<div class="w-full h-2.5 rounded-full bg-surface-container overflow-hidden">
+<div class="h-full bg-gradient-to-r from-primary-container to-primary rounded-full transition-all duration-300 w-3/4"></div>
+</div>
+</div>
+<!-- Hardware Telemetry Matrix -->
+<div class="grid grid-cols-3 gap-2 p-space-sm rounded-lg bg-surface-container-low border border-outline-variant/20 mb-space-md">
+<div class="flex flex-col">
+<span class="text-mono-caption font-mono-caption uppercase text-outline">Throughput Rate</span>
+<span class="text-headline-md font-headline-md text-on-surface font-bold">9.9 <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span></span>
+</div>
+<div class="flex flex-col border-l border-outline-variant/30 pl-3">
+<span class="text-mono-caption font-mono-caption uppercase text-outline">ETA Remaining</span>
+<span class="text-headline-md font-headline-md text-primary font-bold">10s</span>
+</div>
+<div class="flex flex-col border-l border-outline-variant/30 pl-3">
+<span class="text-mono-caption font-mono-caption uppercase text-outline">Transmitted Packets</span>
+<span class="text-headline-md font-headline-md text-on-surface font-bold">240<span class="text-label-sm font-label-sm font-normal text-outline">/320</span></span>
+</div>
+</div>
+</div>
+<!-- Card Actions -->
+<div class="flex items-center justify-end gap-space-sm pt-space-xs">
+<button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-outline-variant/40 text-on-surface hover:bg-surface-container-high transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98]">
+<span class="material-symbols-outlined text-[15px]" data-icon="pause">pause</span>
+<span>Pause</span>
+</button>
+<button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-error/30 text-error hover:bg-error-container/30 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98]">
+<span class="material-symbols-outlined text-[15px]" data-icon="close">close</span>
+<span>Cancel</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bottom Section: Recent Optical Beam Transfers (Table Bento Card) -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant/30 shadow-sm p-space-lg flex flex-col gap-space-md">
+<!-- Table Header / Title Row -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]" data-icon="history">history</span>
+<h2 class="text-title-sm font-title-sm font-bold text-on-surface">Recent Optical Beam Transfers</h2>
+</div>
+<!-- Checksum Verification Indicator -->
+<div class="hidden sm:flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-secondary/10 border border-secondary/20 text-mono-caption font-mono-caption text-secondary">
+<span class="material-symbols-outlined text-[12px]" data-icon="check_circle">check_circle</span>
+<span class="font-semibold">Auto-Checksum Verification Active</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-2 top-1.5 text-[15px] text-outline" data-icon="search">search</span>
+<input class="h-[28px] pl-7 pr-2 text-label-sm font-label-sm rounded-lg bg-surface border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary outline-none w-44" placeholder="Filter transmissions..." type="text"/>
+</div>
+<button class="h-[28px] px-2.5 rounded-lg bg-surface border border-outline-variant/30 text-on-surface text-label-sm font-label-sm hover:bg-surface-container-high transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]" data-icon="tune">tune</span>
+<span>Filter</span>
+</button>
+</div>
+</div>
+<!-- Clean Mac-style Data Table -->
+<div class="overflow-x-auto border border-outline-variant/20 rounded-lg">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low/60 border-b border-outline-variant/20 text-mono-caption font-mono-caption text-outline uppercase tracking-wider h-8">
+<th class="px-space-md font-semibold">File Payload</th>
+<th class="px-space-md font-semibold">Size</th>
+<th class="px-space-md font-semibold">Channel</th>
+<th class="px-space-md font-semibold">Timestamp</th>
+<th class="px-space-md font-semibold">Integrity Checksum</th>
+<th class="px-space-md font-semibold">Transfer State</th>
+<th class="px-space-md text-right font-semibold">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10 text-body-md font-body-md">
+<!-- Row 1: firmware_patch_v2.bin -->
+<tr class="hover:bg-surface-container-high/40 transition-colors h-11">
+<td class="px-space-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-primary" data-icon="memory">memory</span>
+<span class="font-mono-data font-semibold text-on-surface">firmware_patch_v2.bin</span>
+</div>
+</td>
+<td class="px-space-md font-mono-data text-on-surface-variant">1.4 MB</td>
+<td class="px-space-md">
+<span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
+</td>
+<td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">Today, 14:22:08</td>
+<td class="px-space-md">
+<span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: 0x94B2C81F</span>
+</td>
+<td class="px-space-md">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>Verified (100%)</span>
+</div>
+</td>
+<td class="px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Download payload">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View telemetry log">
+<span class="material-symbols-outlined text-[16px]" data-icon="info">info</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2: telemetry_log_0409.csv -->
+<tr class="hover:bg-surface-container-high/40 transition-colors h-11">
+<td class="px-space-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-tertiary" data-icon="table_chart">table_chart</span>
+<span class="font-mono-data font-semibold text-on-surface">telemetry_log_0409.csv</span>
+</div>
+</td>
+<td class="px-space-md font-mono-data text-on-surface-variant">128 KB</td>
+<td class="px-space-md">
+<span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
+</td>
+<td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">Today, 13:45:19</td>
+<td class="px-space-md">
+<span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: 0x48A0E722</span>
+</td>
+<td class="px-space-md">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>Verified (100%)</span>
+</div>
+</td>
+<td class="px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Download payload">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View telemetry log">
+<span class="material-symbols-outlined text-[16px]" data-icon="info">info</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3: spectrogram_capture.png -->
+<tr class="hover:bg-surface-container-high/40 transition-colors h-11">
+<td class="px-space-md">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-secondary" data-icon="image">image</span>
+<span class="font-mono-data font-semibold text-on-surface">spectrogram_capture.png</span>
+</div>
+</td>
+<td class="px-space-md font-mono-data text-on-surface-variant">890 KB</td>
+<td class="px-space-md">
+<span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
+</td>
+<td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">Today, 11:15:40</td>
+<td class="px-space-md">
+<span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: 0xEE73021B</span>
+</td>
+<td class="px-space-md">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+<span>Verified (100%)</span>
+</div>
+</td>
+<td class="px-space-md text-right">
+<div class="flex items-center justify-end gap-1">
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Download payload">
+<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View telemetry log">
+<span class="material-symbols-outlined text-[16px]" data-icon="info">info</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Bottom Micro Status Bar -->
+<div class="flex items-center justify-between text-mono-caption font-mono-caption text-outline px-1">
+<div class="flex items-center gap-space-md">
+<span>Total Session Optical Payloads: <strong class="text-on-surface">3.83 MB</strong></span>
+<span>—¢</span>
+<span>Average BER: <strong class="text-secondary">&lt; 1.4 × 10—»Â¹—°</strong></span>
+<span>—¢</span>
+<span>Modulation: <strong class="text-on-surface">OOK-Manchester 1.25 Mbps</strong></span>
+</div>
+<div class="flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined text-[14px]" data-icon="optical_audio">drive_file_rename_outline</span>
+<span class="font-semibold">Optical Carrier 880nm Active</span>
+</div>
+</div>
+</div>
