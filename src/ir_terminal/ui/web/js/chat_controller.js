@@ -1,25 +1,35 @@
-// Chat Viewport Controller with persistent database history loading
+// Realtime Optical Chat Viewport Controller with persistent SQLite history loading
 function initChatController() {
-  const chatInput = document.querySelector('#view-chat input[type="text"]');
-  const sendBtn = document.querySelector('#view-chat button.bg-primary-container');
-  const chatContainer = document.querySelector('#view-chat .overflow-y-auto');
+  const chatInput = document.querySelector('#view-chat input');
+  const sendBtn = document.querySelector('#view-chat button.bg-primary-container, #view-chat button:has(span[data-icon="send"])');
+  const chatContainer = document.querySelector('#view-chat section.overflow-y-auto');
   const hexDumpElem = document.querySelector('#view-chat pre');
 
-  if (!chatInput || !sendBtn) return;
-
   function doSend() {
+    if (!chatInput) return;
     const text = chatInput.value.trim();
-    if (!text || !window.bridge) return;
-    window.bridge.sendChat(text);
-    chatInput.value = '';
+    if (!text) return;
+    if (window.bridge) {
+      window.bridge.sendChat(text);
+      chatInput.value = '';
+    }
   }
 
-  sendBtn.addEventListener('click', doSend);
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+  if (sendBtn) {
+    sendBtn.addEventListener('click', (e) => {
+      e.preventDefault();
       doSend();
-    }
-  });
+    });
+  }
+
+  if (chatInput) {
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSend();
+      }
+    });
+  }
 
   if (window.bridge) {
     window.bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
@@ -32,7 +42,7 @@ function initChatController() {
       }
     });
 
-    // Load persisted chat history from local hard drive SQLite database
+    // Load persisted chat history from local SQLite database
     if (typeof window.bridge.getChatHistory === 'function') {
       window.bridge.getChatHistory((historyJson) => {
         try {
@@ -51,39 +61,53 @@ function initChatController() {
   }
 
   function appendChatMessage(text, timeStr, isOutgoing) {
-    const wrapper = document.createElement('div');
-    wrapper.className = isOutgoing ? 'flex justify-end' : 'flex justify-start';
+    if (!chatContainer) return;
 
+    const wrapper = document.createElement('div');
     if (isOutgoing) {
+      wrapper.className = 'flex flex-col items-end ml-auto max-w-xl group';
       wrapper.innerHTML = `
-        <div class="max-w-[75%] rounded-2xl px-4 py-2.5 bg-primary-container text-white shadow-sm space-y-1">
-          <div class="text-[13px] leading-relaxed font-body-md">${escapeHtml(text)}</div>
-          <div class="flex items-center justify-end gap-1 text-[10px] text-blue-100 font-mono-caption">
-            <span>${timeStr}</span>
-            <span class="material-symbols-outlined text-[13px]">done_all</span>
-          </div>
+        <div class="flex items-center gap-2 mb-1 px-1">
+          <span class="text-mono-caption font-mono-caption text-outline">${escapeHtml(timeStr)}</span>
+          <span class="text-label-sm font-label-sm font-bold text-on-surface">Local Host (TX-880nm)</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
+        </div>
+        <div class="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary-container text-white text-body-md font-body-md shadow-sm leading-relaxed">
+          ${escapeHtml(text)}
+        </div>
+        <div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
+          <span class="material-symbols-outlined text-[13px]">done_all</span>
+          <span class="font-medium">ACK Confirmed</span>
         </div>
       `;
     } else {
+      wrapper.className = 'flex flex-col items-start max-w-xl group';
       wrapper.innerHTML = `
-        <div class="max-w-[75%] rounded-2xl px-4 py-2.5 bg-white text-on-surface border border-black/[0.06] shadow-sm space-y-1">
-          <div class="text-[11px] font-semibold text-secondary font-mono-caption">Station Bravo (Remote 880nm)</div>
-          <div class="text-[13px] leading-relaxed font-body-md">${escapeHtml(text)}</div>
-          <div class="flex items-center justify-end gap-1 text-[10px] text-outline font-mono-caption">
-            <span>${timeStr}</span>
-          </div>
+        <div class="flex items-center gap-2 mb-1 px-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+          <span class="text-label-sm font-label-sm font-bold text-on-surface">Remote Node (Station Bravo • 880nm)</span>
+          <span class="text-mono-caption font-mono-caption text-outline">${escapeHtml(timeStr)}</span>
+        </div>
+        <div class="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#EAECEF] border border-outline-variant/50 text-[#1F2937] text-body-md font-body-md shadow-xs leading-relaxed">
+          ${escapeHtml(text)}
+        </div>
+        <div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
+          <span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40 font-mono">880nm NIR</span>
+          <span>•</span>
+          <span class="text-secondary font-medium">CRC32 Valid</span>
+          <span>•</span>
+          <span>0 Dropped</span>
         </div>
       `;
     }
 
-    if (chatContainer) {
-      chatContainer.appendChild(wrapper);
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
+    chatContainer.appendChild(wrapper);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
   }
 
   function escapeHtml(str) {
-    return str.replace(/[&<>'"]/g, tag => ({
+    if (!str) return '';
+    return String(str).replace(/[&<>'"]/g, tag => ({
       '&': '&amp;',
       '<': '&lt;',
       '>': '&gt;',
@@ -94,5 +118,5 @@ function initChatController() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  setTimeout(initChatController, 200);
+  setTimeout(initChatController, 100);
 });

@@ -1,6 +1,7 @@
-"""Captures high-resolution pixel-perfect screenshots of all 4 views."""
+"""Captures high-resolution pixel-perfect screenshots of all 4 views with live active states."""
 
 import os
+import tempfile
 import time
 
 os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
@@ -14,32 +15,84 @@ def capture_all() -> None:
     window.resize(1380, 880)
     window.show()
 
-    # Allow WebEngine to initialize and render fonts/scripts
-    for _ in range(35):
+    # Allow WebEngine to initialize and render local fonts/Tailwind CSS
+    for _ in range(40):
         app.processEvents()
-        time.sleep(0.1)
+        time.sleep(0.05)
 
     os.makedirs("docs/screenshots", exist_ok=True)
 
-    views = [
-        ("view-hardware", "docs/screenshots/1_hardware_setup.png"),
-        ("view-file", "docs/screenshots/2_file_transfer.png"),
-        ("view-chat", "docs/screenshots/3_realtime_chat.png"),
-        ("view-telemetry", "docs/screenshots/4_lab_telemetry.png"),
-    ]
+    # 1. Connect Serial Port & Ping
+    window.bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+    for _ in range(15):
+        app.processEvents()
+        time.sleep(0.05)
 
-    for view_id, output_path in views:
-        # Switch tab via JavaScript
-        window.web_view.page().runJavaScript(f"window.switchView('{view_id}');")
-        for _ in range(15):
+    window.bridge.sendPing()
+    for _ in range(15):
+        app.processEvents()
+        time.sleep(0.05)
+
+    # View 1: Hardware Setup
+    window.web_view.page().runJavaScript("window.switchView('view-hardware');")
+    for _ in range(15):
+        app.processEvents()
+        time.sleep(0.05)
+    pixmap1 = window.grab()
+    pixmap1.save("docs/screenshots/1_hardware_setup.png", "PNG")
+    print("Captured 1_hardware_setup.png")
+
+    # View 2: File Transfer
+    window.web_view.page().runJavaScript("window.switchView('view-file');")
+    for _ in range(10):
+        app.processEvents()
+        time.sleep(0.05)
+
+    # Create temporary payload file and perform transfer
+    with tempfile.NamedTemporaryFile(suffix=".pdf", prefix="telemetry_report_", delete=False) as tmp:
+        tmp.write(b"INFRARED_OPTICAL_WIRELESS_COMMUNICATION_FRAME_DATA_" * 160)  # ~8 KB
+        tmp_path = tmp.name
+
+    try:
+        window.bridge.startFileTransfer(tmp_path)
+        for _ in range(35):
             app.processEvents()
             time.sleep(0.05)
 
-        pixmap = window.grab()
-        pixmap.save(output_path, "PNG")
-        print(f"Captured {view_id} -> {output_path} ({os.path.getsize(output_path)} bytes)")
+        pixmap2 = window.grab()
+        pixmap2.save("docs/screenshots/2_file_transfer.png", "PNG")
+        print("Captured 2_file_transfer.png")
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    # View 3: Realtime Chat
+    window.web_view.page().runJavaScript("window.switchView('view-chat');")
+    for _ in range(10):
+        app.processEvents()
+        time.sleep(0.05)
+
+    window.bridge.sendChat("SpectraLink Optical Link 880nm NIR Verified (BER < 10^-9)!")
+    for _ in range(25):
+        app.processEvents()
+        time.sleep(0.05)
+
+    pixmap3 = window.grab()
+    pixmap3.save("docs/screenshots/3_realtime_chat.png", "PNG")
+    print("Captured 3_realtime_chat.png")
+
+    # View 4: Lab Diagnostics & Telemetry
+    window.web_view.page().runJavaScript("window.switchView('view-telemetry');")
+    for _ in range(15):
+        app.processEvents()
+        time.sleep(0.05)
+
+    pixmap4 = window.grab()
+    pixmap4.save("docs/screenshots/4_lab_telemetry.png", "PNG")
+    print("Captured 4_lab_telemetry.png")
 
     window._serial_manager.shutdown()
+    print("All 4 screens successfully captured and saved to docs/screenshots/")
 
 
 if __name__ == "__main__":
