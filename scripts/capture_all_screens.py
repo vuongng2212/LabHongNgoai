@@ -49,7 +49,9 @@ def capture_all() -> None:
         time.sleep(0.05)
 
     # Create temporary payload file and perform transfer
-    with tempfile.NamedTemporaryFile(suffix=".pdf", prefix="telemetry_report_", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(
+        suffix=".pdf", prefix="telemetry_report_", delete=False
+    ) as tmp:
         tmp.write(b"INFRARED_OPTICAL_WIRELESS_COMMUNICATION_FRAME_DATA_" * 160)  # ~8 KB
         tmp_path = tmp.name
 
