@@ -1,0 +1,122 @@
+// Realtime Optical Chat Viewport Controller with persistent SQLite history loading
+function initChatController() {
+  const chatInput = document.querySelector('#view-chat input');
+  const sendBtn = document.querySelector('#view-chat button.bg-primary-container, #view-chat button:has(span[data-icon="send"])');
+  const chatContainer = document.querySelector('#view-chat section.overflow-y-auto');
+  const hexDumpElem = document.querySelector('#view-chat pre');
+
+  function doSend() {
+    if (!chatInput) return;
+    const text = chatInput.value.trim();
+    if (!text) return;
+    if (window.bridge) {
+      window.bridge.sendChat(text);
+      chatInput.value = '';
+    }
+  }
+
+  if (sendBtn) {
+    sendBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      doSend();
+    });
+  }
+
+  if (chatInput) {
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSend();
+      }
+    });
+  }
+
+  if (window.bridge) {
+    window.bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
+      appendChatMessage(text, timeStr, isOutgoing);
+    });
+
+    window.bridge.chatFrameInspected.connect((hexDump, seq, opcode, len) => {
+      if (hexDumpElem) {
+        hexDumpElem.innerText = `[FRAME SEQ #${seq} | CMD 0x${opcode.toString(16).padStart(2, '0').toUpperCase()} | LEN ${len}B]\n` + hexDump;
+      }
+    });
+
+    // Load persisted chat history from local SQLite database
+    if (typeof window.bridge.getChatHistory === 'function') {
+      window.bridge.getChatHistory((historyJson) => {
+        try {
+          const messages = JSON.parse(historyJson);
+          if (Array.isArray(messages) && messages.length > 0 && chatContainer) {
+            chatContainer.innerHTML = '';
+            messages.forEach(msg => {
+              appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing);
+            });
+          }
+        } catch (err) {
+          console.error('Failed to parse chat history JSON:', err);
+        }
+      });
+    }
+  }
+
+  function appendChatMessage(text, timeStr, isOutgoing) {
+    if (!chatContainer) return;
+
+    const wrapper = document.createElement('div');
+    if (isOutgoing) {
+      wrapper.className = 'flex flex-col items-end ml-auto max-w-xl group';
+      wrapper.innerHTML = `
+        <div class="flex items-center gap-2 mb-1 px-1">
+          <span class="text-mono-caption font-mono-caption text-outline">${escapeHtml(timeStr)}</span>
+          <span class="text-label-sm font-label-sm font-bold text-on-surface">Local Host (TX-880nm)</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
+        </div>
+        <div class="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary-container text-white text-body-md font-body-md shadow-sm leading-relaxed">
+          ${escapeHtml(text)}
+        </div>
+        <div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
+          <span class="material-symbols-outlined text-[13px]">done_all</span>
+          <span class="font-medium">ACK Confirmed</span>
+        </div>
+      `;
+    } else {
+      wrapper.className = 'flex flex-col items-start max-w-xl group';
+      wrapper.innerHTML = `
+        <div class="flex items-center gap-2 mb-1 px-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+          <span class="text-label-sm font-label-sm font-bold text-on-surface">Remote Node (Station Bravo • 880nm)</span>
+          <span class="text-mono-caption font-mono-caption text-outline">${escapeHtml(timeStr)}</span>
+        </div>
+        <div class="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#EAECEF] border border-outline-variant/50 text-[#1F2937] text-body-md font-body-md shadow-xs leading-relaxed">
+          ${escapeHtml(text)}
+        </div>
+        <div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
+          <span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40 font-mono">880nm NIR</span>
+          <span>•</span>
+          <span class="text-secondary font-medium">CRC32 Valid</span>
+          <span>•</span>
+          <span>0 Dropped</span>
+        </div>
+      `;
+    }
+
+    chatContainer.appendChild(wrapper);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>'"]/g, tag => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[tag] || tag));
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(initChatController, 100);
+});

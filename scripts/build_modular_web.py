@@ -73,31 +73,28 @@ def build_modular_components() -> None:
     os.makedirs(comp_dir, exist_ok=True)
     os.makedirs(js_dir, exist_ok=True)
 
-    # 1. Extract Views
-    v1 = extract_section(
-        "ui_templates/apple_style/1_1_hardware_setup.html", r"<main[^>]*>(.*?)</main>"
-    )
-    v2 = extract_section(
-        "ui_templates/apple_style/2_2_file_transfer.html", r"<main[^>]*>(.*?)</main>"
-    )
-    v3 = extract_section(
-        "ui_templates/apple_style/3_3_realtime_chat.html", r"<main[^>]*>(.*?)</main>"
-    )
-    v4 = extract_section(
-        "ui_templates/apple_style/4_4_lab_telemetry.html", r"<main[^>]*>(.*?)</main>"
-    )
+    # Helper to load existing component or extract from template
+    def load_component(filename: str, template_path: str) -> str:
+        dest_path = f"{comp_dir}/{filename}"
+        if os.path.exists(dest_path):
+            with open(dest_path, encoding="utf-8") as f:
+                return sanitize(f.read())
+        extracted = extract_section(template_path, r"<main[^>]*>(.*?)</main>")
+        with open(dest_path, "w", encoding="utf-8") as f:
+            f.write(extracted)
+        return extracted
 
-    with open(f"{comp_dir}/view_hardware.html", "w", encoding="utf-8") as f:
-        f.write(v1)
-    with open(f"{comp_dir}/view_file.html", "w", encoding="utf-8") as f:
-        f.write(v2)
-    with open(f"{comp_dir}/view_chat.html", "w", encoding="utf-8") as f:
-        f.write(v3)
-    with open(f"{comp_dir}/view_telemetry.html", "w", encoding="utf-8") as f:
-        f.write(v4)
+    v1 = load_component("view_hardware.html", "ui_templates/apple_style/1_1_hardware_setup.html")
+    v2 = load_component("view_file.html", "ui_templates/apple_style/2_2_file_transfer.html")
+    v3 = load_component("view_chat.html", "ui_templates/apple_style/3_3_realtime_chat.html")
+    v4 = load_component("view_telemetry.html", "ui_templates/apple_style/4_4_lab_telemetry.html")
 
-    # 2. Chrome Header Component
-    chrome_header = """<!-- macOS Window Chrome Header -->
+    header_path = f"{comp_dir}/chrome_header.html"
+    if os.path.exists(header_path):
+        with open(header_path, encoding="utf-8") as f:
+            chrome_header = f.read()
+    else:
+        chrome_header = """<!-- macOS Window Chrome Header -->
 <header class="h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none">
   <!-- Traffic Lights & Ribbon Badge -->
   <div class="flex items-center gap-space-md">
@@ -139,11 +136,15 @@ def build_modular_components() -> None:
   </div>
 </header>
 """
-    with open(f"{comp_dir}/chrome_header.html", "w", encoding="utf-8") as f:
-        f.write(chrome_header)
+        with open(header_path, "w", encoding="utf-8") as f:
+            f.write(chrome_header)
 
-    # 3. Sidebar Navigation Component
-    sidebar_nav = """<!-- Left Navigation Sidebar -->
+    sidebar_path = f"{comp_dir}/sidebar_nav.html"
+    if os.path.exists(sidebar_path):
+        with open(sidebar_path, encoding="utf-8") as f:
+            sidebar_nav = f.read()
+    else:
+        sidebar_nav = """<!-- Left Navigation Sidebar -->
 <aside class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0">
   <div class="space-y-space-md">
     <!-- Brand Block -->
@@ -204,148 +205,8 @@ def build_modular_components() -> None:
   </div>
 </aside>
 """
-    with open(f"{comp_dir}/sidebar_nav.html", "w", encoding="utf-8") as f:
-        f.write(sidebar_nav)
-
-    # 4. JS Controllers
-    app_js = """// Main Application Router & Controller
-document.addEventListener('DOMContentLoaded', () => {
-  const navItems = document.querySelectorAll('.nav-item');
-  const viewPanels = document.querySelectorAll('.view-panel');
-  const centerTitle = document.getElementById('window-center-title');
-
-  const titleMap = {
-    'view-hardware': 'SpectraLink IR-OWC — Hardware & Optical Link Setup',
-    'view-file': 'SpectraLink IR-OWC — File & Media Transfer Station',
-    'view-chat': 'SpectraLink IR-OWC — Realtime Optical Chat Stream',
-    'view-telemetry': 'SpectraLink IR-OWC — Lab Diagnostics & Telemetry'
-  };
-
-  window.switchView = function(viewId) {
-    navItems.forEach(item => {
-      const target = item.getAttribute('data-target');
-      if (target === viewId) {
-        item.className = 'nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-primary-container text-white font-medium shadow-sm transition-all cursor-pointer';
-      } else {
-        item.className = 'nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer';
-      }
-    });
-
-    viewPanels.forEach(panel => {
-      if (panel.id === viewId) {
-        panel.classList.add('active');
-      } else {
-        panel.classList.remove('active');
-      }
-    });
-
-    if (centerTitle) {
-      centerTitle.innerText = titleMap[viewId] || 'SpectraLink IR-OWC';
-    }
-  };
-
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const target = item.getAttribute('data-target');
-      window.switchView(target);
-    });
-  });
-});
-"""
-    with open(f"{js_dir}/app.js", "w", encoding="utf-8") as f:
-        f.write(app_js)
-
-    bridge_client_js = """// QWebChannel Client Wrapper
-let bridge = null;
-let selectedBaud = 115200;
-
-if (typeof QWebChannel !== 'undefined') {
-  new QWebChannel(qt.webChannelTransport, (channel) => {
-    bridge = channel.objects.bridge;
-    console.log('QWebChannel Bridge Connected Successfully!');
-    initBridgeListeners();
-    refreshPortList();
-  });
-}
-
-function initBridgeListeners() {
-  if (!bridge) return;
-
-  bridge.portConnected.connect((port, baud) => {
-    const ribbonText = document.getElementById('ribbon-text');
-    if (ribbonText) ribbonText.innerText = 'STM32 Optical Bridge • ' + port + ' (' + baud + ' bps)';
-    const ribbonDot = document.getElementById('ribbon-dot');
-    if (ribbonDot) ribbonDot.className = 'w-2 h-2 rounded-full bg-secondary status-pulse';
-
-    const footerHealth = document.getElementById('footer-health-text');
-    if (footerHealth) footerHealth.innerText = 'HEALTH 100% ONLINE';
-
-    const connBtn = document.querySelector('#view-hardware button.bg-primary-container');
-    if (connBtn) {
-      connBtn.innerText = 'Disconnect';
-      connBtn.className = 'flex-1 h-[32px] bg-error hover:bg-on-error-container text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5';
-    }
-  });
-
-  bridge.portDisconnected.connect(() => {
-    const ribbonText = document.getElementById('ribbon-text');
-    if (ribbonText) ribbonText.innerText = 'STM32 Optical Bridge • Disconnected';
-    const ribbonDot = document.getElementById('ribbon-dot');
-    if (ribbonDot) ribbonDot.className = 'w-2 h-2 rounded-full bg-outline';
-
-    const footerHealth = document.getElementById('footer-health-text');
-    if (footerHealth) footerHealth.innerText = 'OFFLINE';
-
-    const connBtn = document.querySelector('#view-hardware button.bg-error');
-    if (connBtn) {
-      connBtn.innerText = 'Connect';
-      connBtn.className = 'flex-1 h-[32px] bg-primary-container hover:bg-primary text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5';
-    }
-  });
-
-  bridge.pingResult.connect((rtt, seq) => {
-    const rttElement = document.querySelector('#view-hardware .font-headline-md');
-    if (rttElement) rttElement.innerText = rtt.toFixed(1) + ' ms';
-    console.log('Ping Echo Received: seq #' + seq + ' | RTT: ' + rtt.toFixed(1) + ' ms');
-  });
-}
-
-function refreshPortList() {
-  if (!bridge) return;
-  bridge.scanPorts((portsJson) => {
-    const ports = JSON.parse(portsJson);
-    const select = document.querySelector('#view-hardware select');
-    if (select) {
-      select.innerHTML = '';
-      ports.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p;
-        opt.innerText = p.includes('MOCK') ? p + ' (Virtual Loopback)' : p + ' - STM32F407 CDC';
-        select.appendChild(opt);
-      });
-    }
-  });
-}
-
-// Global button actions delegate
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('button');
-  if (!btn) return;
-  if (btn.innerText.includes('Connect') && bridge) {
-    const select = document.querySelector('#view-hardware select');
-    const port = select ? select.value : 'MOCK_COM_LOOPBACK';
-    bridge.connectPort(port, selectedBaud);
-  } else if (btn.innerText.includes('Disconnect') && bridge) {
-    bridge.disconnectPort();
-  } else if (btn.innerText.includes('Ping Test') && bridge) {
-    bridge.sendPing();
-  } else if (btn.innerText.includes('Rescan') && bridge) {
-    refreshPortList();
-  }
-});
-"""
-    with open(f"{js_dir}/bridge_client.js", "w", encoding="utf-8") as f:
-        f.write(bridge_client_js)
+        with open(sidebar_path, "w", encoding="utf-8") as f:
+            f.write(sidebar_nav)
 
     # 5. Assemble index.html
     full_index = f"""<!DOCTYPE html>
@@ -523,6 +384,9 @@ document.addEventListener('click', (e) => {
   <!-- Scripts -->
   <script src="js/app.js"></script>
   <script src="js/bridge_client.js"></script>
+  <script src="js/chat_controller.js"></script>
+  <script src="js/file_controller.js"></script>
+  <script src="js/telemetry_controller.js"></script>
 </body>
 </html>
 """

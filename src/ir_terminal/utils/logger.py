@@ -1,4 +1,4 @@
-"""Structured logging system with rotating file support and Qt Signal sink.
+"""Structured logging system with subsystem IoT tags, rotating files, and Qt Signal sink.
 
 Follows Google Python Style Guide docstring conventions.
 """
@@ -6,11 +6,25 @@ Follows Google Python Style Guide docstring conventions.
 from __future__ import annotations
 
 import logging
+from enum import StrEnum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import ClassVar
 
 from PySide6.QtCore import QObject, Signal
+
+
+class LogTag(StrEnum):
+    """Subsystem categorization tags for IoT hardware troubleshooting."""
+
+    HW_SERIAL = "[HW_SERIAL]"  # Physical UART, COM discovery, port open/close, baudrates
+    OPTICAL_PHY = "[OPTICAL_PHY]"  # Optical transceiver, alignment, LOS beam blockage, RSSI
+    PROTO_FRAME = "[PROTO_FRAME]"  # Binary framing, SOF/EOF magic, length check, CRC-32 validation
+    ARQ_ENGINE = "[ARQ_ENGINE]"  # Stop-and-Wait ARQ state machine, ACK/NACK, retry, timeout
+    CHAT_SVC = "[CHAT_SVC]"  # Optical text messaging, encoding, chat inspector
+    FILE_SVC = "[FILE_SVC]"  # Binary file chunking, disk I/O, hash verification
+    STORAGE = "[STORAGE]"  # SQLite persistence, database CRUD, history load
+    IPC_BRIDGE = "[IPC_BRIDGE]"  # QWebChannel Chromium-Python IPC dispatch
 
 
 class QtLogEmitter(QObject):
@@ -26,20 +40,10 @@ class QtSignalLogHandler(logging.Handler):
     """Custom logging handler routing log messages directly to Qt Signal sink."""
 
     def __init__(self, emitter: QtLogEmitter) -> None:
-        """Initializes the Qt signal log handler.
-
-        Args:
-            emitter: QtLogEmitter instance to emit log signals.
-        """
         super().__init__()
         self._emitter = emitter
 
     def emit(self, record: logging.LogRecord) -> None:
-        """Emits formatted log record through Qt Signal.
-
-        Args:
-            record: Standard Python LogRecord instance.
-        """
         try:
             msg = self.format(record)
             self._emitter.record_logged.emit(record.asctime, record.levelname, msg)
@@ -51,7 +55,7 @@ def setup_logger(
     log_dir: Path | None = None,
     log_level: int = logging.INFO,
 ) -> tuple[logging.Logger, QtLogEmitter]:
-    """Configures root application logger with console, file, and Qt handlers.
+    """Configures root application logger with console, rotating file, and Qt handlers.
 
     Args:
         log_dir: Directory where log files are stored. Defaults to ~/.ir_terminal/logs.
@@ -70,7 +74,7 @@ def setup_logger(
         return logger, _qt_log_emitter
 
     formatter = logging.Formatter(
-        fmt="[%(asctime)s] [%(levelname)-7s] [%(name)s:%(lineno)d] %(message)s",
+        fmt="[%(asctime)s] [%(levelname)-7s] [%(name)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -87,14 +91,14 @@ def setup_logger(
 
     file_handler = RotatingFileHandler(
         log_file,
-        maxBytes=5 * 1024 * 1024,  # 5 MB per log file
+        maxBytes=10 * 1024 * 1024,  # 10 MB per log file
         backupCount=5,
         encoding="utf-8",
     )
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
-    # 3. Qt Signal Handler for UI Console Drawer
+    # 3. Qt Signal Handler for UI Console
     qt_handler = QtSignalLogHandler(_qt_log_emitter)
     qt_handler.setFormatter(formatter)
     logger.addHandler(qt_handler)
