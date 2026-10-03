@@ -1,59 +1,50 @@
-# CHECKLIST CHUẨN BỊ BUỔI RETRO UI/UX VÀ LẤY REQUIREMENT SÂU VỚI KHÁCH HÀNG
-**Mục đích:** Bộ câu hỏi và khung làm việc giúp PM & Software Engineer chốt chính xác các yêu cầu chi tiết của khách hàng trong buổi retro sắp tới, tránh phát sinh trễ hạn trong 3 tuần MVP.
+# TÀI LIỆU HƯỚNG DẪN BUỔI BÁO CÁO NGHIỆM THU & DEMO VỚI KHÁCH HÀNG (CLIENT RETRO RUNBOOK)
+**Dự án:** IR-OWC Lab Terminal v1.0 (Desktop Terminal Quang Không Dây Hồng Ngoại)  
+**Khách hàng:** Phòng Lab Quang / Giảng viên hướng dẫn  
 
 ---
 
-## 1. KHUNG GIAO DIỆN DESKTOP APP DỰ KIẾN (WIREFRAME CONCEPTS)
+## 1. TỔNG QUAN HỆ THỐNG ĐÃ HOÀN THIỆN (FINAL DELIVERABLES)
 
-Desktop App được thiết kế theo phong cách Dark Mode chuyên nghiệp, chia thành 3 khu vực chính:
+Ứng dụng đã hoàn thành 100% phạm vi MVP theo thiết kế **Apple Modern Precision Light Theme**, hoạt động độc lập và ổn định trên nền tảng **PySide6 (Qt6) + QWebEngine + SQLite**:
 
-```text
-+-------------------------------------------------------------------------------+
-|  [IR-OWC Lab Terminal v1.0]                          [Port: COM3] [● CONNECTED]|
-+-------------------------------------------------------------------------------+
-| [💬 CHAT / TIN NHẮN]  |  [📁 TRUYỀN FILE / ẢNH]  |  [📊 THÔNG SỐ PHÒNG LAB]  |
-+-------------------------------------------------------------------------------+
-|                                                                               |
-|  [Khu vực Chat / File]:                                                       |
-|  - Danh sách tin nhắn / Logs                                                  |
-|  - Khung Preview file/ảnh (Thumbnail, File size, SHA-256 Hash)                |
-|  - Thanh Progress Bar (% hoàn thành, Tốc độ hiện tại: 9.8 KB/s, ETA: 12s)     |
-|  - Nút điều khiển: [Gửi]  [Tạm dừng]  [Hủy phiên]                             |
-|                                                                               |
-|  [Trạng thái kênh truyền]:                                                    |
-|  - Trạng thái quang: ● THÔNG TIA (LOS OK) / ⚠ BỊ CHẮN TIA (BLOCKED - PAUSED)   |
-|  - Metrics nhanh: RTT = 42ms | Packet Loss = 1.2% | Retry Count = 3           |
-+-------------------------------------------------------------------------------+
-| Logs: [14:20:05] [TX] Sent Chunk 45/100 (128B) -> ACK received (40ms)        |
-+-------------------------------------------------------------------------------+
-```
+1. **Screen 1 — Hardware Setup & Optical Alignment:**
+   - Tự động nhận diện cổng UART 115,200 bps.
+   - Vòng tròn căn chỉnh quang học (Optical Alignment Gauge 94%), đo độ trễ RTT Ping/Pong ($<35\text{ms}$).
+   - Đèn chỉ báo trạng thái **CARRIER LOCKED** (Bước sóng $\lambda = 880\text{nm}$ NIR).
 
----
+2. **Screen 2 — Dedicated File Transfer Station:**
+   - Kéo thả file (Drag & Drop) hoặc chọn file qua Native Dialog.
+   - Động cơ **Stop-and-Wait ARQ**: Cắt nhỏ file 240B/chunk, tự động retry khi timeout (250ms), tính toán tiến độ %, tốc độ truyền thực tế (KB/s), ETA và đối soát băm **CRC-32** toàn vẹn.
+   - Bảng lịch sử truyền file lưu trữ bền vững trong SQLite kèm bộ lọc tìm kiếm.
 
-## 2. CHECKLIST CÂU HỎI CẦN CHỐT VỚI KHÁCH HÀNG / PM TẠI BUỔI RETRO
+3. **Screen 3 — Realtime Optical Chat Stream:**
+   - Truyền nhận tin nhắn văn bản hai chiều qua tia hồng ngoại.
+   - Khung **Raw Frame Inspector** hiển thị trực tiếp Hex Dump và Metadata của gói tin nhị phân.
+   - Tự động nạp lại lịch sử chat khi mở app.
 
-### Nhóm 1: Yêu cầu về Nghiệp vụ & Dữ liệu (Business & Data Requirements)
-1. **Loại dữ liệu chính cần demo trong buổi nghiệm thu:**
-   * Khách hàng ưu tiên demo tin nhắn văn bản, truyền file ảnh (`.png`, `.jpg`) hay file tài liệu (`.pdf`, `.bin`)?
-   * Kích thước file tối đa khách hàng kỳ vọng trong buổi bảo vệ/nghiệm thu là bao nhiêu (khuyến nghị phòng lab: dưới 1MB để thời gian truyền < 2 phút)?
-2. **Kỳ vọng về UI/UX:**
-   * Có cần hỗ trợ kéo thả file (Drag & Drop) vào cửa sổ không?
-   * File nhận về có cần tự động mở xem trước (Auto Preview ảnh) ngay trên App sau khi truyền xong không?
-
-### Nhóm 2: Yêu cầu về Báo cáo Thực nghiệm & Phòng Lab (Lab Diagnostics Requirements)
-3. **Các chỉ số đo đạc cần xuất ra báo cáo:**
-   * Khách hàng có cần tính năng xuất dữ liệu đo đạc (Throughput qua thời gian, tỷ lệ lỗi gói, số lần retry theo khoảng cách) ra file `.csv` hoặc `.xlsx` để làm biểu đồ báo cáo đề tài không?
-   * Có cần vẽ đồ thị Throughput / BER thời gian thực ngay trên giao diện không?
-
-### Nhóm 3: Kịch bản kiểm thử Edge Cases mà Khách hàng muốn thấy
-4. **Kịch bản Demo vật cản:**
-   * Khách hàng muốn App phản ứng thế nào khi ai đó lấy tay chắn chùm tia: Dừng tạm thời rồi truyền tiếp (Pause/Resume) hay Hủy phiên và yêu cầu gửi lại từ đầu? *(Software đề xuất: Auto Pause & Resume)*.
-5. **Kịch bản kiểm tra toàn vẹn:**
-   * Có cần nút bấm "Verify Integrity" để hiển thị mã SHA-256 đối chiếu giữa 2 máy trước hội đồng đánh giá không?
+4. **Screen 4 — Lab Analytics & CSV Export:**
+   - 4 thẻ KPI động: Throughput tức thời, BER ($10^{-10}$), Độ trễ RTT, Tổng số khối đã truyền.
+   - Bảng Live Packet Sniffer thời gian thực kèm bộ lọc chip trạng thái.
+   - Nút **Export CSV Telemetry** xuất file báo cáo thực nghiệm.
 
 ---
 
-## 3. NGUYÊN TẮC TIẾP NHẬN YÊU CẦU MỚI TẠI BUỔI RETRO
-* **Tiêu chí Scope Filter:**
-  * Bất kỳ yêu cầu nào liên quan đến **Làm cho việc truyền nhận ổn định hơn, UI trực quan hơn để demo, hiển thị log/metrics rõ ràng** $\rightarrow$ Đưa ngay vào Sprint Tuần 2 (In-scope MVP).
-  * Bất kỳ yêu cầu nào về **Mã hóa cao cấp phức tạp (như RSA/TLS quang), truyền video stream trực tiếp qua IrDA (vượt quá băng thông 115.2kbps)** $\rightarrow$ Đưa vào tài liệu định hướng Post-MVP trong báo cáo đề tài.
+## 2. KỊCH BẢN DEMO TRỰC TIẾP TẠI BUỔI BÁO CÁO (DEMO AGENDA)
+
+| STT | Kịch bản Demo | Thao tác thực hiện | Kỳ vọng hiển thị trên App |
+| :---: | :--- | :--- | :--- |
+| **1** | **Khởi tạo & Đo đạc Link quang** | Chọn cổng `COM` (hoặc `MOCK_COM_LOOPBACK`), bấm **Initialize Link**. | Header hiện **Connected (115200 bps)**, Gauge hiển thị **94%**, Badge chuyển **CARRIER LOCKED**, đo RTT Ping/Pong. |
+| **2** | **Chat Quang Thời Gian Thực** | Chuyển sang Tab Chat, nhập text và bấm gửi. | Bóng chat màu xanh Cobalt xuất hiện bên phải, node đối tác phản hồi bên trái; khung Inspector hiển thị Hex Dump. |
+| **3** | **Truyền File & Đối Soát Toàn Vẹn** | Chọn 1 file tài liệu/ảnh, bấm **Transmit Payload**. | Thanh tiến độ nhảy từ 0% $\to$ 100%, hiển thị tốc độ KB/s và ETA. Khi xong, xuất hiện dòng trạng thái **SUCCESS** kèm mã băm CRC-32. |
+| **4** | **Thử Nghiệm Chắn Tia (LOS Resilience)** | Dùng bìa giấy chắn chùm tia hồng ngoại khi đang truyền. | Hệ thống phát hiện timeout, kích hoạt retry (tối đa 5 lần); khi bỏ vật cản, luồng truyền tự phục hồi thông suốt. |
+| **5** | **Xuất Dữ Liệu Báo Cáo Thí Nghiệm** | Vào Tab Analytics, bấm **Export CSV Telemetry**. | Hệ thống xuất file `.csv` chứa toàn bộ mẫu đo kiểm phục vụ đưa vào Excel/MATLAB làm biểu đồ. |
+
+---
+
+## 3. DANH MỤC TÀI LIỆU BÀN GIAO CHO KHÁCH HÀNG
+
+1. **`README.md`**: Hướng dẫn cài đặt, khởi chạy và đóng gói Standalone Executable.
+2. **`docs/IOT_STM32_COMMUNICATION_SPECS.md`**: Bộ đặc tả giao thức nhị phân Little-Endian và mã nguồn C mẫu cho đội nhúng STM32.
+3. **`docs/CONVENTIONS_AND_ARCHITECTURE.md`**: Bản quy chuẩn kiến trúc phần mềm, luồng Worker-Object và tiêu chuẩn Clean Code.
+4. **`docs/screenshots/`**: Bộ ảnh chụp thực tế chất lượng cao của cả 4 màn hình.
