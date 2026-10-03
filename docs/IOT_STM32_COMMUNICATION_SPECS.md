@@ -80,11 +80,46 @@ Mọi trường số nguyên từ 2 bytes trở lên **bắt buộc tuân thủ 
 
 ## 5. MÃ NGUỒN C MẪU DÀNH CHO STM32 (FIRMWARE IMPLEMENTATION)
 
-### 5.1. Hàm tính CRC-32 chuẩn IEEE 802.3
+### 5.1. Định nghĩa C Struct cho các Payload nhị phân (`ir_protocol.h`)
 ```c
 #include <stdint.h>
 #include <stddef.h>
 
+#pragma pack(push, 1)
+
+// Payload Opcode 0x30: TRANSFER_START
+typedef struct {
+    uint32_t file_size;     // 4 bytes: Tổng kích thước file (Bytes, Little-Endian)
+    uint16_t chunk_size;    // 2 bytes: Kích thước payload mỗi chunk (thường là 240B)
+    uint16_t total_chunks;  // 2 bytes: Tổng số lượng chunk
+    uint32_t file_crc32;    // 4 bytes: Mã băm CRC-32 của toàn bộ file
+    uint8_t  fname_len;     // 1 byte: Độ dài tên file (N bytes)
+    char     filename[0];   // N bytes: Chuỗi UTF-8 tên file (không gồm null-terminator)
+} FileStartPayload_t;
+
+// Payload Opcode 0x01: DATA_CHUNK
+typedef struct {
+    uint16_t chunk_id;      // 2 bytes: Thứ tự chunk bắt đầu từ 0 (Little-Endian)
+    uint8_t  chunk_data[0]; // M bytes: Dữ liệu nhị phân của khối (tối đa 240B)
+} FileChunkPayload_t;
+
+// Payload Opcode 0x31: TRANSFER_END
+typedef struct {
+    uint32_t file_crc32;    // 4 bytes: Mã băm CRC-32 toàn bộ file để đối soát
+    uint32_t total_bytes;   // 4 bytes: Tổng số bytes đã truyền
+} FileEndPayload_t;
+
+// Payload Opcode 0x10: ACK
+typedef struct {
+    uint8_t  acked_seq;     // 1 byte: Sequence number của gói vừa nhận thành công
+    uint8_t  status;        // 1 byte: 0x00=OK, 0x01=CRC_ERR, 0x02=OUT_OF_ORDER, 0x03=TIMEOUT
+} AckPayload_t;
+
+#pragma pack(pop)
+```
+
+### 5.2. Hàm tính CRC-32 chuẩn IEEE 802.3
+```c
 uint32_t CRC32_Calculate(const uint8_t *data, size_t length) {
     uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < length; i++) {
