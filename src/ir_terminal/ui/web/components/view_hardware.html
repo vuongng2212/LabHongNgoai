@@ -1,9 +1,8 @@
-
 <!-- Viewport Header -->
 <header class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-xs border-b border-black/[0.05]">
 <div>
 <div class="flex items-center gap-space-sm">
-<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Transceiver & Link Configuration</h1>
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Transceiver &amp; Link Configuration</h1>
 <span class="bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1">
 <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> LINK LOCKED
               </span>
@@ -18,7 +17,7 @@
               880nm NIR Direct LOS
             </span>
 <span class="bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-md text-mono-caption font-mono-caption font-semibold shadow-sm">
-              BER < 10<sup>-9</sup>
+              BER &lt; 10<sup>-9</sup>
             </span>
 </div>
 </header>
@@ -48,9 +47,7 @@
 <label class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Target Port Interface</label>
 <div class="relative">
 <select class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
-<option selected="">COM4 - STM32F407 CDC (Virtual COM)</option>
-<option>COM3 - FTDI USB-to-UART Serial (Lab Scope)</option>
-<option>COM8 - Internal IrDA Testbed Loopback</option>
+<option selected="">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
 </select>
 <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant">
 <span class="material-symbols-outlined text-[18px]" data-icon="expand_more">expand_more</span>
@@ -61,13 +58,13 @@
 <div class="space-y-1.5">
 <div class="flex justify-between items-center">
 <label class="font-label-sm text-label-sm text-on-surface-variant font-medium">Baudrate (bps)</label>
-<span class="font-mono-caption text-mono-caption text-outline">STABLE CLOCK</span>
+<span class="font-mono-caption text-mono-caption text-outline">SELECTABLE CLOCK</span>
 </div>
-<div class="grid grid-cols-4 gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]">
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all">9600</button>
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all">57600</button>
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md bg-white text-primary font-bold shadow-[0_1px_3px_rgba(0,0,0,0.08)]">115200</button>
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all">921600</button>
+<div id="baudrate-selector" class="grid grid-cols-4 gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]">
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all cursor-pointer">9600</button>
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all cursor-pointer">57600</button>
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md bg-white text-primary font-bold shadow-[0_1px_3px_rgba(0,0,0,0.08)] cursor-pointer">115200</button>
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all cursor-pointer">921600</button>
 </div>
 </div>
 <!-- Framing & Blinker Telemetry -->
@@ -86,11 +83,11 @@
 <!-- Live TX / RX Status Indicators -->
 <div class="flex items-center gap-3">
 <div class="flex items-center gap-1.5">
-<span class="w-2 h-2 rounded-full bg-secondary status-pulse"></span>
+<span id="hw-tx-dot" class="w-2.5 h-2.5 rounded-full bg-primary/40 transition-colors"></span>
 <span class="font-mono-caption text-mono-caption text-on-surface font-medium">TX</span>
 </div>
 <div class="flex items-center gap-1.5">
-<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim"></span>
+<span id="hw-rx-dot" class="w-2.5 h-2.5 rounded-full bg-secondary/40 transition-colors"></span>
 <span class="font-mono-caption text-mono-caption text-on-surface font-medium">RX</span>
 </div>
 </div>
@@ -98,17 +95,17 @@
 </div>
 <!-- Card Actions -->
 <div class="pt-space-md mt-space-md border-t border-black/[0.04] flex items-center justify-between gap-space-sm">
-<button class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all">
+<button class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
 <span class="material-symbols-outlined text-[16px]" data-icon="link">link</span>
                 Connect
               </button>
-<button class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all">
+<button class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
 <span class="material-symbols-outlined text-[16px]" data-icon="refresh">refresh</span>
                 Rescan Ports
               </button>
 </div>
 </section>
-<!-- Card 2: Optical Alignment & Quality -->
+<!-- Card 2: Optical Link & Realtime Telemetry -->
 <section class="bg-surface-container-lowest rounded-2xl p-space-lg border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.04)] flex flex-col justify-between">
 <div class="space-y-space-md">
 <!-- Card Header -->
@@ -118,66 +115,49 @@
 <span class="material-symbols-outlined text-[20px]" data-icon="radar">radar</span>
 </div>
 <div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Optical Alignment & Quality</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">PHOTODIODE ARRAY NIR TELEMETRY</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Optical Link &amp; Diagnostics</h2>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">ROUND-TRIP ECHO &amp; CARRIER HEALTH</span>
 </div>
 </div>
 <div class="flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
 <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  Beam Locked
+                  Link Ready
                 </div>
 </div>
-<!-- Gauge and Stats Split View -->
+<!-- Real Stats Grid -->
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-space-md items-center py-1">
-<!-- Concentric Circular Alignment Gauge -->
-<div class="flex flex-col items-center justify-center p-space-sm bg-surface-container-low/50 rounded-xl border border-black/[0.04] relative">
-<div class="relative w-32 h-32 flex items-center justify-center">
-<!-- Clean Vector Ring Dial -->
-<svg class="w-full h-full -rotate-90 transform" viewbox="0 0 100 100">
-<circle cx="50" cy="50" fill="none" r="40" stroke="#E2E8F0" stroke-width="7"></circle>
-<circle cx="50" cy="50" fill="none" r="40" stroke="#2563EB" stroke-dasharray="251.3" stroke-dashoffset="15.1" stroke-linecap="round" stroke-width="7"></circle>
-</svg>
-<!-- Center Dial Readout -->
-<div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-<span class="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">94%</span>
-<span class="font-mono-caption text-mono-caption text-secondary font-bold tracking-wider">ALIGNED</span>
+<!-- Link RTT KPI -->
+<div class="p-3 bg-surface-container-low rounded-xl border border-black/[0.04] flex flex-col justify-between h-full">
+<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
+<span>MEASURED RTT LATENCY</span>
+<span class="text-secondary font-semibold">ACTIVE</span>
 </div>
+<div class="flex items-baseline gap-2 mt-2">
+<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">-- ms</span>
+<span class="font-mono-caption text-mono-caption text-outline">Ping Echo</span>
 </div>
-<div class="text-[11px] text-outline font-mono-caption mt-1">Azimuth: +0.4° | Elevation: -0.1°</div>
+<div class="text-[11px] text-outline font-mono-caption mt-2">Optical transmission round-trip delay</div>
 </div>
-<!-- Right Telemetry Stats Column -->
-<div class="space-y-space-sm">
-<!-- Latency Readout -->
+<!-- Optical Carrier KPI -->
+<div class="space-y-2">
 <div class="p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
 <div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>LINK LATENCY</span>
-<span class="text-secondary font-semibold">STABLE</span>
+<span>CARRIER WAVELENGTH</span>
+<span class="text-primary font-semibold">NIR INFRARED</span>
 </div>
 <div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">36 ms</span>
-<span class="font-mono-caption text-mono-caption text-outline">±1.2ms jitter</span>
+<span class="font-headline-md text-headline-md font-bold text-on-surface">880 nm</span>
+<span class="font-mono-caption text-mono-caption text-outline">TFDU4101 LOS</span>
 </div>
 </div>
-<!-- Optical Power Readout -->
 <div class="p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
 <div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>OPTICAL POWER</span>
-<span class="text-secondary font-semibold">OPTIMAL</span>
+<span>MODULATION ENCODER</span>
+<span class="text-secondary font-semibold">SYNCED</span>
 </div>
 <div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">-18.4 dBm</span>
-<span class="font-mono-caption text-mono-caption text-outline">Target: -20 to -12</span>
-</div>
-</div>
-<!-- Link Margin Readout -->
-<div class="p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>LINK MARGIN</span>
-<span class="text-primary font-semibold">RESERVE</span>
-</div>
-<div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">+14.2 dB</span>
-<span class="font-mono-caption text-mono-caption text-outline">Fade Reserve</span>
+<span class="font-headline-md text-headline-md font-bold text-on-surface">MCP2122</span>
+<span class="font-mono-caption text-mono-caption text-outline">3/16 Pulse Width</span>
 </div>
 </div>
 </div>
@@ -185,18 +165,14 @@
 </div>
 <!-- Card Actions -->
 <div class="pt-space-md mt-space-md border-t border-black/[0.04] flex items-center justify-between gap-space-sm">
-<button class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all">
+<button class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
 <span class="material-symbols-outlined text-[16px] text-primary" data-icon="wifi_tethering">wifi_tethering</span>
                 Ping Test
-              </button>
-<button class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all">
-<span class="material-symbols-outlined text-[16px] text-primary" data-icon="adjust">adjust</span>
-                Re-center Optics
               </button>
 </div>
 </section>
 </div>
-<!-- Bottom Card: Hardware Self-Test & Diagnostic Verifications -->
+<!-- Bottom Card: Protocol Layer Verification & Hardware Health -->
 <section class="bg-surface-container-lowest rounded-2xl p-space-lg border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.04] pb-space-sm mb-space-md">
 <div class="flex items-center gap-space-sm">
@@ -204,52 +180,52 @@
 <span class="material-symbols-outlined text-[20px]" data-icon="developer_board">developer_board</span>
 </div>
 <div>
-<h3 class="font-headline-md text-headline-md text-on-surface">Hardware Self-Test & Diagnostic Verifications</h3>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">REALTIME EMBEDDED SYSTEM REGISTER HEALTH</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Protocol Layer Verification &amp; Architecture Health</h3>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">REALTIME EMBEDDED PROTOCOL STACK VERIFICATION</span>
 </div>
 </div>
 <div class="flex items-center gap-2">
 <span class="font-mono-caption text-mono-caption px-2.5 py-1 rounded bg-[#E8F8F0] text-secondary border border-secondary/20 font-bold">
-                POST-CYCLE #8820 • ALL CIRCUITS NORMAL
+                CLEAN LAYERED ARCHITECTURE • ACTIVE
               </span>
 </div>
 </div>
-<!-- 3 Diagnostic Verification Tiles -->
+<!-- 3 Verification Tiles -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-space-md">
-<!-- Verification 1: STM32F407 Core -->
+<!-- Verification 1: Framing Engine -->
 <div class="bg-surface-container-low/60 rounded-xl p-space-md border border-black/[0.04] hover:bg-surface-container-low transition-colors">
 <div class="flex items-center justify-between mb-2">
-<span class="font-title-sm text-title-sm text-on-surface font-semibold">STM32F407 Core</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Binary Framing Engine</span>
 <span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 <p class="font-mono-data text-mono-data text-on-surface-variant space-y-1">
 <span class="block text-secondary font-semibold">Verified</span>
-<span class="block text-[11px] text-outline">• 168MHz PLL Locked</span>
-<span class="block text-[11px] text-outline">• DMA2 Stream Active</span>
+<span class="block text-[11px] text-outline">• SOF 0xAA55 / EOF 0x55AA</span>
+<span class="block text-[11px] text-outline">• Little-Endian Frame Packing</span>
 </p>
 </div>
-<!-- Verification 2: IrDA Modulator Clock -->
+<!-- Verification 2: CRC-32 Integrity -->
 <div class="bg-surface-container-low/60 rounded-xl p-space-md border border-black/[0.04] hover:bg-surface-container-low transition-colors">
 <div class="flex items-center justify-between mb-2">
-<span class="font-title-sm text-title-sm text-on-surface font-semibold">IrDA Modulator Clock</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">CRC-32 Checksum Engine</span>
 <span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 <p class="font-mono-data text-mono-data text-on-surface-variant space-y-1">
 <span class="block text-secondary font-semibold">Verified</span>
-<span class="block text-[11px] text-outline">• 3.6864 MHz Synchronized</span>
-<span class="block text-[11px] text-outline">• Jitter < 40ps RMS</span>
+<span class="block text-[11px] text-outline">• IEEE 802.3 (0xEDB88320)</span>
+<span class="block text-[11px] text-outline">• Hardware Accelerated Integrity</span>
 </p>
 </div>
-<!-- Verification 3: TFDU4101 Transceiver -->
+<!-- Verification 3: Stop-and-Wait ARQ -->
 <div class="bg-surface-container-low/60 rounded-xl p-space-md border border-black/[0.04] hover:bg-surface-container-low transition-colors">
 <div class="flex items-center justify-between mb-2">
-<span class="font-title-sm text-title-sm text-on-surface font-semibold">TFDU4101 Transceiver</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Stop-and-Wait ARQ Flow</span>
 <span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 <p class="font-mono-data text-mono-data text-on-surface-variant space-y-1">
 <span class="block text-secondary font-semibold">Verified</span>
-<span class="block text-[11px] text-outline">• 880nm NIR PIN Diode</span>
-<span class="block text-[11px] text-outline">• AGC Calibrated</span>
+<span class="block text-[11px] text-outline">• 250ms Timeout / Max 5 Retries</span>
+<span class="block text-[11px] text-outline">• Sequence Preservation on Retransmit</span>
 </p>
 </div>
 </div>

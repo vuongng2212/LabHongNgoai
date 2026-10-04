@@ -82,12 +82,24 @@ class WebMainWindow(QMainWindow):
         self._channel.registerObject("bridge", self._bridge)
         self._page.setWebChannel(self._channel)
 
+        # Wire Bridge Window Controls
+        self._bridge.closeWindowRequested.connect(self.close)
+        self._bridge.minimizeWindowRequested.connect(self.showMinimized)
+        self._bridge.maximizeWindowRequested.connect(self._toggle_maximize)
+
         # Load HTML index
         index_path = get_web_index_path()
         self._view.load(QUrl.fromLocalFile(str(index_path.resolve())))
 
         layout.addWidget(self._view)
         self.setCentralWidget(central_widget)
+
+    def _toggle_maximize(self) -> None:
+        """Toggles window state between maximized and normal restored geometry."""
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
 
     @property
     def bridge(self) -> BackendBridge:

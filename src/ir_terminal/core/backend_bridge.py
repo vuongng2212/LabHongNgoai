@@ -34,6 +34,11 @@ class BackendBridge(QObject):
     rawRxData: ClassVar[Signal] = Signal(str)  # hex string
     rawTxData: ClassVar[Signal] = Signal(str)  # hex string
 
+    # Window Control Signals
+    closeWindowRequested: ClassVar[Signal] = Signal()
+    minimizeWindowRequested: ClassVar[Signal] = Signal()
+    maximizeWindowRequested: ClassVar[Signal] = Signal()
+
     # Chat Signals
     chatMessageReceived: ClassVar[Signal] = Signal(str, str, bool)  # (text, time, is_outgoing)
     chatFrameInspected: ClassVar[Signal] = Signal(str, int, int, int)  # (hex, seq, cmd, len)
@@ -326,3 +331,18 @@ class BackendBridge(QObject):
         """Resets telemetry metrics and sniffer counters."""
         self._telemetry.reset_counters()
         logger.info("%s Reset telemetry counters requested via UI", LogTag.IPC_BRIDGE)
+
+    @Slot()
+    def closeWindow(self) -> None:
+        """Requests application window closure."""
+        self.closeWindowRequested.emit()
+
+    @Slot()
+    def minimizeWindow(self) -> None:
+        """Requests application window minimization."""
+        self.minimizeWindowRequested.emit()
+
+    @Slot()
+    def toggleMaximizeWindow(self) -> None:
+        """Requests toggling application window maximization."""
+        self.maximizeWindowRequested.emit()

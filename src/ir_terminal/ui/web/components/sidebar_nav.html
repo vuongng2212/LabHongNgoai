@@ -8,7 +8,7 @@
       </div>
       <div class="leading-tight">
         <div class="font-title-sm text-title-sm font-bold text-on-surface">SpectraLink IR-OWC</div>
-        <div class="font-mono-caption text-mono-caption text-on-surface-variant">Workstation v2.4.1</div>
+        <div class="font-mono-caption text-mono-caption text-on-surface-variant">Lab Terminal v1.0</div>
       </div>
     </div>
 
@@ -43,18 +43,18 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-1.5">
         <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-secondary"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">HEALTH 99.8% ONLINE</span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">READY</span>
       </div>
       <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">NIR</span>
     </div>
     <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2">
-      <div><span class="text-outline">FW:</span> v2.4.1-ARM (F407)</div>
-      <div class="truncate"><span class="text-outline">SN:</span> SL-880-STM407-RX04</div>
-      <div><span class="text-outline">λ:</span> 880nm Infrared LOS</div>
+      <div><span class="text-outline">PHY:</span> 880nm TFDU4101</div>
+      <div><span class="text-outline">ENC:</span> MCP2122 IrDA</div>
+      <div><span class="text-outline">MCU:</span> STM32F407 CDC</div>
     </div>
-    <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors">
-      <span class="material-symbols-outlined text-[14px]">adjust</span>
-      Calibrate Optics
+    <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors cursor-pointer">
+      <span class="material-symbols-outlined text-[14px]">wifi_tethering</span>
+      Ping Link Test
     </button>
   </div>
 </aside>

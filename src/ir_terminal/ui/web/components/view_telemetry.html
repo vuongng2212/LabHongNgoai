@@ -1,4 +1,3 @@
-
 <!-- Viewport Header Section -->
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pb-space-xs">
 <div>
@@ -21,11 +20,11 @@
 </span>
 <span class="font-medium">Live Capture Active</span>
 </div>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors">
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors cursor-pointer">
 <span class="material-symbols-outlined text-[15px]">file_download</span>
 <span>Export CSV Telemetry</span>
 </button>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors">
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors cursor-pointer">
 <span class="material-symbols-outlined text-[15px]">refresh</span>
 <span>Reset Counters</span>
 </button>
@@ -41,24 +40,21 @@
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-primary tracking-tight">9.84</span>
+<span class="font-display-lg text-display-lg font-bold text-primary tracking-tight">0.00</span>
 <span class="font-mono-caption text-on-surface-variant font-semibold">KB/s</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold flex items-center">
-<span class="material-symbols-outlined text-[12px]">trending_up</span> +4.2%
-                </span>
-<span class="text-on-surface-variant">vs baseline (peak: 11.2 KB/s)</span>
+<span class="text-on-surface-variant">Active Baud Throughput</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary-container rounded-full" style="width: 82%;"></div>
+<div class="h-full bg-primary-container rounded-full" style="width: 0%;"></div>
 </div>
 </div>
 <!-- KPI 2: Packet Loss & BER -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet Loss &amp; BER</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet Loss</span>
 <span class="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
 </div>
 <div class="my-2">
@@ -67,8 +63,7 @@
 <span class="font-mono-caption text-on-surface-variant font-medium">(0 pkts)</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold">Optimal Carrier SNR</span>
-<span class="text-on-surface-variant">(31.4 dB • BER &lt; 10<sup>-10</sup>)</span>
+<span class="text-secondary font-semibold">Clean Optical Channel</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
@@ -78,21 +73,20 @@
 <!-- KPI 3: Latency -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Optical Flight Latency</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Round-Trip Latency</span>
 <span class="material-symbols-outlined text-outline text-[18px]">timer</span>
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">34</span>
+<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">--</span>
 <span class="font-mono-caption text-on-surface-variant font-semibold">ms</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-primary font-semibold">Jitter ±1.1 ms</span>
-<span class="text-on-surface-variant">photodiode TIA response</span>
+<span class="text-primary font-semibold">Ping/Pong Echo Delay</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary/70 rounded-full" style="width: 45%;"></div>
+<div class="h-full bg-primary/70 rounded-full" style="width: 0%;"></div>
 </div>
 </div>
 <!-- KPI 4: Chunks -->
@@ -103,12 +97,11 @@
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">1,420</span>
+<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">0</span>
 <span class="font-mono-caption text-on-surface-variant font-semibold">blks</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold">100% CRC-32 Validated</span>
-<span class="text-on-surface-variant">0 parity faults</span>
+<span class="text-secondary font-semibold">Stop-and-Wait ARQ Verified</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
@@ -116,136 +109,54 @@
 </div>
 </div>
 </div>
-<!-- 2 High-Density Spline Performance Charts -->
+<!-- 2 High-Density Live Charts -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-space-md">
-<!-- Chart 1: Transmission Speed over Time -->
+<!-- Chart 1: Realtime Transmission Speed -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between relative">
 <div class="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/20">
 <div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Transmission Speed over Time</span>
-<span class="font-mono-caption text-[10px] text-outline px-1.5 py-0.5 rounded bg-surface-container-low">15m Window</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Realtime Transmission Speed</span>
+<span class="font-mono-caption text-[10px] text-primary px-1.5 py-0.5 rounded bg-primary/10 font-semibold">Live Feed</span>
 </div>
 <div class="flex items-center gap-3 font-mono-caption text-[11px]">
 <div class="flex items-center gap-1">
 <span class="w-2.5 h-[2px] bg-primary"></span>
-<span class="text-on-surface-variant">Baud Throughput (KB/s)</span>
-</div>
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[1px] bg-outline border-b border-dashed border-outline"></span>
-<span class="text-outline">Mean (9.84)</span>
+<span class="text-on-surface-variant">Throughput (KB/s)</span>
 </div>
 </div>
 </div>
-<!-- SVG Spline Visualizer -->
-<div class="relative w-full h-48 select-none">
-<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 540 180">
-<defs>
-<lineargradient id="primaryGradient" x1="0" x2="0" y1="0" y2="1">
-<stop offset="0%" stop-color="#2563eb" stop-opacity="0.28"></stop>
-<stop offset="90%" stop-color="#2563eb" stop-opacity="0.00"></stop>
-</lineargradient>
-</defs>
-<!-- Gridlines -->
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="30" y2="30"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="75" y2="75"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="120" y2="120"></line>
-<line stroke="#c3c6d7" stroke-width="1" x1="0" x2="540" y1="165" y2="165"></line>
-<!-- Mean Baseline Indicator Line -->
-<line opacity="0.6" stroke="#737686" stroke-dasharray="4 4" stroke-width="1.2" x1="0" x2="540" y1="68" y2="68"></line>
-<!-- Gradient Fill -->
-<path d="M 0,165 
-                         C 40,150 70,120 110,105 
-                         C 150,90 180,85 220,72 
-                         C 260,60 290,80 330,68 
-                         C 370,55 400,62 440,58 
-                         C 475,54 505,62 540,56 
-                         L 540,165 Z" fill="url(#primaryGradient)"></path>
-<!-- Blue Main Spline Curve -->
-<path d="M 0,165 
-                         C 40,150 70,120 110,105 
-                         C 150,90 180,85 220,72 
-                         C 260,60 290,80 330,68 
-                         C 370,55 400,62 440,58 
-                         C 475,54 505,62 540,56" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-width="2.5"></path>
-<!-- Highlight Pulse Marker at 14:12:45 UTC -->
-<circle cx="440" cy="58" fill="#2563eb" r="4.5" stroke="#ffffff" stroke-width="2"></circle>
-</svg>
-<!-- Floating Tooltip Card over active marker -->
-<div class="absolute top-4 right-16 bg-on-surface text-surface-bright p-1.5 px-2.5 rounded-lg shadow-lg text-[10px] font-mono-caption border border-outline-variant/30 pointer-events-none">
-<div class="font-bold text-inverse-primary text-[11px]">9.84 KB/s</div>
-<div class="text-outline-variant text-[9px]">14:12:45 UTC • 880nm Lock</div>
+<div class="relative w-full h-44 flex items-center justify-center">
+<canvas id="live-speed-chart" class="w-full h-full"></canvas>
 </div>
-<!-- Y-Axis labels -->
-<div class="absolute left-0 top-0 h-full flex flex-col justify-between pointer-events-none font-mono-caption text-[9px] text-outline -translate-x-1 pr-1">
-<span>12.0</span>
-<span>9.0</span>
-<span>6.0</span>
-<span>0.0</span>
-</div>
-</div>
-<!-- X-Axis timeline labels -->
 <div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-outline-variant/20">
-<span>14:00:00 UTC</span>
-<span>14:04:00</span>
-<span>14:08:00</span>
-<span>14:12:00</span>
-<span>14:15:00 UTC (Now)</span>
+<span>30s ago</span>
+<span>20s ago</span>
+<span>10s ago</span>
+<span>Now (Realtime)</span>
 </div>
 </div>
-<!-- Chart 2: BER & SNR vs Attenuation -->
+<!-- Chart 2: Realtime Round-Trip Latency -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between relative">
 <div class="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/20">
 <div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Packet Loss &amp; BER vs Optical Power</span>
-<span class="font-mono-caption text-[10px] text-secondary px-1.5 py-0.5 rounded bg-secondary-fixed/20 font-semibold">Nominal LOS Locked</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Round-Trip Latency (RTT)</span>
+<span class="font-mono-caption text-[10px] text-secondary px-1.5 py-0.5 rounded bg-secondary/10 font-semibold">Direct LOS</span>
 </div>
 <div class="flex items-center gap-3 font-mono-caption text-[11px]">
 <div class="flex items-center gap-1">
-<span class="w-2.5 h-[2px] bg-primary"></span>
-<span class="text-on-surface-variant">SNR (dB)</span>
-</div>
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[1.5px] bg-error"></span>
-<span class="text-error font-medium">Critical Cutoff (10<sup>-6</sup>)</span>
+<span class="w-2.5 h-[2px] bg-secondary"></span>
+<span class="text-on-surface-variant">RTT (ms)</span>
 </div>
 </div>
 </div>
-<!-- SVG Attenuation Response Visualizer -->
-<div class="relative w-full h-48 select-none">
-<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 540 180">
-<!-- Gridlines -->
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="30" y2="30"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="75" y2="75"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="120" y2="120"></line>
-<line stroke="#c3c6d7" stroke-width="1" x1="0" x2="540" y1="165" y2="165"></line>
-<!-- Warning Threshold (BER 10^-6 cutoff) -->
-<line opacity="0.85" stroke="#ba1a1a" stroke-dasharray="5 3" stroke-width="1.2" x1="0" x2="540" y1="130" y2="130"></line>
-<!-- Carrier SNR vs Path Loss curve -->
-<path d="M 0,35 
-                         C 80,38 160,42 240,58 
-                         C 320,74 380,105 440,140 
-                         C 475,160 510,165 540,165" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-width="2.5"></path>
-<!-- Current Operational Lock Pin (-18.2 dBm) -->
-<line stroke="#006c49" stroke-dasharray="2 2" stroke-width="1.2" x1="200" x2="200" y1="20" y2="165"></line>
-<circle cx="200" cy="50" fill="#006c49" r="5" stroke="#ffffff" stroke-width="2"></circle>
-</svg>
-<!-- Operational Point Floating Badge -->
-<div class="absolute top-2 left-44 bg-surface-container-lowest border border-secondary/40 shadow-md p-1 px-2 rounded font-mono-caption text-[10px]">
-<div class="text-secondary font-bold">RX: -18.2 dBm</div>
-<div class="text-outline text-[9px]">SNR: 31.4 dB (Safe)</div>
+<div class="relative w-full h-44 flex items-center justify-center">
+<canvas id="live-rtt-chart" class="w-full h-full"></canvas>
 </div>
-<!-- Safety Threshold Note -->
-<div class="absolute bottom-8 right-3 font-mono-caption text-[9px] text-error font-semibold bg-error-container/40 px-1.5 py-0.5 rounded">
-                Warning Threshold: BER &gt; 10<sup>-6</sup>
-              </div>
-</div>
-<!-- X-Axis timeline labels -->
 <div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-outline-variant/20">
-<span>-10 dBm (Near Field)</span>
-<span>-15 dBm</span>
-<span>-20 dBm (Target)</span>
-<span>-25 dBm</span>
-<span>-35 dBm (Cutoff)</span>
+<span>30s ago</span>
+<span>20s ago</span>
+<span>10s ago</span>
+<span>Now (Realtime)</span>
 </div>
 </div>
 </div>
@@ -257,24 +168,24 @@
 <span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
 <span class="font-title-sm text-title-sm font-semibold text-on-surface">Raw Optical Frame Sniffer &amp; Buffer (Half-Duplex Bus CH-01)</span>
 <span class="px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-mono-caption text-[10px] font-semibold border border-primary/20">
-                1,420 frames captured
+                0 frames captured
               </span>
 </div>
 <div class="flex items-center gap-space-sm">
 <!-- Filter Segment Chips -->
 <div class="flex items-center bg-surface-container-low p-0.5 rounded-lg border border-outline-variant/40 font-mono-caption text-[10px]">
-<button class="px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs">ALL</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface">SYN/ACK</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-semibold">BURST_DATA</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface">CRC_OK</button>
-<button class="px-2 py-1 rounded text-error hover:bg-error-container/30">ERROR_FRAMES (0)</button>
+<button class="px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs cursor-pointer">ALL</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">SYN/ACK</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-semibold cursor-pointer">BURST_DATA</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">CRC_OK</button>
+<button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">ERROR_FRAMES (0)</button>
 </div>
 <!-- Search Hex Filter Input -->
 <div class="relative">
 <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
 <input class="h-[28px] pl-6 pr-2 rounded-lg bg-surface-container-lowest border border-outline-variant/40 font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-44" placeholder="Hex opcode or frame ID..." type="text"/>
 </div>
-<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant" title="Collapse / Expand Drawer">
+<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer" title="Collapse / Expand Drawer">
 <span class="material-symbols-outlined text-[18px]">expand_more</span>
 </button>
 </div>
@@ -294,41 +205,14 @@
 </tr>
 </thead>
 <tbody class="font-mono-data text-[11px] divide-y divide-outline-variant/10">
-<tr class="hover:bg-surface-container-low/50 transition-colors">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:02.104</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F4</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-primary-fixed/40 text-on-primary-fixed text-[10px] font-medium">BURST_DATA</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x88 0x3E 0x9A 0x2C 0xF1 0x0A 0x4B]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">33.8 ms</td>
-</tr>
-<tr class="hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:01.998</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F3</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-primary-fixed/40 text-on-primary-fixed text-[10px] font-medium">BURST_DATA</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x74 0x11 0x02 0xAA 0xCC 0xD9 0x88]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">34.1 ms</td>
-</tr>
-<tr class="hover:bg-surface-container-low/50 transition-colors">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:01.892</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F2</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-secondary-fixed/40 text-on-secondary-fixed text-[10px] font-medium">ACK_SYNC</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x06 0x00 0xFF 0xFE 0x00 0x12 0x40]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">33.9 ms</td>
-</tr>
-<tr class="hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:01.780</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F1</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-primary-fixed/40 text-on-primary-fixed text-[10px] font-medium">BURST_DATA</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x99 0x22 0x33 0x44 0x55 0x66 0x77]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">34.2 ms</td>
+<tr>
+<td colspan="7" class="py-8 text-center text-on-surface-variant text-mono-data">
+  <div class="flex flex-col items-center justify-center gap-1">
+    <span class="material-symbols-outlined text-[20px] text-outline">memory</span>
+    <span>Waiting for optical frames...</span>
+    <span class="text-[10px] text-outline">Transmitted and received frames will appear here in real time.</span>
+  </div>
+</td>
 </tr>
 </tbody>
 </table>
@@ -338,14 +222,13 @@
 <div class="flex items-center gap-3">
 <span class="flex items-center gap-1">
 <span class="material-symbols-outlined text-[12px] text-secondary">lock</span>
-<span>Auto-scroll locked</span>
+<span>Auto-scroll active</span>
 </span>
-<span>Buffer: 64 / 512 Bytes (Ring Active)</span>
-<span>DMA Channel: RX-03 High-Speed</span>
+<span>Ring Buffer: 1024 Bytes</span>
+<span>UART 115200 bps 8-N-1</span>
 </div>
 <div class="flex items-center gap-2">
-<span class="text-outline">Dropped Frames: 0</span>
-<span class="text-secondary font-semibold">Parity OK</span>
+<span class="text-secondary font-semibold">CRC-32 IEEE 802.3 Active</span>
 </div>
 </div>
 </div>

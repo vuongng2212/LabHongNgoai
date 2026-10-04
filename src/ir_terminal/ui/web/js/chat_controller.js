@@ -31,6 +31,19 @@ function initChatController() {
     });
   }
 
+  function renderEmptyChatState() {
+    if (!chatContainer) return;
+    chatContainer.innerHTML = `
+      <div id="chat-empty-state" class="flex flex-col items-center justify-center py-16 text-center text-on-surface-variant my-auto">
+        <div class="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center text-primary mb-3 shadow-xs">
+          <span class="material-symbols-outlined text-[24px]">forum</span>
+        </div>
+        <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">No optical messages yet</p>
+        <p class="text-body-md font-body-md text-outline max-w-sm">Type a text message below and press Enter to transmit across the 880nm Line-Of-Sight optical carrier.</p>
+      </div>
+    `;
+  }
+
   if (window.bridge) {
     window.bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
       appendChatMessage(text, timeStr, isOutgoing);
@@ -52,16 +65,27 @@ function initChatController() {
             messages.forEach(msg => {
               appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing);
             });
+          } else {
+            renderEmptyChatState();
           }
         } catch (err) {
           console.error('Failed to parse chat history JSON:', err);
+          renderEmptyChatState();
         }
       });
+    } else {
+      renderEmptyChatState();
     }
+  } else {
+    renderEmptyChatState();
   }
 
   function appendChatMessage(text, timeStr, isOutgoing) {
     if (!chatContainer) return;
+    const emptyState = document.getElementById('chat-empty-state');
+    if (emptyState) {
+      emptyState.remove();
+    }
 
     const wrapper = document.createElement('div');
     if (isOutgoing) {

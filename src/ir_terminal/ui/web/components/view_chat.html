@@ -1,4 +1,3 @@
-
 <!-- Header Banner inside main panel -->
 <section class="px-space-lg py-space-md bg-surface-container-lowest border-b border-outline-variant flex flex-wrap items-center justify-between gap-space-sm shadow-xs shrink-0">
 <div>
@@ -15,104 +14,22 @@
 <div class="flex items-center gap-2">
 <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/60">
 <span class="material-symbols-outlined text-[14px] text-primary" data-icon="lens_blur">lens_blur</span>
-<span class="text-mono-caption font-mono-caption text-on-surface">Beam Carrier: <strong class="font-semibold text-primary">880nm NIR Direct LOS</strong></span>
+<span class="text-mono-caption font-mono-caption text-on-surface">Carrier: <strong class="font-semibold text-primary">880nm NIR Direct LOS</strong></span>
 </div>
 <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/60">
 <span class="w-2 h-2 rounded-full bg-secondary"></span>
-<span class="text-mono-caption font-mono-caption text-on-surface">Link State: <strong class="font-semibold text-secondary">Locked (BER &lt; 10<sup>-9</sup>)</strong></span>
+<span class="text-mono-caption font-mono-caption text-on-surface">Link: <strong class="font-semibold text-secondary">Locked</strong></span>
 </div>
 </div>
 </section>
-<!-- Conversation Timeline / Stream (iMessage-inspired clean layout) -->
-<section class="flex-1 overflow-y-auto px-space-xl py-space-lg space-y-5 bg-[#FBFBFC]">
-<!-- Centered Sync Timestamp Badge -->
-<div class="flex justify-center">
-<div class="px-3 py-1 rounded-full bg-surface-container border border-outline-variant/60 text-on-surface-variant text-mono-caption font-mono-caption shadow-xs">
-              Today — Optical Session Synchronized at 14:02:11 UTC
-            </div>
-</div>
-<!-- Message 1: Incoming (Remote Node) -->
-<div class="flex flex-col items-start max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Remote Node (Station Bravo • 880nm)</span>
-<span class="text-mono-caption font-mono-caption text-outline">14:02:15</span>
-</div>
-<!-- Message Bubble -->
-<div class="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#EAECEF] border border-outline-variant/50 text-[#1F2937] text-body-md font-body-md shadow-xs leading-relaxed">
-              Optical carrier acquired. Photodiode transimpedance amplifier locked at 115200 baud.
-            </div>
-<!-- Telemetry Footer -->
-<div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
-<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40">PKT #0104</span>
-<span>•</span>
-<span class="text-secondary font-medium">CRC32 Valid</span>
-<span>•</span>
-<span>0 Dropped</span>
-</div>
-</div>
-<!-- Message 2: Outgoing (Local Host TX) -->
-<div class="flex flex-col items-end ml-auto max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="text-mono-caption font-mono-caption text-outline">14:02:28</span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Local Host (TX-880nm)</span>
-<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
-</div>
-<!-- Outgoing Bubble: Cobalt Blue #2563EB with 14px rounded styling -->
-<div class="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary-container text-white text-body-md font-body-md shadow-sm leading-relaxed">
-              Acknowledged Station Bravo. Testing payload throughput over optical beam.
-            </div>
-<!-- Status Read Receipt -->
-<div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
-<span class="material-symbols-outlined text-[13px]" data-icon="done_all">done_all</span>
-<span class="font-medium">ACK Confirmed (32ms round-trip)</span>
-</div>
-</div>
-<!-- System Event Divider -->
-<div class="relative flex items-center justify-center my-3">
-<div class="absolute inset-0 flex items-center">
-<div class="w-full border-t border-dashed border-outline-variant"></div>
-</div>
-<div class="relative px-3 py-1 rounded-full bg-surface-container-high border border-outline-variant text-on-surface text-mono-caption font-mono-caption flex items-center gap-1.5 shadow-xs">
-<span class="material-symbols-outlined text-[13px] text-tertiary" data-icon="bolt">bolt</span>
-<span class="font-semibold">Optical Carrier Polarity Inverted</span>
-<span class="text-outline">•</span>
-<span class="text-secondary font-medium">Resynced in 1.4ms —</span>
-</div>
-</div>
-<!-- Message 3: Incoming (Remote Node) -->
-<div class="flex flex-col items-start max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Remote Node (Station Bravo • 880nm)</span>
-<span class="text-mono-caption font-mono-caption text-outline">14:03:02</span>
-</div>
-<div class="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#EAECEF] border border-outline-variant/50 text-[#1F2937] text-body-md font-body-md shadow-xs leading-relaxed">
-              Echo received with 0 bit errors. Optical power meter reads -18.2 dBm. Beam alignment 95%. Ready for streaming test.
-            </div>
-<!-- Telemetry Sub-badges -->
-<div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
-<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40">PKT #0105</span>
-<span>•</span>
-<span class="text-secondary font-medium">BER 0.00e0</span>
-<span>•</span>
-<span class="px-1.5 py-0.5 rounded bg-surface-container-low text-primary font-semibold">RSSI: -18.2 dBm</span>
-</div>
-</div>
-<!-- Message 4: Outgoing (Local Host TX) -->
-<div class="flex flex-col items-end ml-auto max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="text-mono-caption font-mono-caption text-outline">14:03:19</span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Local Host (TX-880nm)</span>
-<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
-</div>
-<div class="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary-container text-white text-body-md font-body-md shadow-sm leading-relaxed">
-              Sending 512-byte test packet burst over channel A.
-            </div>
-<div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
-<span class="material-symbols-outlined text-[13px]" data-icon="done_all">done_all</span>
-<span class="font-medium">ACK Confirmed (28ms)</span>
-</div>
+<!-- Conversation Timeline / Stream -->
+<section class="flex-1 overflow-y-auto px-space-xl py-space-lg space-y-5 bg-[#FBFBFC] flex flex-col justify-center">
+<div id="chat-empty-state" class="flex flex-col items-center justify-center py-16 text-center text-on-surface-variant my-auto">
+  <div class="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center text-primary mb-3 shadow-xs">
+    <span class="material-symbols-outlined text-[24px]">forum</span>
+  </div>
+  <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">No optical messages yet</p>
+  <p class="text-body-md font-body-md text-outline max-w-sm">Type a text message below and press Enter to transmit across the 880nm Line-Of-Sight optical carrier.</p>
 </div>
 </section>
 <!-- Bottom Rounded Input Bar & Action Controls -->
@@ -129,13 +46,8 @@
 <input class="flex-1 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline" placeholder="Enter payload string or message to transmit..." type="text" value=""/>
 <!-- Action Controls Cluster -->
 <div class="flex items-center gap-1.5 shrink-0">
-<!-- Ping Action Button -->
-<button class="flex items-center gap-1 px-2.5 h-[30px] rounded-lg bg-surface-container border border-outline-variant text-on-surface text-label-sm font-label-sm hover:bg-surface-container-high transition-colors active:scale-[0.98]">
-<span class="material-symbols-outlined text-[14px] text-secondary" data-icon="radar">radar</span>
-<span>38ms Ping</span>
-</button>
 <!-- Primary Send Payload Button in vibrant Cobalt Blue -->
-<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-[#1D4ED8] transition-colors shadow-sm active:scale-[0.98]">
+<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-[#1D4ED8] transition-colors shadow-sm active:scale-[0.98] cursor-pointer">
 <span>Send Payload</span>
 <span class="material-symbols-outlined text-[14px]" data-icon="send">send</span>
 </button>
@@ -146,13 +58,6 @@
 <div class="flex items-center gap-1 truncate">
 <span class="material-symbols-outlined text-[12px] text-secondary" data-icon="info">info</span>
 <span>Half-duplex link: Transmitter pauses RX carrier during modulated burst. Maximum packet length: 512 bytes.</span>
-</div>
-<!-- Buffer Readout -->
-<div class="flex items-center gap-2 shrink-0">
-<div class="w-16 h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
-<div class="w-[9.3%] h-full bg-primary rounded-full"></div>
-</div>
-<span>Buffer: <strong class="text-on-surface">48 / 512 B</strong></span>
 </div>
 </div>
 </div>

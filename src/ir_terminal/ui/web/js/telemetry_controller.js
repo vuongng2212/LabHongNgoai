@@ -1,6 +1,8 @@
-// Telemetry & Diagnostics Viewport Controller with live telemetry updates, sniffer filtering, and CSV export
+// Telemetry & Diagnostics Viewport Controller with live telemetry updates, sniffer filtering, dynamic canvas charts, and CSV export
 let snifferRecordsCache = [];
 let activeFilter = 'ALL';
+let speedHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+let rttHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 function initTelemetryController() {
   const viewTelemetry = document.getElementById('view-telemetry');
@@ -22,6 +24,95 @@ function initTelemetryController() {
   const filterButtons = viewTelemetry.querySelectorAll('.flex.items-center.bg-surface-container-low button');
   const collapseBtn = viewTelemetry.querySelector('button[title*="Collapse"]');
   const snifferTableContainer = viewTelemetry.querySelector('.overflow-x-auto.max-h-56');
+
+  // Canvas Chart Elements
+  const speedCanvas = document.getElementById('live-speed-chart');
+  const rttCanvas = document.getElementById('live-rtt-chart');
+
+  function drawCanvasCharts() {
+    drawSingleChart(speedCanvas, speedHistory, '#2563EB', 'KB/s', 12.0);
+    drawSingleChart(rttCanvas, rttHistory, '#006C49', 'ms', 100.0);
+  }
+
+  function drawSingleChart(canvas, data, color, unit, maxVal) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Handle high DPI
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+    }
+    ctx.resetTransform();
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = rect.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // Draw Gridlines
+    ctx.strokeStyle = '#D3E4FE';
+    ctx.lineWidth = 0.8;
+    ctx.setLineDash([3, 3]);
+    for (let y = 0.25; y <= 0.75; y += 0.25) {
+      ctx.beginPath();
+      ctx.moveTo(0, h * y);
+      ctx.lineTo(w, h * y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Draw Spline / Line
+    if (data.length < 2) return;
+    const step = w / (data.length - 1);
+
+    ctx.beginPath();
+    const pts = data.map((val, idx) => {
+      const clamped = Math.min(Math.max(val, 0), maxVal);
+      const y = h - (clamped / maxVal) * (h - 20) - 10;
+      const x = idx * step;
+      return { x, y };
+    });
+
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      const xc = (pts[i].x + pts[i - 1].x) / 2;
+      const yc = (pts[i].y + pts[i - 1].y) / 2;
+      ctx.quadraticCurveTo(pts[i - 1].x, pts[i - 1].y, xc, yc);
+    }
+    ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Area gradient
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, color + '33');
+    grad.addColorStop(1, color + '00');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Last point pulse marker
+    const last = pts[pts.length - 1];
+    ctx.beginPath();
+    ctx.arc(last.x, last.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Draw initial blank charts
+  setTimeout(drawCanvasCharts, 50);
+  window.addEventListener('resize', drawCanvasCharts);
 
   // Wire Collapse / Expand Drawer
   if (collapseBtn && snifferTableContainer) {
@@ -49,9 +140,12 @@ function initTelemetryController() {
       });
     } else if (btn.innerText.includes('Reset Counters') && window.bridge) {
       window.bridge.resetTelemetryCounters();
-      if (snifferTableBody) snifferTableBody.innerHTML = '';
       snifferRecordsCache = [];
-      updateKpis(0.0, 0.0, 32.0, 0, 0);
+      speedHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      rttHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      renderFilteredSnifferTable();
+      updateKpis(0.0, 0.0, 0.0, 0, 0);
+      drawCanvasCharts();
     }
   });
 
@@ -60,9 +154,9 @@ function initTelemetryController() {
     filterButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         filterButtons.forEach(b => {
-          b.className = 'px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-mono-caption text-[10px]';
+          b.className = 'px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-mono-caption text-[10px] cursor-pointer';
         });
-        btn.className = 'px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs font-mono-caption text-[10px]';
+        btn.className = 'px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs font-mono-caption text-[10px] cursor-pointer';
         activeFilter = btn.innerText.trim();
         renderFilteredSnifferTable();
       });
@@ -79,16 +173,25 @@ function initTelemetryController() {
   function updateKpis(speedKbps, lossPct, rttMs, chunksCount, framesCount) {
     if (speedValueElem) speedValueElem.innerText = speedKbps.toFixed(2);
     if (speedBarElem) {
-      const pct = Math.min(Math.max((speedKbps / 12.0) * 100, 5), 100);
+      const pct = Math.min(Math.max((speedKbps / 12.0) * 100, 0), 100);
       speedBarElem.style.width = `${pct}%`;
     }
 
     if (lossValueElem) lossValueElem.innerText = `${lossPct.toFixed(2)}%`;
     if (lossPktsElem) lossPktsElem.innerText = lossPct > 0 ? `(${lossPct.toFixed(1)}% drop)` : '(0 pkts)';
 
-    if (rttValueElem) rttValueElem.innerText = Math.round(rttMs);
+    if (rttValueElem) rttValueElem.innerText = rttMs > 0 ? Math.round(rttMs) : '--';
     if (chunksValueElem) chunksValueElem.innerText = chunksCount.toLocaleString();
     if (frameCountBadge) frameCountBadge.innerText = `${framesCount.toLocaleString()} frames captured`;
+
+    // Append to chart history
+    speedHistory.push(speedKbps);
+    if (speedHistory.length > 20) speedHistory.shift();
+    if (rttMs > 0) {
+      rttHistory.push(rttMs);
+      if (rttHistory.length > 20) rttHistory.shift();
+    }
+    drawCanvasCharts();
   }
 
   function appendSnifferRow(rec) {
@@ -96,8 +199,14 @@ function initTelemetryController() {
     if (snifferRecordsCache.length > 200) snifferRecordsCache.shift();
 
     if (!matchesFilter(rec)) return;
-
     if (!snifferTableBody) return;
+
+    // Remove empty placeholder if present
+    const emptyRow = snifferTableBody.querySelector('td[colspan="7"]');
+    if (emptyRow) {
+      snifferTableBody.innerHTML = '';
+    }
+
     const row = createSnifferRowElement(rec);
     snifferTableBody.prepend(row);
 
@@ -151,6 +260,22 @@ function initTelemetryController() {
     if (!snifferTableBody) return;
     snifferTableBody.innerHTML = '';
     const filtered = snifferRecordsCache.filter(matchesFilter);
+
+    if (filtered.length === 0) {
+      const emptyRow = document.createElement('tr');
+      emptyRow.innerHTML = `
+        <td colspan="7" class="py-8 text-center text-on-surface-variant text-mono-data">
+          <div class="flex flex-col items-center justify-center gap-1">
+            <span class="material-symbols-outlined text-[20px] text-outline">memory</span>
+            <span>Waiting for optical frames...</span>
+            <span class="text-[10px] text-outline">Transmitted and received frames will appear here in real time.</span>
+          </div>
+        </td>
+      `;
+      snifferTableBody.appendChild(emptyRow);
+      return;
+    }
+
     filtered.slice(-100).reverse().forEach(rec => {
       snifferTableBody.appendChild(createSnifferRowElement(rec));
     });
@@ -195,7 +320,7 @@ function initTelemetryController() {
             updateKpis(
               stats.throughput_kbps || 0.0,
               stats.packet_loss_rate || 0.0,
-              stats.rtt_ms || 32.0,
+              stats.rtt_ms || 0.0,
               stats.total_chunks_transferred || 0,
               stats.total_frames_captured || 0
             );
@@ -212,13 +337,20 @@ function initTelemetryController() {
           const records = JSON.parse(recordsJson);
           if (Array.isArray(records) && records.length > 0) {
             snifferRecordsCache = records;
-            renderFilteredSnifferTable();
+          } else {
+            snifferRecordsCache = [];
           }
+          renderFilteredSnifferTable();
         } catch (e) {
           console.error('Failed to parse sniffer records:', e);
+          renderFilteredSnifferTable();
         }
       });
+    } else {
+      renderFilteredSnifferTable();
     }
+  } else {
+    renderFilteredSnifferTable();
   }
 }
 

@@ -131,13 +131,20 @@ function initFileController() {
           const transfers = JSON.parse(historyJson);
           if (Array.isArray(transfers) && transfers.length > 0) {
             transferHistoryCache = transfers;
-            renderFilteredHistoryTable();
+          } else {
+            transferHistoryCache = [];
           }
+          renderFilteredHistoryTable();
         } catch (err) {
           console.error('Failed to parse file history JSON:', err);
+          renderFilteredHistoryTable();
         }
       });
+    } else {
+      renderFilteredHistoryTable();
     }
+  } else {
+    renderFilteredHistoryTable();
   }
 
   function renderFilteredHistoryTable() {
@@ -151,6 +158,21 @@ function initFileController() {
              (item.crc32_hex && item.crc32_hex.toLowerCase().includes(query)) ||
              (item.status && item.status.toLowerCase().includes(query));
     });
+
+    if (filtered.length === 0) {
+      const emptyRow = document.createElement('tr');
+      emptyRow.innerHTML = `
+        <td colspan="7" class="py-8 text-center text-on-surface-variant text-body-md">
+          <div class="flex flex-col items-center justify-center gap-1">
+            <span class="material-symbols-outlined text-[24px] text-outline">folder_off</span>
+            <span class="font-medium text-on-surface">No optical file transfers recorded yet</span>
+            <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
+          </div>
+        </td>
+      `;
+      historyTable.appendChild(emptyRow);
+      return;
+    }
 
     filtered.forEach(item => {
       const row = document.createElement('tr');

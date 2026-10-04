@@ -156,8 +156,8 @@
     </div>
     <div class="h-4 w-px bg-outline-variant/40"></div>
     <div class="flex items-center gap-space-xs bg-surface-container-low px-2 py-0.5 rounded-md border border-outline-variant/50">
-      <span id="ribbon-dot" class="w-2 h-2 rounded-full bg-secondary status-pulse"></span>
-      <span id="ribbon-text" class="font-mono-data text-mono-data text-on-surface font-medium">STM32 Optical Bridge • COM4 (Ready)</span>
+      <span id="ribbon-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+      <span id="ribbon-text" class="font-mono-data text-mono-data text-on-surface font-medium">STM32 Optical Bridge • Disconnected</span>
     </div>
   </div>
 
@@ -170,13 +170,10 @@
   <!-- Right Actions -->
   <div class="flex items-center gap-space-xs">
     <div class="flex items-center bg-surface-container-high/40 text-on-surface-variant px-2 py-0.5 rounded text-mono-caption font-mono-caption font-bold">
-      SESSION #4029-A
+      880nm NIR Direct LOS
     </div>
-    <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Refresh Telemetry">
+    <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Refresh Port List">
       <span class="material-symbols-outlined text-[16px]">refresh</span>
-    </button>
-    <button class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Device Settings">
-      <span class="material-symbols-outlined text-[16px]">settings</span>
     </button>
   </div>
 </header>
@@ -194,7 +191,7 @@
       </div>
       <div class="leading-tight">
         <div class="font-title-sm text-title-sm font-bold text-on-surface">SpectraLink IR-OWC</div>
-        <div class="font-mono-caption text-mono-caption text-on-surface-variant">Workstation v2.4.1</div>
+        <div class="font-mono-caption text-mono-caption text-on-surface-variant">Lab Terminal v1.0</div>
       </div>
     </div>
 
@@ -229,18 +226,18 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-1.5">
         <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-secondary"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">HEALTH 99.8% ONLINE</span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">READY</span>
       </div>
       <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">NIR</span>
     </div>
     <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2">
-      <div><span class="text-outline">FW:</span> v2.4.1-ARM (F407)</div>
-      <div class="truncate"><span class="text-outline">SN:</span> SL-880-STM407-RX04</div>
-      <div><span class="text-outline">λ:</span> 880nm Infrared LOS</div>
+      <div><span class="text-outline">PHY:</span> 880nm TFDU4101</div>
+      <div><span class="text-outline">ENC:</span> MCP2122 IrDA</div>
+      <div><span class="text-outline">MCU:</span> STM32F407 CDC</div>
     </div>
-    <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors">
-      <span class="material-symbols-outlined text-[14px]">adjust</span>
-      Calibrate Optics
+    <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors cursor-pointer">
+      <span class="material-symbols-outlined text-[14px]">wifi_tethering</span>
+      Ping Link Test
     </button>
   </div>
 </aside>
@@ -299,10 +296,8 @@
 <div class="space-y-1.5">
 <label class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Target Port Interface</label>
 <div class="relative">
-<select class="appearance-none appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
-<option selected="">COM4 - STM32F407 CDC (Virtual COM)</option>
-<option>COM3 - FTDI USB-to-UART Serial (Lab Scope)</option>
-<option>COM8 - Internal IrDA Testbed Loopback</option>
+<select class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
+<option selected="">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
 </select>
 <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant">
 <span class="material-symbols-outlined text-[18px]" data-icon="expand_more">expand_more</span>
@@ -313,13 +308,13 @@
 <div class="space-y-1.5">
 <div class="flex justify-between items-center">
 <label class="font-label-sm text-label-sm text-on-surface-variant font-medium">Baudrate (bps)</label>
-<span class="font-mono-caption text-mono-caption text-outline">STABLE CLOCK</span>
+<span class="font-mono-caption text-mono-caption text-outline">SELECTABLE CLOCK</span>
 </div>
-<div class="grid grid-cols-4 gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]">
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all">9600</button>
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all">57600</button>
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md bg-white text-primary font-bold shadow-[0_1px_3px_rgba(0,0,0,0.08)]">115200</button>
-<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all">921600</button>
+<div id="baudrate-selector" class="grid grid-cols-4 gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]">
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all cursor-pointer">9600</button>
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all cursor-pointer">57600</button>
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md bg-white text-primary font-bold shadow-[0_1px_3px_rgba(0,0,0,0.08)] cursor-pointer">115200</button>
+<button class="py-1 text-center font-mono-data text-mono-data rounded-md text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-all cursor-pointer">921600</button>
 </div>
 </div>
 <!-- Framing & Blinker Telemetry -->
@@ -338,11 +333,11 @@
 <!-- Live TX / RX Status Indicators -->
 <div class="flex items-center gap-3">
 <div class="flex items-center gap-1.5">
-<span class="w-2 h-2 rounded-full bg-secondary status-pulse"></span>
+<span id="hw-tx-dot" class="w-2.5 h-2.5 rounded-full bg-primary/40 transition-colors"></span>
 <span class="font-mono-caption text-mono-caption text-on-surface font-medium">TX</span>
 </div>
 <div class="flex items-center gap-1.5">
-<span class="w-2 h-2 rounded-full bg-secondary-fixed-dim"></span>
+<span id="hw-rx-dot" class="w-2.5 h-2.5 rounded-full bg-secondary/40 transition-colors"></span>
 <span class="font-mono-caption text-mono-caption text-on-surface font-medium">RX</span>
 </div>
 </div>
@@ -350,17 +345,17 @@
 </div>
 <!-- Card Actions -->
 <div class="pt-space-md mt-space-md border-t border-black/[0.04] flex items-center justify-between gap-space-sm">
-<button class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all">
+<button class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
 <span class="material-symbols-outlined text-[16px]" data-icon="link">link</span>
                 Connect
               </button>
-<button class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all">
+<button class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
 <span class="material-symbols-outlined text-[16px]" data-icon="refresh">refresh</span>
                 Rescan Ports
               </button>
 </div>
 </section>
-<!-- Card 2: Optical Alignment & Quality -->
+<!-- Card 2: Optical Link & Realtime Telemetry -->
 <section class="bg-surface-container-lowest rounded-2xl p-space-lg border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.04)] flex flex-col justify-between">
 <div class="space-y-space-md">
 <!-- Card Header -->
@@ -370,66 +365,49 @@
 <span class="material-symbols-outlined text-[20px]" data-icon="radar">radar</span>
 </div>
 <div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Optical Alignment & Quality</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">PHOTODIODE ARRAY NIR TELEMETRY</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Optical Link & Diagnostics</h2>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">ROUND-TRIP ECHO & CARRIER HEALTH</span>
 </div>
 </div>
 <div class="flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
 <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  Beam Locked
+                  Link Ready
                 </div>
 </div>
-<!-- Gauge and Stats Split View -->
+<!-- Real Stats Grid -->
 <div class="grid grid-cols-1 sm:grid-cols-2 gap-space-md items-center py-1">
-<!-- Concentric Circular Alignment Gauge -->
-<div class="flex flex-col items-center justify-center p-space-sm bg-surface-container-low/50 rounded-xl border border-black/[0.04] relative">
-<div class="relative w-32 h-32 flex items-center justify-center">
-<!-- Clean Vector Ring Dial -->
-<svg class="w-full h-full -rotate-90 transform" viewbox="0 0 100 100">
-<circle cx="50" cy="50" fill="none" r="40" stroke="#E2E8F0" stroke-width="7"></circle>
-<circle cx="50" cy="50" fill="none" r="40" stroke="#2563EB" stroke-dasharray="251.3" stroke-dashoffset="15.1" stroke-linecap="round" stroke-width="7"></circle>
-</svg>
-<!-- Center Dial Readout -->
-<div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-<span class="font-headline-lg text-headline-lg font-bold text-on-surface tracking-tight">94%</span>
-<span class="font-mono-caption text-mono-caption text-secondary font-bold tracking-wider">ALIGNED</span>
+<!-- Link RTT KPI -->
+<div class="p-3 bg-surface-container-low rounded-xl border border-black/[0.04] flex flex-col justify-between h-full">
+<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
+<span>MEASURED RTT LATENCY</span>
+<span class="text-secondary font-semibold">ACTIVE</span>
 </div>
+<div class="flex items-baseline gap-2 mt-2">
+<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">-- ms</span>
+<span class="font-mono-caption text-mono-caption text-outline">Ping Echo</span>
 </div>
-<div class="text-[11px] text-outline font-mono-caption mt-1">Azimuth: +0.4° | Elevation: -0.1°</div>
+<div class="text-[11px] text-outline font-mono-caption mt-2">Optical transmission round-trip delay</div>
 </div>
-<!-- Right Telemetry Stats Column -->
-<div class="space-y-space-sm">
-<!-- Latency Readout -->
+<!-- Optical Carrier KPI -->
+<div class="space-y-2">
 <div class="p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
 <div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>LINK LATENCY</span>
-<span class="text-secondary font-semibold">STABLE</span>
+<span>CARRIER WAVELENGTH</span>
+<span class="text-primary font-semibold">NIR INFRARED</span>
 </div>
 <div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">36 ms</span>
-<span class="font-mono-caption text-mono-caption text-outline">±1.2ms jitter</span>
+<span class="font-headline-md text-headline-md font-bold text-on-surface">880 nm</span>
+<span class="font-mono-caption text-mono-caption text-outline">TFDU4101 LOS</span>
 </div>
 </div>
-<!-- Optical Power Readout -->
 <div class="p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
 <div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>OPTICAL POWER</span>
-<span class="text-secondary font-semibold">OPTIMAL</span>
+<span>MODULATION ENCODER</span>
+<span class="text-secondary font-semibold">SYNCED</span>
 </div>
 <div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">-18.4 dBm</span>
-<span class="font-mono-caption text-mono-caption text-outline">Target: -20 to -12</span>
-</div>
-</div>
-<!-- Link Margin Readout -->
-<div class="p-2.5 bg-surface-container-low rounded-xl border border-black/[0.04]">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>LINK MARGIN</span>
-<span class="text-primary font-semibold">RESERVE</span>
-</div>
-<div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">+14.2 dB</span>
-<span class="font-mono-caption text-mono-caption text-outline">Fade Reserve</span>
+<span class="font-headline-md text-headline-md font-bold text-on-surface">MCP2122</span>
+<span class="font-mono-caption text-mono-caption text-outline">3/16 Pulse Width</span>
 </div>
 </div>
 </div>
@@ -437,18 +415,14 @@
 </div>
 <!-- Card Actions -->
 <div class="pt-space-md mt-space-md border-t border-black/[0.04] flex items-center justify-between gap-space-sm">
-<button class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all">
+<button class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
 <span class="material-symbols-outlined text-[16px] text-primary" data-icon="wifi_tethering">wifi_tethering</span>
                 Ping Test
-              </button>
-<button class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all">
-<span class="material-symbols-outlined text-[16px] text-primary" data-icon="adjust">adjust</span>
-                Re-center Optics
               </button>
 </div>
 </section>
 </div>
-<!-- Bottom Card: Hardware Self-Test & Diagnostic Verifications -->
+<!-- Bottom Card: Protocol Layer Verification & Hardware Health -->
 <section class="bg-surface-container-lowest rounded-2xl p-space-lg border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.04] pb-space-sm mb-space-md">
 <div class="flex items-center gap-space-sm">
@@ -456,52 +430,52 @@
 <span class="material-symbols-outlined text-[20px]" data-icon="developer_board">developer_board</span>
 </div>
 <div>
-<h3 class="font-headline-md text-headline-md text-on-surface">Hardware Self-Test & Diagnostic Verifications</h3>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">REALTIME EMBEDDED SYSTEM REGISTER HEALTH</span>
+<h3 class="font-headline-md text-headline-md text-on-surface">Protocol Layer Verification & Architecture Health</h3>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">REALTIME EMBEDDED PROTOCOL STACK VERIFICATION</span>
 </div>
 </div>
 <div class="flex items-center gap-2">
 <span class="font-mono-caption text-mono-caption px-2.5 py-1 rounded bg-[#E8F8F0] text-secondary border border-secondary/20 font-bold">
-                POST-CYCLE #8820 • ALL CIRCUITS NORMAL
+                CLEAN LAYERED ARCHITECTURE • ACTIVE
               </span>
 </div>
 </div>
-<!-- 3 Diagnostic Verification Tiles -->
+<!-- 3 Verification Tiles -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-space-md">
-<!-- Verification 1: STM32F407 Core -->
+<!-- Verification 1: Framing Engine -->
 <div class="bg-surface-container-low/60 rounded-xl p-space-md border border-black/[0.04] hover:bg-surface-container-low transition-colors">
 <div class="flex items-center justify-between mb-2">
-<span class="font-title-sm text-title-sm text-on-surface font-semibold">STM32F407 Core</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Binary Framing Engine</span>
 <span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 <p class="font-mono-data text-mono-data text-on-surface-variant space-y-1">
 <span class="block text-secondary font-semibold">Verified</span>
-<span class="block text-[11px] text-outline">• 168MHz PLL Locked</span>
-<span class="block text-[11px] text-outline">• DMA2 Stream Active</span>
+<span class="block text-[11px] text-outline">• SOF 0xAA55 / EOF 0x55AA</span>
+<span class="block text-[11px] text-outline">• Little-Endian Frame Packing</span>
 </p>
 </div>
-<!-- Verification 2: IrDA Modulator Clock -->
+<!-- Verification 2: CRC-32 Integrity -->
 <div class="bg-surface-container-low/60 rounded-xl p-space-md border border-black/[0.04] hover:bg-surface-container-low transition-colors">
 <div class="flex items-center justify-between mb-2">
-<span class="font-title-sm text-title-sm text-on-surface font-semibold">IrDA Modulator Clock</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">CRC-32 Checksum Engine</span>
 <span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 <p class="font-mono-data text-mono-data text-on-surface-variant space-y-1">
 <span class="block text-secondary font-semibold">Verified</span>
-<span class="block text-[11px] text-outline">• 3.6864 MHz Synchronized</span>
-<span class="block text-[11px] text-outline">• Jitter < 40ps RMS</span>
+<span class="block text-[11px] text-outline">• IEEE 802.3 (0xEDB88320)</span>
+<span class="block text-[11px] text-outline">• Hardware Accelerated Integrity</span>
 </p>
 </div>
-<!-- Verification 3: TFDU4101 Transceiver -->
+<!-- Verification 3: Stop-and-Wait ARQ -->
 <div class="bg-surface-container-low/60 rounded-xl p-space-md border border-black/[0.04] hover:bg-surface-container-low transition-colors">
 <div class="flex items-center justify-between mb-2">
-<span class="font-title-sm text-title-sm text-on-surface font-semibold">TFDU4101 Transceiver</span>
+<span class="font-title-sm text-title-sm text-on-surface font-semibold">Stop-and-Wait ARQ Flow</span>
 <span class="material-symbols-outlined text-secondary text-[18px]" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 </div>
 <p class="font-mono-data text-mono-data text-on-surface-variant space-y-1">
 <span class="block text-secondary font-semibold">Verified</span>
-<span class="block text-[11px] text-outline">• 880nm NIR PIN Diode</span>
-<span class="block text-[11px] text-outline">• AGC Calibrated</span>
+<span class="block text-[11px] text-outline">• 250ms Timeout / Max 5 Retries</span>
+<span class="block text-[11px] text-outline">• Sequence Preservation on Retransmit</span>
 </p>
 </div>
 </div>
@@ -567,27 +541,26 @@
 <!-- Card Header -->
 <div class="flex items-center justify-between pb-space-sm border-b border-outline-variant/20 mb-space-md">
 <div class="flex items-center gap-2">
-<div class="w-2.5 h-2.5 rounded-full bg-primary animate-ping"></div>
-<span class="text-title-sm font-title-sm font-semibold text-on-surface">Active Infrared Transmission</span>
+<span class="text-title-sm font-title-sm font-semibold text-on-surface">Active Optical Transmission</span>
 </div>
 <div class="flex items-center gap-2">
 <span class="px-2 py-0.5 rounded text-mono-caption font-mono-caption bg-surface-container text-primary font-bold">CH-A (880nm)</span>
-<span class="text-mono-caption font-mono-caption bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-bold">STREAMING</span>
+<span class="text-mono-caption font-mono-caption bg-surface-container text-on-surface-variant px-2 py-0.5 rounded-full font-bold">IDLE</span>
 </div>
 </div>
 <!-- File Identification -->
 <div class="flex items-start gap-space-md mb-space-md">
-<div class="w-12 h-12 rounded-xl bg-error-container/40 text-error flex items-center justify-center shrink-0 border border-error-container">
-<span class="material-symbols-outlined text-[24px]" data-icon="picture_as_pdf">picture_as_pdf</span>
+<div class="w-12 h-12 rounded-xl bg-surface-container text-primary flex items-center justify-center shrink-0 border border-outline-variant/30">
+<span class="material-symbols-outlined text-[24px]" data-icon="description">description</span>
 </div>
 <div class="flex flex-col flex-1 overflow-hidden">
 <div class="flex items-center justify-between">
-<span class="text-title-sm font-title-sm font-bold text-on-surface truncate">presentation_slides.pdf</span>
-<span class="text-mono-data font-mono-data font-semibold text-on-surface-variant">512 KB</span>
+<span class="text-title-sm font-title-sm font-bold text-on-surface truncate">No active transfer</span>
+<span class="text-mono-data font-mono-data font-semibold text-on-surface-variant">-- KB</span>
 </div>
 <div class="flex items-center gap-2 mt-1">
-<span class="text-mono-caption font-mono-caption text-outline">SHA-256:</span>
-<span class="text-mono-caption font-mono-caption text-on-surface-variant font-mono bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/20">e3b0c442...89a1f9</span>
+<span class="text-mono-caption font-mono-caption text-outline">Status:</span>
+<span class="text-mono-caption font-mono-caption text-on-surface-variant font-mono bg-surface-container-low px-1.5 py-0.5 rounded border border-outline-variant/20">Ready for payload</span>
 </div>
 </div>
 </div>
@@ -595,35 +568,31 @@
 <div class="flex flex-col gap-1.5 mb-space-lg">
 <div class="flex items-center justify-between text-mono-caption font-mono-caption">
 <span class="text-on-surface font-semibold">Optical Beam Transfer Progress</span>
-<span class="text-primary font-bold text-mono-data font-mono-data">75%</span>
+<span class="text-primary font-bold text-mono-data font-mono-data">0%</span>
 </div>
 <div class="w-full h-2.5 rounded-full bg-surface-container overflow-hidden">
-<div class="h-full bg-gradient-to-r from-primary-container to-primary rounded-full transition-all duration-300 w-3/4"></div>
+<div class="h-full bg-gradient-to-r from-primary-container to-primary rounded-full transition-all duration-300 w-0"></div>
 </div>
 </div>
 <!-- Hardware Telemetry Matrix -->
 <div class="grid grid-cols-3 gap-2 p-space-sm rounded-lg bg-surface-container-low border border-outline-variant/20 mb-space-md">
 <div class="flex flex-col">
 <span class="text-mono-caption font-mono-caption uppercase text-outline">Throughput Rate</span>
-<span class="text-headline-md font-headline-md text-on-surface font-bold">9.9 <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span></span>
+<span class="text-headline-md font-headline-md text-on-surface font-bold">0.0 <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span></span>
 </div>
 <div class="flex flex-col border-l border-outline-variant/30 pl-3">
 <span class="text-mono-caption font-mono-caption uppercase text-outline">ETA Remaining</span>
-<span class="text-headline-md font-headline-md text-primary font-bold">10s</span>
+<span class="text-headline-md font-headline-md text-primary font-bold">--</span>
 </div>
 <div class="flex flex-col border-l border-outline-variant/30 pl-3">
 <span class="text-mono-caption font-mono-caption uppercase text-outline">Transmitted Packets</span>
-<span class="text-headline-md font-headline-md text-on-surface font-bold">240<span class="text-label-sm font-label-sm font-normal text-outline">/320</span></span>
+<span class="text-headline-md font-headline-md text-on-surface font-bold">0<span class="text-label-sm font-label-sm font-normal text-outline">/0</span></span>
 </div>
 </div>
 </div>
 <!-- Card Actions -->
 <div class="flex items-center justify-end gap-space-sm pt-space-xs">
-<button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-outline-variant/40 text-on-surface hover:bg-surface-container-high transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98]">
-<span class="material-symbols-outlined text-[15px]" data-icon="pause">pause</span>
-<span>Pause</span>
-</button>
-<button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-error/30 text-error hover:bg-error-container/30 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98]">
+<button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-error/30 text-error hover:bg-error-container/30 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer">
 <span class="material-symbols-outlined text-[15px]" data-icon="close">close</span>
 <span>Cancel</span>
 </button>
@@ -650,10 +619,6 @@
 <span class="material-symbols-outlined absolute left-2 top-1.5 text-[15px] text-outline" data-icon="search">search</span>
 <input class="h-[28px] pl-7 pr-2 text-label-sm font-label-sm rounded-lg bg-surface border border-outline-variant/30 focus:border-primary focus:ring-1 focus:ring-primary outline-none w-44" placeholder="Filter transmissions..." type="text"/>
 </div>
-<button class="h-[28px] px-2.5 rounded-lg bg-surface border border-outline-variant/30 text-on-surface text-label-sm font-label-sm hover:bg-surface-container-high transition-colors flex items-center gap-1">
-<span class="material-symbols-outlined text-[14px]" data-icon="tune">tune</span>
-<span>Filter</span>
-</button>
 </div>
 </div>
 <!-- Clean Mac-style Data Table -->
@@ -671,103 +636,13 @@
 </tr>
 </thead>
 <tbody class="divide-y divide-outline-variant/10 text-body-md font-body-md">
-<!-- Row 1: firmware_patch_v2.bin -->
-<tr class="hover:bg-surface-container-high/40 transition-colors h-11">
-<td class="px-space-md">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px] text-primary" data-icon="memory">memory</span>
-<span class="font-mono-data font-semibold text-on-surface">firmware_patch_v2.bin</span>
-</div>
-</td>
-<td class="px-space-md font-mono-data text-on-surface-variant">1.4 MB</td>
-<td class="px-space-md">
-<span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
-</td>
-<td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">Today, 14:22:08</td>
-<td class="px-space-md">
-<span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: 0x94B2C81F</span>
-</td>
-<td class="px-space-md">
-<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span>Verified (100%)</span>
-</div>
-</td>
-<td class="px-space-md text-right">
-<div class="flex items-center justify-end gap-1">
-<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Download payload">
-<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
-</button>
-<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View telemetry log">
-<span class="material-symbols-outlined text-[16px]" data-icon="info">info</span>
-</button>
-</div>
-</td>
-</tr>
-<!-- Row 2: telemetry_log_0409.csv -->
-<tr class="hover:bg-surface-container-high/40 transition-colors h-11">
-<td class="px-space-md">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px] text-tertiary" data-icon="table_chart">table_chart</span>
-<span class="font-mono-data font-semibold text-on-surface">telemetry_log_0409.csv</span>
-</div>
-</td>
-<td class="px-space-md font-mono-data text-on-surface-variant">128 KB</td>
-<td class="px-space-md">
-<span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
-</td>
-<td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">Today, 13:45:19</td>
-<td class="px-space-md">
-<span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: 0x48A0E722</span>
-</td>
-<td class="px-space-md">
-<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span>Verified (100%)</span>
-</div>
-</td>
-<td class="px-space-md text-right">
-<div class="flex items-center justify-end gap-1">
-<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Download payload">
-<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
-</button>
-<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View telemetry log">
-<span class="material-symbols-outlined text-[16px]" data-icon="info">info</span>
-</button>
-</div>
-</td>
-</tr>
-<!-- Row 3: spectrogram_capture.png -->
-<tr class="hover:bg-surface-container-high/40 transition-colors h-11">
-<td class="px-space-md">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px] text-secondary" data-icon="image">image</span>
-<span class="font-mono-data font-semibold text-on-surface">spectrogram_capture.png</span>
-</div>
-</td>
-<td class="px-space-md font-mono-data text-on-surface-variant">890 KB</td>
-<td class="px-space-md">
-<span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
-</td>
-<td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">Today, 11:15:40</td>
-<td class="px-space-md">
-<span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: 0xEE73021B</span>
-</td>
-<td class="px-space-md">
-<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span>Verified (100%)</span>
-</div>
-</td>
-<td class="px-space-md text-right">
-<div class="flex items-center justify-end gap-1">
-<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Download payload">
-<span class="material-symbols-outlined text-[16px]" data-icon="download">download</span>
-</button>
-<button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="View telemetry log">
-<span class="material-symbols-outlined text-[16px]" data-icon="info">info</span>
-</button>
-</div>
+<tr>
+<td colspan="7" class="py-8 text-center text-on-surface-variant text-body-md">
+  <div class="flex flex-col items-center justify-center gap-1">
+    <span class="material-symbols-outlined text-[24px] text-outline">folder_off</span>
+    <span class="font-medium text-on-surface">No optical file transfers recorded yet</span>
+    <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
+  </div>
 </td>
 </tr>
 </tbody>
@@ -776,15 +651,15 @@
 <!-- Bottom Micro Status Bar -->
 <div class="flex items-center justify-between text-mono-caption font-mono-caption text-outline px-1">
 <div class="flex items-center gap-space-md">
-<span>Total Session Optical Payloads: <strong class="text-on-surface">3.83 MB</strong></span>
+<span>Stop-and-Wait ARQ Protocol</span>
 <span>•</span>
-<span>Average BER: <strong class="text-secondary">&lt; 1.4 × 10<sup>-10</sup></strong></span>
+<span>CRC-32 IEEE 802.3 Checksum</span>
 <span>•</span>
-<span>Modulation: <strong class="text-on-surface">OOK-Manchester 1.25 Mbps</strong></span>
+<span>Chunk Size: <strong class="text-on-surface">240 Bytes</strong></span>
 </div>
 <div class="flex items-center gap-1 text-primary">
 <span class="material-symbols-outlined text-[14px]" data-icon="optical_audio">drive_file_rename_outline</span>
-<span class="font-semibold">Optical Carrier 880nm Active</span>
+<span class="font-semibold">Optical Carrier 880nm Ready</span>
 </div>
 </div>
 </div>
@@ -810,104 +685,22 @@
 <div class="flex items-center gap-2">
 <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/60">
 <span class="material-symbols-outlined text-[14px] text-primary" data-icon="lens_blur">lens_blur</span>
-<span class="text-mono-caption font-mono-caption text-on-surface">Beam Carrier: <strong class="font-semibold text-primary">880nm NIR Direct LOS</strong></span>
+<span class="text-mono-caption font-mono-caption text-on-surface">Carrier: <strong class="font-semibold text-primary">880nm NIR Direct LOS</strong></span>
 </div>
 <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/60">
 <span class="w-2 h-2 rounded-full bg-secondary"></span>
-<span class="text-mono-caption font-mono-caption text-on-surface">Link State: <strong class="font-semibold text-secondary">Locked (BER &lt; 10<sup>-9</sup>)</strong></span>
+<span class="text-mono-caption font-mono-caption text-on-surface">Link: <strong class="font-semibold text-secondary">Locked</strong></span>
 </div>
 </div>
 </section>
-<!-- Conversation Timeline / Stream (iMessage-inspired clean layout) -->
-<section class="flex-1 overflow-y-auto px-space-xl py-space-lg space-y-5 bg-[#FBFBFC]">
-<!-- Centered Sync Timestamp Badge -->
-<div class="flex justify-center">
-<div class="px-3 py-1 rounded-full bg-surface-container border border-outline-variant/60 text-on-surface-variant text-mono-caption font-mono-caption shadow-xs">
-              Today — Optical Session Synchronized at 14:02:11 UTC
-            </div>
-</div>
-<!-- Message 1: Incoming (Remote Node) -->
-<div class="flex flex-col items-start max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Remote Node (Station Bravo • 880nm)</span>
-<span class="text-mono-caption font-mono-caption text-outline">14:02:15</span>
-</div>
-<!-- Message Bubble -->
-<div class="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#EAECEF] border border-outline-variant/50 text-[#1F2937] text-body-md font-body-md shadow-xs leading-relaxed">
-              Optical carrier acquired. Photodiode transimpedance amplifier locked at 115200 baud.
-            </div>
-<!-- Telemetry Footer -->
-<div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
-<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40">PKT #0104</span>
-<span>•</span>
-<span class="text-secondary font-medium">CRC32 Valid</span>
-<span>•</span>
-<span>0 Dropped</span>
-</div>
-</div>
-<!-- Message 2: Outgoing (Local Host TX) -->
-<div class="flex flex-col items-end ml-auto max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="text-mono-caption font-mono-caption text-outline">14:02:28</span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Local Host (TX-880nm)</span>
-<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
-</div>
-<!-- Outgoing Bubble: Cobalt Blue #2563EB with 14px rounded styling -->
-<div class="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary-container text-white text-body-md font-body-md shadow-sm leading-relaxed">
-              Acknowledged Station Bravo. Testing payload throughput over optical beam.
-            </div>
-<!-- Status Read Receipt -->
-<div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
-<span class="material-symbols-outlined text-[13px]" data-icon="done_all">done_all</span>
-<span class="font-medium">ACK Confirmed (32ms round-trip)</span>
-</div>
-</div>
-<!-- System Event Divider -->
-<div class="relative flex items-center justify-center my-3">
-<div class="absolute inset-0 flex items-center">
-<div class="w-full border-t border-dashed border-outline-variant"></div>
-</div>
-<div class="relative px-3 py-1 rounded-full bg-surface-container-high border border-outline-variant text-on-surface text-mono-caption font-mono-caption flex items-center gap-1.5 shadow-xs">
-<span class="material-symbols-outlined text-[13px] text-tertiary" data-icon="bolt">bolt</span>
-<span class="font-semibold">Optical Carrier Polarity Inverted</span>
-<span class="text-outline">•</span>
-<span class="text-secondary font-medium">Resynced in 1.4ms —</span>
-</div>
-</div>
-<!-- Message 3: Incoming (Remote Node) -->
-<div class="flex flex-col items-start max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Remote Node (Station Bravo • 880nm)</span>
-<span class="text-mono-caption font-mono-caption text-outline">14:03:02</span>
-</div>
-<div class="px-4 py-2.5 rounded-2xl rounded-tl-sm bg-[#EAECEF] border border-outline-variant/50 text-[#1F2937] text-body-md font-body-md shadow-xs leading-relaxed">
-              Echo received with 0 bit errors. Optical power meter reads -18.2 dBm. Beam alignment 95%. Ready for streaming test.
-            </div>
-<!-- Telemetry Sub-badges -->
-<div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
-<span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40">PKT #0105</span>
-<span>•</span>
-<span class="text-secondary font-medium">BER 0.00e0</span>
-<span>•</span>
-<span class="px-1.5 py-0.5 rounded bg-surface-container-low text-primary font-semibold">RSSI: -18.2 dBm</span>
-</div>
-</div>
-<!-- Message 4: Outgoing (Local Host TX) -->
-<div class="flex flex-col items-end ml-auto max-w-xl group">
-<div class="flex items-center gap-2 mb-1 px-1">
-<span class="text-mono-caption font-mono-caption text-outline">14:03:19</span>
-<span class="text-label-sm font-label-sm font-bold text-on-surface">Local Host (TX-880nm)</span>
-<span class="w-1.5 h-1.5 rounded-full bg-primary-container"></span>
-</div>
-<div class="px-4 py-2.5 rounded-2xl rounded-tr-sm bg-primary-container text-white text-body-md font-body-md shadow-sm leading-relaxed">
-              Sending 512-byte test packet burst over channel A.
-            </div>
-<div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
-<span class="material-symbols-outlined text-[13px]" data-icon="done_all">done_all</span>
-<span class="font-medium">ACK Confirmed (28ms)</span>
-</div>
+<!-- Conversation Timeline / Stream -->
+<section class="flex-1 overflow-y-auto px-space-xl py-space-lg space-y-5 bg-[#FBFBFC] flex flex-col justify-center">
+<div id="chat-empty-state" class="flex flex-col items-center justify-center py-16 text-center text-on-surface-variant my-auto">
+  <div class="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center text-primary mb-3 shadow-xs">
+    <span class="material-symbols-outlined text-[24px]">forum</span>
+  </div>
+  <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">No optical messages yet</p>
+  <p class="text-body-md font-body-md text-outline max-w-sm">Type a text message below and press Enter to transmit across the 880nm Line-Of-Sight optical carrier.</p>
 </div>
 </section>
 <!-- Bottom Rounded Input Bar & Action Controls -->
@@ -1000,24 +793,21 @@
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-primary tracking-tight">9.84</span>
+<span class="font-display-lg text-display-lg font-bold text-primary tracking-tight">0.00</span>
 <span class="font-mono-caption text-on-surface-variant font-semibold">KB/s</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold flex items-center">
-<span class="material-symbols-outlined text-[12px]">trending_up</span> +4.2%
-                </span>
-<span class="text-on-surface-variant">vs baseline (peak: 11.2 KB/s)</span>
+<span class="text-on-surface-variant">Active Baud Throughput</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary-container rounded-full" style="width: 82%;"></div>
+<div class="h-full bg-primary-container rounded-full" style="width: 0%;"></div>
 </div>
 </div>
 <!-- KPI 2: Packet Loss & BER -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet Loss &amp; BER</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet Loss</span>
 <span class="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
 </div>
 <div class="my-2">
@@ -1026,8 +816,7 @@
 <span class="font-mono-caption text-on-surface-variant font-medium">(0 pkts)</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold">Optimal Carrier SNR</span>
-<span class="text-on-surface-variant">(31.4 dB • BER &lt; 10<sup>-10</sup>)</span>
+<span class="text-secondary font-semibold">Clean Optical Channel</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
@@ -1037,21 +826,20 @@
 <!-- KPI 3: Latency -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Optical Flight Latency</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Round-Trip Latency</span>
 <span class="material-symbols-outlined text-outline text-[18px]">timer</span>
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">34</span>
+<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">--</span>
 <span class="font-mono-caption text-on-surface-variant font-semibold">ms</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-primary font-semibold">Jitter ±1.1 ms</span>
-<span class="text-on-surface-variant">photodiode TIA response</span>
+<span class="text-primary font-semibold">Ping/Pong Echo Delay</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary/70 rounded-full" style="width: 45%;"></div>
+<div class="h-full bg-primary/70 rounded-full" style="width: 0%;"></div>
 </div>
 </div>
 <!-- KPI 4: Chunks -->
@@ -1062,12 +850,11 @@
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">1,420</span>
+<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">0</span>
 <span class="font-mono-caption text-on-surface-variant font-semibold">blks</span>
 </div>
 <div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold">100% CRC-32 Validated</span>
-<span class="text-on-surface-variant">0 parity faults</span>
+<span class="text-secondary font-semibold">Stop-and-Wait ARQ Verified</span>
 </div>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
@@ -1075,136 +862,54 @@
 </div>
 </div>
 </div>
-<!-- 2 High-Density Spline Performance Charts -->
+<!-- 2 High-Density Live Charts -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-space-md">
-<!-- Chart 1: Transmission Speed over Time -->
+<!-- Chart 1: Realtime Transmission Speed -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between relative">
 <div class="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/20">
 <div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Transmission Speed over Time</span>
-<span class="font-mono-caption text-[10px] text-outline px-1.5 py-0.5 rounded bg-surface-container-low">15m Window</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Realtime Transmission Speed</span>
+<span class="font-mono-caption text-[10px] text-primary px-1.5 py-0.5 rounded bg-primary/10 font-semibold">Live Feed</span>
 </div>
 <div class="flex items-center gap-3 font-mono-caption text-[11px]">
 <div class="flex items-center gap-1">
 <span class="w-2.5 h-[2px] bg-primary"></span>
-<span class="text-on-surface-variant">Baud Throughput (KB/s)</span>
-</div>
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[1px] bg-outline border-b border-dashed border-outline"></span>
-<span class="text-outline">Mean (9.84)</span>
+<span class="text-on-surface-variant">Throughput (KB/s)</span>
 </div>
 </div>
 </div>
-<!-- SVG Spline Visualizer -->
-<div class="relative w-full h-48 select-none">
-<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 540 180">
-<defs>
-<lineargradient id="primaryGradient" x1="0" x2="0" y1="0" y2="1">
-<stop offset="0%" stop-color="#2563eb" stop-opacity="0.28"></stop>
-<stop offset="90%" stop-color="#2563eb" stop-opacity="0.00"></stop>
-</lineargradient>
-</defs>
-<!-- Gridlines -->
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="30" y2="30"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="75" y2="75"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="120" y2="120"></line>
-<line stroke="#c3c6d7" stroke-width="1" x1="0" x2="540" y1="165" y2="165"></line>
-<!-- Mean Baseline Indicator Line -->
-<line opacity="0.6" stroke="#737686" stroke-dasharray="4 4" stroke-width="1.2" x1="0" x2="540" y1="68" y2="68"></line>
-<!-- Gradient Fill -->
-<path d="M 0,165 
-                         C 40,150 70,120 110,105 
-                         C 150,90 180,85 220,72 
-                         C 260,60 290,80 330,68 
-                         C 370,55 400,62 440,58 
-                         C 475,54 505,62 540,56 
-                         L 540,165 Z" fill="url(#primaryGradient)"></path>
-<!-- Blue Main Spline Curve -->
-<path d="M 0,165 
-                         C 40,150 70,120 110,105 
-                         C 150,90 180,85 220,72 
-                         C 260,60 290,80 330,68 
-                         C 370,55 400,62 440,58 
-                         C 475,54 505,62 540,56" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-width="2.5"></path>
-<!-- Highlight Pulse Marker at 14:12:45 UTC -->
-<circle cx="440" cy="58" fill="#2563eb" r="4.5" stroke="#ffffff" stroke-width="2"></circle>
-</svg>
-<!-- Floating Tooltip Card over active marker -->
-<div class="absolute top-4 right-16 bg-on-surface text-surface-bright p-1.5 px-2.5 rounded-lg shadow-lg text-[10px] font-mono-caption border border-outline-variant/30 pointer-events-none">
-<div class="font-bold text-inverse-primary text-[11px]">9.84 KB/s</div>
-<div class="text-outline-variant text-[9px]">14:12:45 UTC • 880nm Lock</div>
+<div class="relative w-full h-44 flex items-center justify-center">
+<canvas id="live-speed-chart" class="w-full h-full"></canvas>
 </div>
-<!-- Y-Axis labels -->
-<div class="absolute left-0 top-0 h-full flex flex-col justify-between pointer-events-none font-mono-caption text-[9px] text-outline -translate-x-1 pr-1">
-<span>12.0</span>
-<span>9.0</span>
-<span>6.0</span>
-<span>0.0</span>
-</div>
-</div>
-<!-- X-Axis timeline labels -->
 <div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-outline-variant/20">
-<span>14:00:00 UTC</span>
-<span>14:04:00</span>
-<span>14:08:00</span>
-<span>14:12:00</span>
-<span>14:15:00 UTC (Now)</span>
+<span>30s ago</span>
+<span>20s ago</span>
+<span>10s ago</span>
+<span>Now (Realtime)</span>
 </div>
 </div>
-<!-- Chart 2: BER & SNR vs Attenuation -->
+<!-- Chart 2: Realtime Round-Trip Latency -->
 <div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between relative">
 <div class="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/20">
 <div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Packet Loss &amp; BER vs Optical Power</span>
-<span class="font-mono-caption text-[10px] text-secondary px-1.5 py-0.5 rounded bg-secondary-fixed/20 font-semibold">Nominal LOS Locked</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Round-Trip Latency (RTT)</span>
+<span class="font-mono-caption text-[10px] text-secondary px-1.5 py-0.5 rounded bg-secondary/10 font-semibold">Direct LOS</span>
 </div>
 <div class="flex items-center gap-3 font-mono-caption text-[11px]">
 <div class="flex items-center gap-1">
-<span class="w-2.5 h-[2px] bg-primary"></span>
-<span class="text-on-surface-variant">SNR (dB)</span>
-</div>
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[1.5px] bg-error"></span>
-<span class="text-error font-medium">Critical Cutoff (10<sup>-6</sup>)</span>
+<span class="w-2.5 h-[2px] bg-secondary"></span>
+<span class="text-on-surface-variant">RTT (ms)</span>
 </div>
 </div>
 </div>
-<!-- SVG Attenuation Response Visualizer -->
-<div class="relative w-full h-48 select-none">
-<svg class="w-full h-full overflow-visible" preserveaspectratio="none" viewbox="0 0 540 180">
-<!-- Gridlines -->
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="30" y2="30"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="75" y2="75"></line>
-<line stroke="#d3e4fe" stroke-dasharray="3 3" stroke-width="0.8" x1="0" x2="540" y1="120" y2="120"></line>
-<line stroke="#c3c6d7" stroke-width="1" x1="0" x2="540" y1="165" y2="165"></line>
-<!-- Warning Threshold (BER 10^-6 cutoff) -->
-<line opacity="0.85" stroke="#ba1a1a" stroke-dasharray="5 3" stroke-width="1.2" x1="0" x2="540" y1="130" y2="130"></line>
-<!-- Carrier SNR vs Path Loss curve -->
-<path d="M 0,35 
-                         C 80,38 160,42 240,58 
-                         C 320,74 380,105 440,140 
-                         C 475,160 510,165 540,165" fill="none" stroke="#2563eb" stroke-linecap="round" stroke-width="2.5"></path>
-<!-- Current Operational Lock Pin (-18.2 dBm) -->
-<line stroke="#006c49" stroke-dasharray="2 2" stroke-width="1.2" x1="200" x2="200" y1="20" y2="165"></line>
-<circle cx="200" cy="50" fill="#006c49" r="5" stroke="#ffffff" stroke-width="2"></circle>
-</svg>
-<!-- Operational Point Floating Badge -->
-<div class="absolute top-2 left-44 bg-surface-container-lowest border border-secondary/40 shadow-md p-1 px-2 rounded font-mono-caption text-[10px]">
-<div class="text-secondary font-bold">RX: -18.2 dBm</div>
-<div class="text-outline text-[9px]">SNR: 31.4 dB (Safe)</div>
+<div class="relative w-full h-44 flex items-center justify-center">
+<canvas id="live-rtt-chart" class="w-full h-full"></canvas>
 </div>
-<!-- Safety Threshold Note -->
-<div class="absolute bottom-8 right-3 font-mono-caption text-[9px] text-error font-semibold bg-error-container/40 px-1.5 py-0.5 rounded">
-                Warning Threshold: BER &gt; 10<sup>-6</sup>
-              </div>
-</div>
-<!-- X-Axis timeline labels -->
 <div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-outline-variant/20">
-<span>-10 dBm (Near Field)</span>
-<span>-15 dBm</span>
-<span>-20 dBm (Target)</span>
-<span>-25 dBm</span>
-<span>-35 dBm (Cutoff)</span>
+<span>30s ago</span>
+<span>20s ago</span>
+<span>10s ago</span>
+<span>Now (Realtime)</span>
 </div>
 </div>
 </div>
@@ -1216,24 +921,24 @@
 <span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
 <span class="font-title-sm text-title-sm font-semibold text-on-surface">Raw Optical Frame Sniffer &amp; Buffer (Half-Duplex Bus CH-01)</span>
 <span class="px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-mono-caption text-[10px] font-semibold border border-primary/20">
-                1,420 frames captured
+                0 frames captured
               </span>
 </div>
 <div class="flex items-center gap-space-sm">
 <!-- Filter Segment Chips -->
 <div class="flex items-center bg-surface-container-low p-0.5 rounded-lg border border-outline-variant/40 font-mono-caption text-[10px]">
-<button class="px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs">ALL</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface">SYN/ACK</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-semibold">BURST_DATA</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface">CRC_OK</button>
-<button class="px-2 py-1 rounded text-error hover:bg-error-container/30">ERROR_FRAMES (0)</button>
+<button class="px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs cursor-pointer">ALL</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">SYN/ACK</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-semibold cursor-pointer">BURST_DATA</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">CRC_OK</button>
+<button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">ERROR_FRAMES (0)</button>
 </div>
 <!-- Search Hex Filter Input -->
 <div class="relative">
 <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
 <input class="h-[28px] pl-6 pr-2 rounded-lg bg-surface-container-lowest border border-outline-variant/40 font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-44" placeholder="Hex opcode or frame ID..." type="text"/>
 </div>
-<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant" title="Collapse / Expand Drawer">
+<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer" title="Collapse / Expand Drawer">
 <span class="material-symbols-outlined text-[18px]">expand_more</span>
 </button>
 </div>
@@ -1253,41 +958,14 @@
 </tr>
 </thead>
 <tbody class="font-mono-data text-[11px] divide-y divide-outline-variant/10">
-<tr class="hover:bg-surface-container-low/50 transition-colors">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:02.104</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F4</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-primary-fixed/40 text-on-primary-fixed text-[10px] font-medium">BURST_DATA</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x88 0x3E 0x9A 0x2C 0xF1 0x0A 0x4B]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">33.8 ms</td>
-</tr>
-<tr class="hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:01.998</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F3</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-primary-fixed/40 text-on-primary-fixed text-[10px] font-medium">BURST_DATA</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x74 0x11 0x02 0xAA 0xCC 0xD9 0x88]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">34.1 ms</td>
-</tr>
-<tr class="hover:bg-surface-container-low/50 transition-colors">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:01.892</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F2</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-secondary-fixed/40 text-on-secondary-fixed text-[10px] font-medium">ACK_SYNC</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x06 0x00 0xFF 0xFE 0x00 0x12 0x40]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">33.9 ms</td>
-</tr>
-<tr class="hover:bg-surface-container-low/50 transition-colors bg-surface-container-low/20">
-<td class="py-1.5 px-space-md text-on-surface-variant">14:15:01.780</td>
-<td class="py-1.5 px-space-sm font-semibold text-primary">#0x04F1</td>
-<td class="py-1.5 px-space-sm text-on-surface">880nm NIR</td>
-<td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.2 rounded bg-primary-fixed/40 text-on-primary-fixed text-[10px] font-medium">BURST_DATA</span></td>
-<td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> [0x99 0x22 0x33 0x44 0x55 0x66 0x77]</td>
-<td class="py-1.5 px-space-sm text-secondary font-semibold"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>CRC32 Valid</span></td>
-<td class="py-1.5 px-space-md text-right text-on-surface-variant">34.2 ms</td>
+<tr>
+<td colspan="7" class="py-8 text-center text-on-surface-variant text-mono-data">
+  <div class="flex flex-col items-center justify-center gap-1">
+    <span class="material-symbols-outlined text-[20px] text-outline">memory</span>
+    <span>Waiting for optical frames...</span>
+    <span class="text-[10px] text-outline">Transmitted and received frames will appear here in real time.</span>
+  </div>
+</td>
 </tr>
 </tbody>
 </table>
@@ -1297,14 +975,13 @@
 <div class="flex items-center gap-3">
 <span class="flex items-center gap-1">
 <span class="material-symbols-outlined text-[12px] text-secondary">lock</span>
-<span>Auto-scroll locked</span>
+<span>Auto-scroll active</span>
 </span>
-<span>Buffer: 64 / 512 Bytes (Ring Active)</span>
-<span>DMA Channel: RX-03 High-Speed</span>
+<span>Ring Buffer: 1024 Bytes</span>
+<span>UART 115200 bps 8-N-1</span>
 </div>
 <div class="flex items-center gap-2">
-<span class="text-outline">Dropped Frames: 0</span>
-<span class="text-secondary font-semibold">Parity OK</span>
+<span class="text-secondary font-semibold">CRC-32 IEEE 802.3 Active</span>
 </div>
 </div>
 </div>
