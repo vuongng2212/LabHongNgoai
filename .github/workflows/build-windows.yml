@@ -7,6 +7,20 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Tạo GitHub Release ngay từ lần chạy này?'
+        required: false
+        type: boolean
+        default: false
+      tag_name:
+        description: 'Tag version cho Release (nếu chọn tạo release)'
+        required: false
+        type: string
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
 
 jobs:
   test-and-build:
@@ -16,6 +30,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Astral uv
         uses: astral-sh/setup-uv@v5
@@ -44,17 +60,22 @@ jobs:
         run: |
           Compress-Archive -Path dist\IR_OWC_Lab_Terminal\* -DestinationPath dist\IR_OWC_Lab_Terminal-Windows-x64.zip
 
-      - name: Upload Build Artifact
+      - name: Upload Build Artifact (CI Temp Storage)
         uses: actions/upload-artifact@v4
         with:
           name: IR_OWC_Lab_Terminal-Windows-x64
           path: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
           retention-days: 14
 
-      - name: Create GitHub Release (On Tag Push)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
+          name: Release ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
           files: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
