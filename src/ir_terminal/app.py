@@ -7,6 +7,11 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from ir_terminal.core.serial_manager import SerialManager
+from ir_terminal.services.chat_service import ChatService
+from ir_terminal.services.file_transfer_service import FileTransferService
+from ir_terminal.services.storage_service import StorageService
+from ir_terminal.services.telemetry_service import TelemetryService
+from ir_terminal.ui.backend_bridge import BackendBridge
 from ir_terminal.ui.main_window_web import WebMainWindow
 from ir_terminal.utils.logger import setup_logger
 
@@ -29,9 +34,23 @@ def create_app() -> tuple[QApplication, WebMainWindow]:
     app.setApplicationName("IR-OWC Lab Terminal")
     app.setOrganizationName("LabHongNgoai")
 
-    # Dependency Injection Container
+    # Dependency Injection Container & Composition Root
+    storage_service = StorageService()
     serial_manager = SerialManager()
-    main_window = WebMainWindow(serial_manager)
+    chat_service = ChatService(serial_manager=serial_manager, storage_service=storage_service)
+    file_service = FileTransferService(
+        serial_manager=serial_manager, storage_service=storage_service
+    )
+    telemetry_service = TelemetryService(storage_service=storage_service)
+
+    bridge = BackendBridge(
+        serial_manager=serial_manager,
+        chat_service=chat_service,
+        file_service=file_service,
+        telemetry_service=telemetry_service,
+        storage_service=storage_service,
+    )
+    main_window = WebMainWindow(serial_manager=serial_manager, bridge=bridge)
 
     return app, main_window
 

@@ -6,6 +6,8 @@ import csv
 import io
 import logging
 import sqlite3
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
 
@@ -67,15 +69,22 @@ class StorageService:
         self._db_path = db_path if db_path is not None else get_db_path()
         self._init_database()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Creates and returns a connection to the SQLite database.
+    @contextmanager
+    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager yielding a thread-safe connection to the SQLite database.
 
-        Returns:
+        Guarantees proper transaction commit/rollback and connection closure upon exit.
+
+        Yields:
             Configured sqlite3.Connection instance with Row factory.
         """
         conn = sqlite3.connect(str(self._db_path))
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _init_database(self) -> None:
         """Initializes database schema if not already present."""

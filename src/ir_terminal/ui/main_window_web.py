@@ -10,8 +10,8 @@ from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
-from ir_terminal.core.backend_bridge import BackendBridge
 from ir_terminal.core.serial_manager import SerialManager
+from ir_terminal.ui.backend_bridge import BackendBridge
 from ir_terminal.utils.path_helpers import get_web_index_path
 
 logger = logging.getLogger(__name__)
@@ -41,15 +41,20 @@ class WebAppPage(QWebEnginePage):
 class WebMainWindow(QMainWindow):
     """Main Application Window hosting Chromium WebEngine and Python QWebChannel."""
 
-    def __init__(self, serial_manager: SerialManager) -> None:
+    def __init__(
+        self,
+        serial_manager: SerialManager,
+        bridge: BackendBridge | None = None,
+    ) -> None:
         """Initializes main web application window.
 
         Args:
             serial_manager: Serial manager instance managing background I/O.
+            bridge: Optional injected BackendBridge instance.
         """
         super().__init__()
         self._serial_manager = serial_manager
-        self._bridge = BackendBridge(self._serial_manager)
+        self._bridge = bridge or BackendBridge(self._serial_manager)
 
         self._init_window()
         self._init_webengine()

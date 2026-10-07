@@ -44,7 +44,8 @@ def build() -> int:
         return result.returncode
 
     dist_dir = root_dir / "dist" / "IR_OWC_Lab_Terminal"
-    executable_path = dist_dir / "IR_OWC_Lab_Terminal"
+    binary_name = "IR_OWC_Lab_Terminal.exe" if sys.platform == "win32" else "IR_OWC_Lab_Terminal"
+    executable_path = dist_dir / binary_name
 
     if not dist_dir.exists():
         print(f"Error: Output directory {dist_dir} was not created!", file=sys.stderr)

@@ -7,9 +7,11 @@ from typing import ClassVar
 
 from PySide6.QtCore import QObject, QThread, Signal
 
+from ir_terminal.core.mock_serial import MockSerialPort
 from ir_terminal.core.serial_worker import SerialWorker, scan_available_ports
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
 from ir_terminal.protocol.framer import pack_frame
+from ir_terminal.protocol.packet import Packet
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,7 @@ class SerialManager(QObject):
     error_occurred: ClassVar[Signal] = Signal(str)
     raw_tx: ClassVar[Signal] = Signal(bytes)
     raw_rx: ClassVar[Signal] = Signal(bytes)
-    packet_received: ClassVar[Signal] = Signal(object)  # (Packet)
+    packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
 
     # Internal dispatch signals to worker thread
     _sig_open: ClassVar[Signal] = Signal(str, int)
@@ -88,6 +90,12 @@ class SerialManager(QObject):
     def disconnect_port(self) -> None:
         """Requests closing serial port in background thread."""
         self._sig_close.emit()
+
+    def inject_raw_rx(self, data: bytes) -> None:
+        """Injects simulated raw bytes directly into worker's transport buffer."""
+        transport = self._worker._transport if self._worker else None
+        if isinstance(transport, MockSerialPort):
+            transport.inject_rx_data(data)
 
     def send_raw(self, data: bytes) -> None:
         """Sends raw byte sequence through serial worker."""

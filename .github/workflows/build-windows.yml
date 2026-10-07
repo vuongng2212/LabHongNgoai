@@ -1,0 +1,60 @@
+name: Build Windows Executable
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    name: Build & Package (Windows x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Astral uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Install Project Dependencies
+        run: uv sync --extra dev
+
+      - name: Run Test Suite (Headless Offscreen)
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = "offscreen"
+          uv run pytest tests/ -v
+
+      - name: Build Standalone Executable via PyInstaller
+        shell: pwsh
+        run: uv run python scripts/build_standalone.py
+
+      - name: Archive Distribution Directory
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\IR_OWC_Lab_Terminal\* -DestinationPath dist\IR_OWC_Lab_Terminal-Windows-x64.zip
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IR_OWC_Lab_Terminal-Windows-x64
+          path: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
+          retention-days: 14
+
+      - name: Create GitHub Release (On Tag Push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -64,10 +64,11 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
     # Offset 3  : Opcode / Command     -> uint8
     # Offset 4-5: Payload Length (N)   -> uint16 (Little-Endian, bytes)
     # =========================================================================
-    header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq, opcode, payload_len)
+    sof_bytes = struct.pack("<H", SOF_MAGIC)
+    header_fields = struct.pack("<BBH", seq, opcode, payload_len)
 
-    # Compute CRC-32 over Header + Payload
-    body_for_crc = header_bytes + payload
+    # Compute CRC-32 over SEQ through PAYLOAD (excluding SOF delimiter per STM32 spec)
+    body_for_crc = header_fields + payload
     crc_val = compute_crc32(body_for_crc)
 
     # =========================================================================
@@ -77,7 +78,7 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
     # =========================================================================
     footer_bytes = struct.pack("<IH", crc_val, EOF_MAGIC)
 
-    return header_bytes + payload + footer_bytes
+    return sof_bytes + header_fields + payload + footer_bytes
 
 
 def parse_frames_from_buffer(buffer: bytes) -> tuple[list[Packet], bytes]:
@@ -147,7 +148,6 @@ def parse_frames_from_buffer(buffer: bytes) -> tuple[list[Packet], bytes]:
             return packets, buffer[idx:]
 
         # 5. Extract components
-        header_raw = buffer[idx : idx + HEADER_SIZE]
         payload = buffer[idx + HEADER_SIZE : idx + HEADER_SIZE + payload_len]
         footer_offset = idx + HEADER_SIZE + payload_len
         footer_raw = buffer[footer_offset : footer_offset + FOOTER_SIZE]
@@ -165,8 +165,10 @@ def parse_frames_from_buffer(buffer: bytes) -> tuple[list[Packet], bytes]:
             idx += 2
             continue
 
-        # 7. Validate CRC-32 Checksum over Header + Payload
-        expected_crc = compute_crc32(header_raw + payload)
+        # 7. Validate CRC-32 Checksum over SEQ through PAYLOAD (excluding SOF per STM32 spec)
+        # buffer[idx + 2 : idx + HEADER_SIZE + payload_len] covers SEQ, OPCODE, LEN, and PAYLOAD
+        crc_body = buffer[idx + 2 : idx + HEADER_SIZE + payload_len]
+        expected_crc = compute_crc32(crc_body)
         if rx_crc != expected_crc:
             # CRC mismatch; frame was corrupted over optical medium
             idx += 2

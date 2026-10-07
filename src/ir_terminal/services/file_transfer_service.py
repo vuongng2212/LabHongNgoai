@@ -27,6 +27,7 @@ from ir_terminal.protocol.file_payloads import (
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.utils.logger import LogTag
+from ir_terminal.utils.path_helpers import get_transfers_dir
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class TransferState(Enum):
     HANDSHAKING = auto()
     TRANSFERRING = auto()
     FINALIZING = auto()
+    RECEIVING = auto()
     COMPLETED = auto()
     FAILED = auto()
     ABORTED = auto()
@@ -60,13 +62,17 @@ class FileTransferService(QObject):
         serial_manager: SerialManager,
         chunk_size: int = 240,
         storage_service: StorageService | None = None,
+        transfers_dir: Path | None = None,
     ) -> None:
         super().__init__()
         self._serial_manager = serial_manager
         self._chunk_size = chunk_size
         self._storage = storage_service or StorageService()
+        self._transfers_dir = transfers_dir or get_transfers_dir()
 
         self._state = TransferState.IDLE
+
+        # TX Session State
         self._current_file_path: Path | None = None
         self._file_data: bytes = b""
         self._file_size: int = 0
@@ -79,6 +85,16 @@ class FileTransferService(QObject):
         self._start_time: float = 0.0
         self._last_chunk_time: float = 0.0
         self._bytes_transferred: int = 0
+
+        # RX Session State
+        self._rx_filename: str = ""
+        self._rx_file_size: int = 0
+        self._rx_chunk_size: int = 0
+        self._rx_total_chunks: int = 0
+        self._rx_file_crc32: int = 0
+        self._rx_received_chunks: dict[int, bytes] = {}
+        self._rx_start_time: float = 0.0
+        self._rx_bytes_received: int = 0
 
         # ARQ Timeout Timer
         self._ack_timer = QTimer(self)
@@ -170,7 +186,14 @@ class FileTransferService(QObject):
         )
 
     def abort_transfer(self) -> None:
-        """Aborts current file transfer."""
+        """Aborts current optical file transmission or reception."""
+        if self._state == TransferState.RECEIVING:
+            self._set_state(TransferState.ABORTED)
+            self._rx_received_chunks.clear()
+            self.transfer_failed.emit("Incoming transfer aborted by user")
+            logger.info("%s Incoming file transfer aborted by user", LogTag.FILE_SVC)
+            return
+
         if self._state in (
             TransferState.HANDSHAKING,
             TransferState.TRANSFERRING,
@@ -249,7 +272,7 @@ class FileTransferService(QObject):
         )
 
     def _handle_packet(self, pkt: object) -> None:
-        """Processes incoming ACK/NACK frames."""
+        """Processes incoming ACK/NACK frames or incoming file transfer packets (RX)."""
         if not isinstance(pkt, Packet):
             return
 
@@ -257,6 +280,169 @@ class FileTransferService(QObject):
             self._on_ack_received(pkt)
         elif pkt.opcode == Opcode.NACK:
             self._on_nack_received(pkt)
+        elif pkt.opcode == Opcode.TRANSFER_START:
+            self._on_transfer_start_received(pkt)
+        elif pkt.opcode == Opcode.DATA_CHUNK:
+            self._on_data_chunk_received(pkt)
+        elif pkt.opcode == Opcode.TRANSFER_END:
+            self._on_transfer_end_received(pkt)
+
+    def _on_transfer_start_received(self, pkt: Packet) -> None:
+        """Handles incoming TRANSFER_START frame by preparing receiver buffer and acknowledging."""
+        try:
+            start_payload = FileStartPayload.unpack(pkt.payload)
+        except Exception as e:
+            logger.error("%s Failed to parse FileStartPayload: %s", LogTag.FILE_SVC, e)
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            return
+
+        self._rx_filename = start_payload.filename
+        self._rx_file_size = start_payload.file_size
+        self._rx_chunk_size = start_payload.chunk_size
+        self._rx_total_chunks = start_payload.total_chunks
+        self._rx_file_crc32 = start_payload.file_crc32
+        self._rx_received_chunks = {}
+        self._rx_start_time = time.time()
+        self._rx_bytes_received = 0
+
+        self._set_state(TransferState.RECEIVING)
+        logger.info(
+            "%s Incoming file transfer: '%s' (%d bytes, %d chunks, CRC 0x%08X)",
+            LogTag.FILE_SVC,
+            self._rx_filename,
+            self._rx_file_size,
+            self._rx_total_chunks,
+            self._rx_file_crc32,
+        )
+
+        ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
+        self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
+        self.progress_updated.emit(0, 0.0, 0.0, 0, max(self._rx_total_chunks, 1))
+
+    def _on_data_chunk_received(self, pkt: Packet) -> None:
+        """Handles incoming DATA_CHUNK frame by recording chunk bytes and acknowledging."""
+        if self._state != TransferState.RECEIVING:
+            logger.warning("%s Received DATA_CHUNK while not in RECEIVING state", LogTag.ARQ_ENGINE)
+            return
+
+        try:
+            chunk_payload = FileChunkPayload.unpack(pkt.payload)
+        except Exception as e:
+            logger.error("%s Failed to parse FileChunkPayload: %s", LogTag.ARQ_ENGINE, e)
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            return
+
+        self._rx_received_chunks[chunk_payload.chunk_id] = chunk_payload.chunk_data
+        self._rx_bytes_received = sum(len(c) for c in self._rx_received_chunks.values())
+
+        # Respond ACK
+        ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
+        self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
+
+        # Progress calculation
+        elapsed = max(time.time() - self._rx_start_time, 0.001)
+        speed_kbps = (self._rx_bytes_received / 1024.0) / elapsed
+        received_count = len(self._rx_received_chunks)
+        total = max(self._rx_total_chunks, 1)
+        pct = min(int((received_count / total) * 100), 100)
+        rem_chunks = max(total - received_count, 0)
+        eta_sec = rem_chunks * (elapsed / max(received_count, 1))
+
+        self.progress_updated.emit(pct, speed_kbps, eta_sec, received_count, total)
+
+    def _on_transfer_end_received(self, pkt: Packet) -> None:
+        """Handles incoming TRANSFER_END frame by verifying integrity, saving file, and acknowledging."""
+        if self._state != TransferState.RECEIVING:
+            return
+
+        try:
+            end_payload = FileEndPayload.unpack(pkt.payload)
+        except Exception as e:
+            logger.error("%s Failed to parse FileEndPayload: %s", LogTag.FILE_SVC, e)
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._set_state(TransferState.FAILED)
+            self.transfer_failed.emit("Corrupted TRANSFER_END payload")
+            return
+
+        # Assemble chunks sequentially
+        assembled_data = bytearray()
+        for idx in range(self._rx_total_chunks):
+            if idx not in self._rx_received_chunks:
+                logger.error("%s Missing chunk %d upon TRANSFER_END", LogTag.ARQ_ENGINE, idx)
+                ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
+                self._serial_manager.send_packet(
+                    seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack()
+                )
+                self._set_state(TransferState.FAILED)
+                self.transfer_failed.emit(f"Missing chunk {idx} upon completion")
+                return
+            assembled_data.extend(self._rx_received_chunks[idx])
+
+        # CRC-32 verification
+        calculated_crc = zlib.crc32(assembled_data) & 0xFFFFFFFF
+        if calculated_crc != end_payload.file_crc32 or calculated_crc != self._rx_file_crc32:
+            logger.error(
+                "%s Checksum mismatch: calculated 0x%08X vs expected 0x%08X",
+                LogTag.FILE_SVC,
+                calculated_crc,
+                end_payload.file_crc32,
+            )
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._set_state(TransferState.FAILED)
+            self.transfer_failed.emit(
+                f"Checksum mismatch: 0x{calculated_crc:08X} != 0x{end_payload.file_crc32:08X}"
+            )
+            return
+
+        # Save to disk
+        self._transfers_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = Path(self._rx_filename).name or "received_file.bin"
+        dest_path = self._transfers_dir / safe_name
+        if dest_path.exists():
+            dest_path = (
+                self._transfers_dir / f"{dest_path.stem}_{int(time.time())}{dest_path.suffix}"
+            )
+
+        dest_path.write_bytes(assembled_data)
+
+        # Send ACK
+        ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
+        self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
+
+        elapsed = max(time.time() - self._rx_start_time, 0.001)
+        speed_kbps = (len(assembled_data) / 1024.0) / elapsed
+        crc_hex = f"0x{calculated_crc:08X}"
+
+        # Persist to database
+        self._storage.save_file_transfer(
+            filename=dest_path.name,
+            file_path=str(dest_path),
+            direction="RX",
+            size_bytes=len(assembled_data),
+            crc32_hex=crc_hex,
+            speed_kbps=speed_kbps,
+            duration_sec=elapsed,
+            status="SUCCESS",
+        )
+
+        self._set_state(TransferState.COMPLETED)
+        self.progress_updated.emit(
+            100, speed_kbps, 0.0, self._rx_total_chunks, self._rx_total_chunks
+        )
+        self.transfer_completed.emit(dest_path.name, len(assembled_data), elapsed, crc_hex)
+        logger.info(
+            "%s File received successfully: '%s' (%d bytes) in %.2fs (Speed: %.2f KB/s, CRC: %s)",
+            LogTag.FILE_SVC,
+            dest_path.name,
+            len(assembled_data),
+            elapsed,
+            speed_kbps,
+            crc_hex,
+        )
 
     def _on_ack_received(self, pkt: Packet) -> None:
         """Handles successful ACK with sequence and status verification."""

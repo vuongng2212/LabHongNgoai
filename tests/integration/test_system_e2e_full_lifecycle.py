@@ -7,10 +7,10 @@ from pathlib import Path
 
 from pytestqt.qtbot import QtBot
 
-from ir_terminal.core.backend_bridge import BackendBridge
 from ir_terminal.core.mock_serial import MockSerialPort
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.services.storage_service import StorageService
+from ir_terminal.ui.backend_bridge import BackendBridge
 
 
 class TestSystemE2EFullLifecycle:

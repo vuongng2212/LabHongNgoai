@@ -8,10 +8,10 @@ from pathlib import Path
 
 from pytestqt.qtbot import QtBot
 
-from ir_terminal.core.backend_bridge import BackendBridge
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import EOF_MAGIC, SOF_MAGIC, Opcode
 from ir_terminal.protocol.packet import Header, Packet
+from ir_terminal.ui.backend_bridge import BackendBridge
 
 
 class TestBackendBridge:

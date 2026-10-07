@@ -3,8 +3,8 @@
 <div>
 <div class="flex items-center gap-space-sm">
 <h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Transceiver &amp; Link Configuration</h1>
-<span class="bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> LINK LOCKED
+<span id="hw-header-link-badge" class="bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> DISCONNECTED
               </span>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
@@ -37,9 +37,9 @@
 <span class="font-mono-caption text-mono-caption text-on-surface-variant">UART PHYSICAL BRIDGE INTERFACE</span>
 </div>
 </div>
-<div class="flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  Port Ready
+<div id="hw-port-ready-badge" class="flex items-center gap-1 bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                  Port Standby
                 </div>
 </div>
 <!-- Interface Port Selector -->
@@ -119,9 +119,9 @@
 <span class="font-mono-caption text-mono-caption text-on-surface-variant">ROUND-TRIP ECHO &amp; CARRIER HEALTH</span>
 </div>
 </div>
-<div class="flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  Link Ready
+<div id="hw-link-ready-badge" class="flex items-center gap-1 bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                  Link Standby
                 </div>
 </div>
 <!-- Real Stats Grid -->

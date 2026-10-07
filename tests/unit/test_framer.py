@@ -184,3 +184,24 @@ class TestFramer:
         """Verifies IEEE 802.3 CRC32 checksum calculation."""
         crc = compute_crc32(b"123456789")
         assert crc == 0xCBF43926
+
+    def test_stm32_c_firmware_ack_frame_exact_binary_match(self) -> None:
+        """Verifies python packed frame matches the exact byte layout sent by STM32 firmware C routine."""
+        # Equivalent to STM32 IR_Send_ACK(huart, 42)
+        acked_seq = 42
+        ack_payload = struct.pack("<BB", acked_seq, 0)  # [acked_seq, status=0]
+        py_frame = pack_frame(seq=acked_seq, opcode=Opcode.ACK, payload=ack_payload)
+
+        # Build exact manual frame as defined in docs/IOT_STM32_COMMUNICATION_SPECS.md Section 5.2
+        c_body = bytes([acked_seq, Opcode.ACK, 2, 0, acked_seq, 0])
+        c_crc = compute_crc32(c_body)
+        c_frame = bytes([0x55, 0xAA]) + c_body + struct.pack("<IH", c_crc, EOF_MAGIC)
+
+        assert py_frame == c_frame
+
+        # And verify it parses back
+        packets, remaining = parse_frames_from_buffer(c_frame)
+        assert len(packets) == 1
+        assert packets[0].seq == acked_seq
+        assert packets[0].opcode == Opcode.ACK
+        assert packets[0].payload == ack_payload

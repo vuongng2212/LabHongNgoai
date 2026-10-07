@@ -43,10 +43,13 @@ class ChatService(QObject):
         if not clean_text:
             return
 
-        payload = clean_text.encode("utf-8")
-        if len(payload) > MAX_PAYLOAD_SIZE:
-            payload = payload[:MAX_PAYLOAD_SIZE]
-            clean_text = payload.decode("utf-8", errors="ignore")
+        encoded = clean_text.encode("utf-8")
+        if len(encoded) > MAX_PAYLOAD_SIZE:
+            # Safely truncate without splitting multi-byte UTF-8 character sequences
+            clean_text = encoded[:MAX_PAYLOAD_SIZE].decode("utf-8", errors="ignore")
+            payload = clean_text.encode("utf-8")
+        else:
+            payload = encoded
 
         self._seq = (self._seq + 1) % 256
 

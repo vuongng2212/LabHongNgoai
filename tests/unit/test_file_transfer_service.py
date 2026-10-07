@@ -16,7 +16,12 @@ from ir_terminal.protocol.constants import (
     AckStatus,
     Opcode,
 )
-from ir_terminal.protocol.file_payloads import AckPayload
+from ir_terminal.protocol.file_payloads import (
+    AckPayload,
+    FileChunkPayload,
+    FileEndPayload,
+    FileStartPayload,
+)
 from ir_terminal.protocol.packet import Header, Packet
 from ir_terminal.services.file_transfer_service import (
     FileTransferService,
@@ -333,3 +338,217 @@ class TestFileTransferService:
             Path(path1).unlink(missing_ok=True)
             Path(path2).unlink(missing_ok=True)
             manager.shutdown()
+
+    def test_file_receiver_full_cycle_success(self, qtbot: QtBot) -> None:
+        """Verifies receiver state machine handles TRANSFER_START, DATA_CHUNK, and TRANSFER_END."""
+        manager = SerialManager()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dest_dir = Path(tmp_dir) / "downloads"
+            service = FileTransferService(manager, transfers_dir=dest_dir)
+
+            file_bytes = b"Hello from Optical Transmitter! Chunked binary payload test."
+            file_crc = zlib.crc32(file_bytes) & 0xFFFFFFFF
+            fname = "sample_optical_doc.bin"
+
+            # 1. Incoming TRANSFER_START
+            start_payload = FileStartPayload(
+                file_size=len(file_bytes),
+                chunk_size=32,
+                total_chunks=2,
+                file_crc32=file_crc,
+                filename=fname,
+            )
+            pkt_start = Packet(
+                header=Header(
+                    sof=SOF_MAGIC,
+                    seq=10,
+                    opcode=Opcode.TRANSFER_START,
+                    length=len(start_payload.pack()),
+                ),
+                payload=start_payload.pack(),
+                crc32=123,
+                eof=EOF_MAGIC,
+            )
+            service._handle_packet(pkt_start)
+            assert service.state.name == "RECEIVING"
+
+            # 2. Incoming Chunks
+            chunk0 = file_bytes[:32]
+            chunk1 = file_bytes[32:]
+
+            pkt_chunk0 = Packet(
+                header=Header(sof=SOF_MAGIC, seq=11, opcode=Opcode.DATA_CHUNK, length=34),
+                payload=FileChunkPayload(chunk_id=0, chunk_data=chunk0).pack(),
+                crc32=123,
+                eof=EOF_MAGIC,
+            )
+            service._handle_packet(pkt_chunk0)
+            assert len(service._rx_received_chunks) == 1
+
+            pkt_chunk1 = Packet(
+                header=Header(
+                    sof=SOF_MAGIC, seq=12, opcode=Opcode.DATA_CHUNK, length=len(chunk1) + 2
+                ),
+                payload=FileChunkPayload(chunk_id=1, chunk_data=chunk1).pack(),
+                crc32=123,
+                eof=EOF_MAGIC,
+            )
+            service._handle_packet(pkt_chunk1)
+            assert len(service._rx_received_chunks) == 2
+
+            # 3. Incoming TRANSFER_END
+            end_payload = FileEndPayload(file_crc32=file_crc, total_bytes_sent=len(file_bytes))
+            pkt_end = Packet(
+                header=Header(sof=SOF_MAGIC, seq=13, opcode=Opcode.TRANSFER_END, length=8),
+                payload=end_payload.pack(),
+                crc32=123,
+                eof=EOF_MAGIC,
+            )
+
+            with qtbot.waitSignal(service.transfer_completed, timeout=2000) as blocker:
+                service._handle_packet(pkt_end)
+
+            assert service.state == TransferState.COMPLETED
+            completed_fname, total_b, _, crc_hex = blocker.args
+            assert completed_fname == fname
+            assert total_b == len(file_bytes)
+            assert crc_hex == f"0x{file_crc:08X}"
+
+            # Verify saved file on disk
+            saved_file = dest_dir / fname
+            assert saved_file.exists()
+            assert saved_file.read_bytes() == file_bytes
+
+        manager.shutdown()
+
+    def test_file_receiver_missing_chunk_fails(self, qtbot: QtBot) -> None:
+        """Verifies missing chunk during TRANSFER_END triggers NACK and fails."""
+        manager = SerialManager()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = FileTransferService(manager, transfers_dir=Path(tmp_dir))
+            file_bytes = b"0123456789"
+            file_crc = zlib.crc32(file_bytes) & 0xFFFFFFFF
+
+            # Expect 2 chunks but only send chunk 0
+            start_payload = FileStartPayload(
+                file_size=len(file_bytes),
+                chunk_size=5,
+                total_chunks=2,
+                file_crc32=file_crc,
+                filename="missing.bin",
+            )
+            service._handle_packet(
+                Packet(
+                    header=Header(sof=SOF_MAGIC, seq=1, opcode=Opcode.TRANSFER_START, length=10),
+                    payload=start_payload.pack(),
+                    crc32=123,
+                    eof=EOF_MAGIC,
+                )
+            )
+
+            chunk0 = FileChunkPayload(chunk_id=0, chunk_data=file_bytes[:5])
+            service._handle_packet(
+                Packet(
+                    header=Header(sof=SOF_MAGIC, seq=2, opcode=Opcode.DATA_CHUNK, length=7),
+                    payload=chunk0.pack(),
+                    crc32=123,
+                    eof=EOF_MAGIC,
+                )
+            )
+
+            # Send TRANSFER_END without sending chunk 1
+            end_payload = FileEndPayload(file_crc32=file_crc, total_bytes_sent=len(file_bytes))
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service._handle_packet(
+                    Packet(
+                        header=Header(sof=SOF_MAGIC, seq=3, opcode=Opcode.TRANSFER_END, length=8),
+                        payload=end_payload.pack(),
+                        crc32=123,
+                        eof=EOF_MAGIC,
+                    )
+                )
+
+            assert service.state == TransferState.FAILED
+            (err,) = blocker.args
+            assert "missing chunk 1" in err.lower()
+
+        manager.shutdown()
+
+    def test_file_receiver_crc_mismatch_fails(self, qtbot: QtBot) -> None:
+        """Verifies that received data with checksum mismatch is rejected."""
+        manager = SerialManager()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = FileTransferService(manager, transfers_dir=Path(tmp_dir))
+            file_bytes = b"Corrupted optical stream"
+            start_payload = FileStartPayload(
+                file_size=len(file_bytes),
+                chunk_size=len(file_bytes),
+                total_chunks=1,
+                file_crc32=0x11223344,  # Intentionally wrong CRC
+                filename="bad_crc.bin",
+            )
+            service._handle_packet(
+                Packet(
+                    header=Header(sof=SOF_MAGIC, seq=1, opcode=Opcode.TRANSFER_START, length=10),
+                    payload=start_payload.pack(),
+                    crc32=123,
+                    eof=EOF_MAGIC,
+                )
+            )
+
+            chunk0 = FileChunkPayload(chunk_id=0, chunk_data=file_bytes)
+            service._handle_packet(
+                Packet(
+                    header=Header(
+                        sof=SOF_MAGIC, seq=2, opcode=Opcode.DATA_CHUNK, length=len(file_bytes) + 2
+                    ),
+                    payload=chunk0.pack(),
+                    crc32=123,
+                    eof=EOF_MAGIC,
+                )
+            )
+
+            end_payload = FileEndPayload(file_crc32=0x11223344, total_bytes_sent=len(file_bytes))
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service._handle_packet(
+                    Packet(
+                        header=Header(sof=SOF_MAGIC, seq=3, opcode=Opcode.TRANSFER_END, length=8),
+                        payload=end_payload.pack(),
+                        crc32=123,
+                        eof=EOF_MAGIC,
+                    )
+                )
+
+            assert service.state == TransferState.FAILED
+            (err,) = blocker.args
+            assert "checksum mismatch" in err.lower()
+
+        manager.shutdown()
+
+    def test_file_receiver_abort_clears_buffer(self) -> None:
+        """Verifies aborting an incoming file transfer cleanly resets receiver state."""
+        manager = SerialManager()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = FileTransferService(manager, transfers_dir=Path(tmp_dir))
+            start_payload = FileStartPayload(
+                file_size=100,
+                chunk_size=50,
+                total_chunks=2,
+                file_crc32=123,
+                filename="abort_rx.bin",
+            )
+            service._handle_packet(
+                Packet(
+                    header=Header(sof=SOF_MAGIC, seq=1, opcode=Opcode.TRANSFER_START, length=10),
+                    payload=start_payload.pack(),
+                    crc32=123,
+                    eof=EOF_MAGIC,
+                )
+            )
+            assert service.state.name == "RECEIVING"
+
+            service.abort_transfer()
+            assert service.state.name == "ABORTED"
+            assert len(service._rx_received_chunks) == 0
+
+        manager.shutdown()

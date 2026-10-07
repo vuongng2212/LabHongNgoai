@@ -30,6 +30,7 @@ class MockSerialPort(ITransport):
         baudrate: int = 115200,
         simulated_latency_ms: float = 30.0,
         simulated_loss_rate: float = 0.0,
+        auto_respond: bool = True,
     ) -> None:
         """Initializes mock serial transport.
 
@@ -38,11 +39,13 @@ class MockSerialPort(ITransport):
             baudrate: Simulated baud rate.
             simulated_latency_ms: Artificial round-trip delay in milliseconds.
             simulated_loss_rate: Float 0.0 to 1.0 representing probability of packet drop.
+            auto_respond: True to auto-echo PONG/ACK internally; False for pure transport tube.
         """
         self._port_name = port_name
         self._baudrate = baudrate
         self._latency_s = simulated_latency_ms / 1000.0
         self._loss_rate = simulated_loss_rate
+        self._auto_respond = auto_respond
         self._is_open = False
         self._rx_buffer = ByteRingBuffer(capacity=65536)
         self._tx_buffer = b""
@@ -94,18 +97,19 @@ class MockSerialPort(ITransport):
             # Packet dropped by simulated atmospheric noise
             return len(data)
 
-        # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond
-        self._tx_buffer += data
-        packets, remaining = parse_frames_from_buffer(self._tx_buffer)
-        self._tx_buffer = remaining
+        # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond (if enabled)
+        if self._auto_respond:
+            self._tx_buffer += data
+            packets, remaining = parse_frames_from_buffer(self._tx_buffer)
+            self._tx_buffer = remaining
 
-        for pkt in packets:
-            if pkt.opcode == Opcode.PING:
-                self._handle_ping_packet(pkt.seq, pkt.payload)
-            elif pkt.opcode == Opcode.DATA_TEXT:
-                self._handle_chat_packet(pkt.seq, pkt.payload)
-            elif pkt.opcode in (Opcode.TRANSFER_START, Opcode.DATA_CHUNK, Opcode.TRANSFER_END):
-                self._handle_file_ack(pkt.seq)
+            for pkt in packets:
+                if pkt.opcode == Opcode.PING:
+                    self._handle_ping_packet(pkt.seq, pkt.payload)
+                elif pkt.opcode == Opcode.DATA_TEXT:
+                    self._handle_chat_packet(pkt.seq, pkt.payload)
+                elif pkt.opcode in (Opcode.TRANSFER_START, Opcode.DATA_CHUNK, Opcode.TRANSFER_END):
+                    self._handle_file_ack(pkt.seq)
 
         return len(data)
 

@@ -28,7 +28,7 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
+!ir_terminal.spec
 
 # Installer logs
 pip-log.txt

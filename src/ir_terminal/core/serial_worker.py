@@ -13,6 +13,7 @@ from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.mock_serial import MockSerialPort
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
 from ir_terminal.protocol.framer import parse_frames_from_buffer
+from ir_terminal.protocol.packet import Packet
 from ir_terminal.utils.logger import LogTag
 
 logger = logging.getLogger(__name__)
@@ -104,7 +105,7 @@ class SerialWorker(QObject):
     error_occurred: ClassVar[Signal] = Signal(str)
     raw_data_received: ClassVar[Signal] = Signal(bytes)
     raw_data_sent: ClassVar[Signal] = Signal(bytes)
-    packet_received: ClassVar[Signal] = Signal(object)  # (Packet)
+    packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
 
     def __init__(self) -> None:
         """Initializes non-blocking serial worker instance."""
@@ -128,7 +129,14 @@ class SerialWorker(QObject):
             )
 
             if port_name.startswith("MOCK"):
-                self._transport = MockSerialPort(port_name=port_name, baudrate=baudrate)
+                auto_respond = not (
+                    "PIPE" in port_name or "NO_LOOPBACK" in port_name or "NODE" in port_name
+                )
+                self._transport = MockSerialPort(
+                    port_name=port_name,
+                    baudrate=baudrate,
+                    auto_respond=auto_respond,
+                )
             else:
                 self._transport = PySerialTransport(port_name=port_name, baudrate=baudrate)
 

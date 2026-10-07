@@ -20,8 +20,32 @@ function initBridgeListeners() {
     const ribbonDot = document.getElementById('ribbon-dot');
     if (ribbonDot) ribbonDot.className = 'w-2 h-2 rounded-full bg-secondary status-pulse';
 
+    const footerHealthDot = document.getElementById('footer-health-dot');
+    if (footerHealthDot) footerHealthDot.className = 'w-2 h-2 rounded-full bg-secondary status-pulse';
     const footerHealth = document.getElementById('footer-health-text');
-    if (footerHealth) footerHealth.innerText = 'HEALTH 100% ONLINE';
+    if (footerHealth) {
+      footerHealth.innerText = 'ONLINE';
+      footerHealth.className = 'font-mono-caption text-mono-caption font-semibold text-secondary';
+    }
+    const footerPortLabel = document.getElementById('footer-port-label');
+    if (footerPortLabel) footerPortLabel.innerText = port;
+
+    // Synchronize Hardware View Badges
+    const headerLinkBadge = document.getElementById('hw-header-link-badge');
+    if (headerLinkBadge) {
+      headerLinkBadge.className = 'bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1';
+      headerLinkBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> LINK LOCKED';
+    }
+    const portReadyBadge = document.getElementById('hw-port-ready-badge');
+    if (portReadyBadge) {
+      portReadyBadge.className = 'flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm';
+      portReadyBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Port Active';
+    }
+    const linkReadyBadge = document.getElementById('hw-link-ready-badge');
+    if (linkReadyBadge) {
+      linkReadyBadge.className = 'flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm';
+      linkReadyBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Link Synced';
+    }
 
     const connBtn = document.querySelector('#view-hardware button.bg-primary-container');
     if (connBtn) {
@@ -36,8 +60,32 @@ function initBridgeListeners() {
     const ribbonDot = document.getElementById('ribbon-dot');
     if (ribbonDot) ribbonDot.className = 'w-2 h-2 rounded-full bg-outline';
 
+    const footerHealthDot = document.getElementById('footer-health-dot');
+    if (footerHealthDot) footerHealthDot.className = 'w-2 h-2 rounded-full bg-outline';
     const footerHealth = document.getElementById('footer-health-text');
-    if (footerHealth) footerHealth.innerText = 'OFFLINE';
+    if (footerHealth) {
+      footerHealth.innerText = 'OFFLINE';
+      footerHealth.className = 'font-mono-caption text-mono-caption font-semibold text-outline';
+    }
+    const footerPortLabel = document.getElementById('footer-port-label');
+    if (footerPortLabel) footerPortLabel.innerText = 'Disconnected';
+
+    // Reset Hardware View Badges
+    const headerLinkBadge = document.getElementById('hw-header-link-badge');
+    if (headerLinkBadge) {
+      headerLinkBadge.className = 'bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1';
+      headerLinkBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> DISCONNECTED';
+    }
+    const portReadyBadge = document.getElementById('hw-port-ready-badge');
+    if (portReadyBadge) {
+      portReadyBadge.className = 'flex items-center gap-1 bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm';
+      portReadyBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> Port Standby';
+    }
+    const linkReadyBadge = document.getElementById('hw-link-ready-badge');
+    if (linkReadyBadge) {
+      linkReadyBadge.className = 'flex items-center gap-1 bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm';
+      linkReadyBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> Link Standby';
+    }
 
     const connBtn = document.querySelector('#view-hardware button.bg-error');
     if (connBtn) {
