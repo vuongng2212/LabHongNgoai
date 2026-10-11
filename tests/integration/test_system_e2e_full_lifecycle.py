@@ -18,8 +18,8 @@ class TestSystemE2EFullLifecycle:
 
     def test_full_system_lifecycle_e2e(self, qtbot: QtBot) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "e2e_test.db"
-            storage = StorageService(db_path=db_path)
+            data_dir = Path(tmpdir) / "e2e_data"
+            storage = StorageService(data_dir=data_dir)
             manager = SerialManager()
 
             bridge = BackendBridge(serial_manager=manager, storage_service=storage)
@@ -51,7 +51,7 @@ class TestSystemE2EFullLifecycle:
             assert text == "E2E Optical Verification Test - 880nm NIR Link Active"
             assert is_outgoing is True
 
-            # Verify chat persistence in SQLite DB
+            # Verify chat persistence in file store
             chat_history = storage.get_chat_history()
             assert len(chat_history) >= 1
             assert chat_history[-1]["text"] == text
@@ -81,7 +81,7 @@ class TestSystemE2EFullLifecycle:
             assert len(progress_events) >= 10
             assert progress_events[-1] == 100
 
-            # Verify file transfer record in SQLite DB
+            # Verify file transfer record in file store
             transfers = storage.get_file_transfers()
             assert len(transfers) >= 1
             assert transfers[0]["filename"] == "payload_e2e.bin"

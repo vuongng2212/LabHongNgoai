@@ -8,7 +8,7 @@ import pytest
 from ir_terminal.utils.path_helpers import (
     get_app_data_dir,
     get_assets_dir,
-    get_db_path,
+    get_data_dir,
     get_logs_dir,
     get_project_root,
     get_transfers_dir,
@@ -42,13 +42,13 @@ class TestPathHelpers:
         assert isinstance(assets, Path)
 
     def test_app_data_directories(self) -> None:
-        """Verifies creation and resolution of data, db, transfers, and logs directories."""
+        """Verifies creation and resolution of data, transfers, and logs directories."""
         data_dir = get_app_data_dir()
         assert data_dir.exists()
 
-        db_path = get_db_path()
-        assert db_path.name == "ir_terminal.db"
-        assert db_path.parent.exists()
+        data_dir = get_data_dir()
+        assert data_dir.name == "data"
+        assert data_dir.exists()
 
         transfers = get_transfers_dir()
         assert transfers.exists()

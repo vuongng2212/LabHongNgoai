@@ -133,6 +133,39 @@
     .view-panel.active {
       display: flex;
     }
+    /* Reusable UI Feedback System: button spinner + toast/modal motion */
+    @keyframes ui-spin {
+      to { transform: rotate(360deg); }
+    }
+    .ui-spinner {
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: #ffffff;
+      animation: ui-spin 0.7s linear infinite;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+    @keyframes toast-slide-in {
+      from { opacity: 0; transform: translateX(16px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .toast-item {
+      animation: toast-slide-in 0.18s ease-out;
+    }
+    .toast-leaving {
+      opacity: 0;
+      transform: translateX(16px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }
+    @keyframes modal-pop-in {
+      from { opacity: 0; transform: scale(0.96) translateY(6px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    #modal-overlay.flex #modal-card {
+      animation: modal-pop-in 0.16s ease-out;
+    }
   </style>
   <script src="qwebchannel.js"></script>
 </head>
@@ -517,7 +550,7 @@
 <span class="material-symbols-outlined text-[28px]" data-icon="upload_file">upload_file</span>
 </div>
 <h3 class="text-headline-md font-headline-md text-on-surface mb-1">
-              Drop file to transmit across infrared beam (Max 2MB)
+              Drop file to transmit across infrared beam (Max 10MB)
             </h3>
 <p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
               Supports PDF, images, firmware binaries, and raw packet captures
@@ -592,6 +625,10 @@
 </div>
 <!-- Card Actions -->
 <div class="flex items-center justify-end gap-space-sm pt-space-xs">
+<button class="flex-1 h-[30px] px-space-md rounded-lg bg-primary-container hover:bg-primary text-white transition-colors text-label-md font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] cursor-pointer">
+<span class="material-symbols-outlined text-[15px]" data-icon="send">send</span>
+<span>Transmit</span>
+</button>
 <button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-error/30 text-error hover:bg-error-container/30 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer">
 <span class="material-symbols-outlined text-[15px]" data-icon="close">close</span>
 <span>Cancel</span>
@@ -991,7 +1028,23 @@
     </div>
   </div>
 
+  <!-- Reusable UI Feedback mounts (see components/ui_feedback.html) -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none" aria-live="polite"></div>
+  <div id="modal-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
+    <div id="modal-backdrop" class="absolute inset-0 bg-on-surface/30 backdrop-blur-[2px]"></div>
+    <div id="modal-card" role="dialog" aria-modal="true" class="relative w-full max-w-sm bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2">
+      <div id="modal-icon-wrap" class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm">
+        <span id="modal-icon" class="material-symbols-outlined text-[26px]">check_circle</span>
+      </div>
+      <h3 id="modal-title" class="font-headline-md text-headline-md text-on-surface">Done</h3>
+      <p id="modal-message" class="font-body-md text-body-md text-on-surface-variant leading-relaxed"></p>
+      <p id="modal-details" class="hidden font-mono-data text-mono-data text-outline bg-surface-container-low border border-black/[0.04] rounded-lg px-2.5 py-1.5 max-w-full break-all"></p>
+      <div id="modal-actions" class="flex items-center justify-center gap-2 mt-2 w-full"></div>
+    </div>
+  </div>
+
   <!-- Scripts -->
+  <script src="js/ui_feedback.js"></script>
   <script src="js/app.js"></script>
   <script src="js/bridge_client.js"></script>
   <script src="js/chat_controller.js"></script>

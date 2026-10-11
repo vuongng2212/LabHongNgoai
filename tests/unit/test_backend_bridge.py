@@ -120,6 +120,49 @@ class TestBackendBridge:
 
         manager.shutdown()
 
+    def test_open_transfer_location_returns_dir_or_empty(self, tmp_path: Path) -> None:
+        """Verifies openTransferLocation resolves parent dir or empty when missing."""
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        target = tmp_path / "payload.bin"
+        target.write_bytes(b"data")
+        assert bridge.openTransferLocation(str(target)) == str(tmp_path)
+        assert bridge.openTransferLocation(str(tmp_path / "gone.bin")) == ""
+
+        manager.shutdown()
+
+    def test_auto_health_check_pings_periodically_and_silently(self, qtbot: QtBot) -> None:
+        """Verifies silent periodic health pings while connected, none after disconnect."""
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        manual_pongs: list[object] = []
+        bridge.pingResult.connect(lambda *args: manual_pongs.append(args))
+
+        with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+            bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+
+        bridge.setAutoPingInterval(0.2)
+        with qtbot.waitSignal(bridge.healthResult, timeout=2000):
+            pass
+        with qtbot.waitSignal(bridge.healthResult, timeout=2000) as blocker:
+            pass
+
+        rtt_ms, seq = blocker.args
+        assert rtt_ms >= 0.0
+        assert seq > 0
+        assert len(manual_pongs) == 0
+
+        count = len(manual_pongs)
+        bridge.setAutoPingInterval(0)
+        with qtbot.waitSignal(bridge.portDisconnected, timeout=2000):
+            bridge.disconnectPort()
+        qtbot.wait(500)
+        assert len(manual_pongs) == count
+
+        manager.shutdown()
+
     def test_bridge_ignores_non_pong_in_packet_received(self) -> None:
         """Verifies _on_packet_received does not emit pingResult for non-PONG packets."""
         manager = SerialManager()

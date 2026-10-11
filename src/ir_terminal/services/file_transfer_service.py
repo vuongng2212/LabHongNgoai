@@ -14,6 +14,9 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
     DEFAULT_ACK_TIMEOUT_SEC,
+    DEFAULT_CHUNK_SIZE,
+    MAX_FILE_SIZE_BYTES,
+    MAX_PAYLOAD_SIZE,
     MAX_RETRY_COUNT,
     AckStatus,
     Opcode,
@@ -60,7 +63,7 @@ class FileTransferService(QObject):
     def __init__(
         self,
         serial_manager: SerialManager,
-        chunk_size: int = 240,
+        chunk_size: int = DEFAULT_CHUNK_SIZE,
         storage_service: StorageService | None = None,
         transfers_dir: Path | None = None,
     ) -> None:
@@ -95,6 +98,15 @@ class FileTransferService(QObject):
         self._rx_received_chunks: dict[int, bytes] = {}
         self._rx_start_time: float = 0.0
         self._rx_bytes_received: int = 0
+        self._rx_received_count: int = 0
+
+        # TX retransmit caches (refactor: identical bytes reused, no repack).
+        # Invalidated on every new start_transfer/abort.
+        self._cached_start_payload: bytes | None = None
+        self._cached_chunk_key: int = -1
+        self._cached_chunk_payload: bytes | None = None
+        self._cached_end_key: int = -1
+        self._cached_end_payload: bytes | None = None
 
         # ARQ Timeout Timer
         self._ack_timer = QTimer(self)
@@ -136,6 +148,16 @@ class FileTransferService(QObject):
             self.transfer_failed.emit(err_msg)
             return
 
+        oversize = file_path.stat().st_size
+        if oversize > MAX_FILE_SIZE_BYTES:
+            err_msg = (
+                f"File exceeds {MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit: "
+                f"{file_path.name} ({oversize} bytes)"
+            )
+            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            self.transfer_failed.emit(err_msg)
+            return
+
         try:
             self._file_data = file_path.read_bytes()
         except Exception as e:
@@ -157,6 +179,12 @@ class FileTransferService(QObject):
         self._bytes_transferred = 0
         self._start_time = time.time()
         self._last_chunk_time = self._start_time
+        # Invalidate retransmit caches for the new session
+        self._cached_start_payload = None
+        self._cached_chunk_key = -1
+        self._cached_chunk_payload = None
+        self._cached_end_key = -1
+        self._cached_end_payload = None
 
         self._set_state(TransferState.HANDSHAKING)
 
@@ -168,12 +196,13 @@ class FileTransferService(QObject):
             file_crc32=self._file_crc32,
             filename=file_path.name,
         )
+        self._cached_start_payload = start_payload.pack()
 
         self._seq = (self._seq + 1) % 256
         self._serial_manager.send_packet(
             seq=self._seq,
             opcode=Opcode.TRANSFER_START,
-            payload=start_payload.pack(),
+            payload=self._cached_start_payload,
         )
         self._ack_timer.start()
         logger.info(
@@ -190,6 +219,8 @@ class FileTransferService(QObject):
         if self._state == TransferState.RECEIVING:
             self._set_state(TransferState.ABORTED)
             self._rx_received_chunks.clear()
+            self._rx_received_count = 0
+            self._rx_bytes_received = 0
             self.transfer_failed.emit("Incoming transfer aborted by user")
             logger.info("%s Incoming file transfer aborted by user", LogTag.FILE_SVC)
             return
@@ -207,6 +238,12 @@ class FileTransferService(QObject):
                 payload=b"ABORT",
             )
             self._set_state(TransferState.ABORTED)
+            # Invalidate caches so a later session cannot reuse stale bytes
+            self._cached_start_payload = None
+            self._cached_chunk_key = -1
+            self._cached_chunk_payload = None
+            self._cached_end_key = -1
+            self._cached_end_payload = None
             self.transfer_failed.emit("Transfer cancelled by user")
             logger.info("%s Transfer aborted by user", LogTag.FILE_SVC)
 
@@ -217,14 +254,26 @@ class FileTransferService(QObject):
             new_seq: True to increment sequence number for a new chunk;
                 False to reuse current sequence number for retransmission.
         """
-        start_offset = self._current_chunk_idx * self._chunk_size
-        end_offset = min(start_offset + self._chunk_size, self._file_size)
-        chunk_data = self._file_data[start_offset:end_offset]
+        # Retransmission of the same chunk reuses the identical packed payload
+        # (only the outer frame seq is reused); new chunks slice+pack once.
+        if not new_seq and self._cached_chunk_payload is not None and self._cached_chunk_key == self._current_chunk_idx:
+            packed = self._cached_chunk_payload
+            start_offset = self._current_chunk_idx * self._chunk_size
+            end_offset = min(start_offset + self._chunk_size, self._file_size)
+            chunk_len = end_offset - start_offset
+        else:
+            start_offset = self._current_chunk_idx * self._chunk_size
+            end_offset = min(start_offset + self._chunk_size, self._file_size)
+            chunk_data = self._file_data[start_offset:end_offset]
 
-        chunk_payload = FileChunkPayload(
-            chunk_id=self._current_chunk_idx,
-            chunk_data=chunk_data,
-        )
+            chunk_payload = FileChunkPayload(
+                chunk_id=self._current_chunk_idx,
+                chunk_data=chunk_data,
+            )
+            packed = chunk_payload.pack()
+            self._cached_chunk_key = self._current_chunk_idx
+            self._cached_chunk_payload = packed
+            chunk_len = len(chunk_data)
 
         if new_seq:
             self._seq = (self._seq + 1) % 256
@@ -232,7 +281,7 @@ class FileTransferService(QObject):
         self._serial_manager.send_packet(
             seq=self._seq,
             opcode=Opcode.DATA_CHUNK,
-            payload=chunk_payload.pack(),
+            payload=packed,
         )
         self._ack_timer.start()
         logger.debug(
@@ -241,7 +290,7 @@ class FileTransferService(QObject):
             self._current_chunk_idx + 1,
             self._total_chunks,
             self._seq,
-            len(chunk_data),
+            chunk_len,
         )
 
     def _send_file_end(self, new_seq: bool = True) -> None:
@@ -251,17 +300,29 @@ class FileTransferService(QObject):
             new_seq: True to increment sequence number; False for retransmission.
         """
         self._set_state(TransferState.FINALIZING)
-        end_payload = FileEndPayload(
-            file_crc32=self._file_crc32,
-            total_bytes_sent=self._bytes_transferred,
-        )
+        # TRANSFER_END payload depends only on (crc, bytes_transferred), both
+        # frozen once FINALIZING is entered, so retransmits reuse packed bytes.
+        if (
+            not new_seq
+            and self._cached_end_payload is not None
+            and self._cached_end_key == self._bytes_transferred
+        ):
+            packed_end = self._cached_end_payload
+        else:
+            end_payload = FileEndPayload(
+                file_crc32=self._file_crc32,
+                total_bytes_sent=self._bytes_transferred,
+            )
+            packed_end = end_payload.pack()
+            self._cached_end_key = self._bytes_transferred
+            self._cached_end_payload = packed_end
         if new_seq:
             self._seq = (self._seq + 1) % 256
 
         self._serial_manager.send_packet(
             seq=self._seq,
             opcode=Opcode.TRANSFER_END,
-            payload=end_payload.pack(),
+            payload=packed_end,
         )
         self._ack_timer.start()
         logger.info(
@@ -297,6 +358,43 @@ class FileTransferService(QObject):
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
 
+        # Half-duplex guard: never clobber an ongoing outgoing session. NACK tells
+        # the sender to back off and retry after its timeout.
+        if self._state in (
+            TransferState.HANDSHAKING,
+            TransferState.TRANSFERRING,
+            TransferState.FINALIZING,
+        ):
+            logger.warning(
+                "%s Incoming transfer rejected: busy in %s state",
+                LogTag.ARQ_ENGINE,
+                self._state.name,
+            )
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            return
+
+        if start_payload.file_size > MAX_FILE_SIZE_BYTES:
+            err_msg = (
+                f"Incoming file exceeds {MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit: "
+                f"{start_payload.filename} ({start_payload.file_size} bytes)"
+            )
+            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._set_state(TransferState.FAILED)
+            self.transfer_failed.emit(err_msg)
+            return
+
+        if start_payload.chunk_size == 0 or start_payload.chunk_size > MAX_PAYLOAD_SIZE:
+            err_msg = f"Incoming transfer has invalid chunk size: {start_payload.chunk_size}"
+            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._set_state(TransferState.FAILED)
+            self.transfer_failed.emit(err_msg)
+            return
+
         self._rx_filename = start_payload.filename
         self._rx_file_size = start_payload.file_size
         self._rx_chunk_size = start_payload.chunk_size
@@ -305,6 +403,7 @@ class FileTransferService(QObject):
         self._rx_received_chunks = {}
         self._rx_start_time = time.time()
         self._rx_bytes_received = 0
+        self._rx_received_count = 0
 
         self._set_state(TransferState.RECEIVING)
         logger.info(
@@ -334,17 +433,23 @@ class FileTransferService(QObject):
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
 
+        previous = self._rx_received_chunks.get(chunk_payload.chunk_id)
+        if previous is not None:
+            self._rx_bytes_received -= len(previous)
+        else:
+            self._rx_received_count += 1
         self._rx_received_chunks[chunk_payload.chunk_id] = chunk_payload.chunk_data
-        self._rx_bytes_received = sum(len(c) for c in self._rx_received_chunks.values())
+        self._rx_bytes_received += len(chunk_payload.chunk_data)
 
         # Respond ACK
         ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
         self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
 
-        # Progress calculation
-        elapsed = max(time.time() - self._rx_start_time, 0.001)
+        # Progress calculation (same formula; counter replaces len(dict))
+        now = time.time()
+        elapsed = max(now - self._rx_start_time, 0.001)
         speed_kbps = (self._rx_bytes_received / 1024.0) / elapsed
-        received_count = len(self._rx_received_chunks)
+        received_count = self._rx_received_count
         total = max(self._rx_total_chunks, 1)
         pct = min(int((received_count / total) * 100), 100)
         rem_chunks = max(total - received_count, 0)
@@ -527,7 +632,7 @@ class FileTransferService(QObject):
             fpath = str(self._current_file_path) if self._current_file_path else ""
             self._set_state(TransferState.COMPLETED)
 
-            # Persist transfer record into hard drive SQLite database
+            # Persist transfer record into hard drive JSON store
             self._storage.save_file_transfer(
                 filename=fname,
                 file_path=fpath,
@@ -599,7 +704,8 @@ class FileTransferService(QObject):
     def _retransmit(self) -> None:
         """Retransmits current unacknowledged packet using existing sequence number."""
         if self._state == TransferState.HANDSHAKING:
-            if self._current_file_path:
+            # Reuse the packed START bytes from start_transfer (identical content).
+            if self._cached_start_payload is None and self._current_file_path:
                 start_payload = FileStartPayload(
                     file_size=self._file_size,
                     chunk_size=self._chunk_size,
@@ -607,10 +713,12 @@ class FileTransferService(QObject):
                     file_crc32=self._file_crc32,
                     filename=self._current_file_path.name,
                 )
+                self._cached_start_payload = start_payload.pack()
+            if self._cached_start_payload is not None:
                 self._serial_manager.send_packet(
                     seq=self._seq,
                     opcode=Opcode.TRANSFER_START,
-                    payload=start_payload.pack(),
+                    payload=self._cached_start_payload,
                 )
                 self._ack_timer.start()
 

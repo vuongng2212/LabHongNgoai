@@ -1,13 +1,13 @@
 # IR-OWC Lab Terminal (Infrared Optical Wireless Communication)
 
-[![Tests](https://img.shields.io/badge/tests-72%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-88%20passed-brightgreen.svg)]()
 [![Type Checked](https://img.shields.io/badge/mypy-strict%20passing-blue.svg)]()
 [![Linting](https://img.shields.io/badge/ruff-clean-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
 Ứng dụng Desktop chuyên dụng điều khiển, giám sát và truyền thông quang không dây hồng ngoại (IR-OWC Lab Terminal) kết nối mạch nhúng **STM32F407 + MCP2122 + TFDU4101** qua giao diện UART @ 115,200 bps.
 
-Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision Light Theme** với kiến trúc **PySide6 (Qt6) + QWebEngineView + QWebChannel**, xử lý đa luồng non-blocking (Worker-Object Pattern) và lưu trữ dữ liệu bền vững bằng **SQLite**.
+Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision Light Theme** với kiến trúc **PySide6 (Qt6) + QWebEngineView + QWebChannel**, xử lý đa luồng non-blocking (Worker-Object Pattern) và lưu trữ dữ liệu bền vững bằng **file JSON trên ổ cứng**.
 
 ---
 
@@ -32,12 +32,12 @@ Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision L
    - Hỗ trợ chọn file qua Native Dialog hoặc Kéo thả (Drag & Drop).
    - Động cơ **Stop-and-Wait ARQ**: Cắt nhỏ file 240B/chunk, tự động retry khi timeout (250ms), bảo toàn Sequence number.
    - Giám sát tiến độ %, tốc độ truyền thực tế (KB/s), ETA và đối soát băm **CRC-32** toàn vẹn khi kết thúc.
-   - Lưu trữ bền vững lịch sử truyền file vào SQLite và ổ cứng.
+   - Lưu trữ bền vững lịch sử truyền file vào file JSON trên ổ cứng.
 
 3. **Realtime Optical Chat Stream (Screen 3):**
    - Soạn và truyền nhận tin nhắn văn bản UTF-8 hai chiều qua chùm tia hồng ngoại.
    - Khung **Raw Frame Inspector** hiển thị Hex Dump và Metadata của gói tin quang nhị phân.
-   - Tự động lưu và nạp lại lịch sử chat từ SQLite khi mở ứng dụng.
+   - Tự động lưu và nạp lại lịch sử chat từ file JSON khi mở ứng dụng.
 
 4. **Lab Analytics, Diagnostics & CSV Export (Screen 4):**
    - 4 thẻ KPI động: Tốc độ tức thời, Tỷ lệ lỗi bit (BER) & mất gói, Độ trễ (Latency RTT), Số khối đã truyền.
@@ -59,7 +59,7 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (72/72 tests passed)
+# 3. Chạy bộ kiểm thử tự động (88/88 tests passed)
 QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn
@@ -85,11 +85,14 @@ uv run python scripts/build_standalone.py
 
 ## 📚 Tài liệu Kỹ thuật Tích hợp Phần cứng & Kiến trúc
 
-1. **[Tài liệu Đặc tả Giao thức cho STM32](docs/IOT_STM32_COMMUNICATION_SPECS.md):**
+1. **[Đặc tả giao thức — bản chốt](docs/PROTOCOL.md):**
    - Định dạng Frame nhị phân Little-Endian (`0xAA55` SOF, `0x55AA` EOF).
    - Thuật toán CRC-32 chuẩn IEEE 802.3 (`0xEDB88320`).
    - Bảng Opcode, sơ đồ timing, và mã nguồn C mẫu cho vi điều khiển STM32F407.
 
-2. **[Tài liệu Chuẩn Kiến trúc & Quy tắc Lập trình](docs/CONVENTIONS_AND_ARCHITECTURE.md):**
+2. **[Kiến trúc & Quy tắc lập trình](docs/ARCHITECTURE.md):**
    - Clean Layered Architecture & Worker-Object Pattern.
    - Bộ quy tắc Strict Typing (Zero `Any`), Google Docstrings (PEP 257) và Subsystem Tagged Logging.
+
+3. **[Index thống nhất + nghiệm thu](docs/README.md) / [Runbook nghiệm thu](docs/ACCEPTANCE.md):**
+   - Đối chiếu `LAB_BaoGia.xlsx` ↔ codebase, 3 bước test controller thật + demo 5 bước.

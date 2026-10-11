@@ -1,5 +1,6 @@
-# BỘ ĐẶC TẢ GIAO THỨC TRUYỀN THÔNG QUANG HỒNG NGOẠI (IR-OWC SPECS)
+# BỘ ĐẶC TẢ GIAO THỨC TRUYỀN THÔNG QUANG HỒNG NGOẠI (IR-OWC SPECS) — BẢN CHỐT
 **Tài liệu kỹ thuật tích hợp giữa Phần mềm Desktop (PySide6) và Phần cứng STM32F407**
+**Ràng buộc báo giá:** `LAB_BaoGia.xlsx` — MVP dùng `chunk 240B / CRC-32 / timeout 250ms / retry 5→FAILED`. `SHA-256`, auto-resume, BER đo thực là Post-MVP, chưa áp dụng.
 
 ---
 
@@ -172,3 +173,10 @@ void IR_Send_ACK(UART_HandleTypeDef *huart, uint8_t acked_seq) {
 ## 6. KHUYẾN NGHỊ VỀ TIMING & DMA TRÊN STM32
 1. **DMA RX Stream:** Sử dụng UART DMA Circular Mode kết hợp với ngắt **IDLE Line Detection** (`__HAL_UART_ENABLE_IT(&huartX, UART_IT_IDLE)`) để nhận trọn vẹn frame mà không làm nghẽn CPU.
 2. **Ring Buffer:** Duy trì bộ đệm tối thiểu 2048 bytes trong RAM STM32 để tránh tràn khi nhận burst packet.
+
+---
+
+## 7. RÀNG BUỘC MVP ↔ POST-MVP (KHỚP `LAB_BaoGia.xlsx`)
+
+* MVP đã chốt: `chunk mặc định 240B` (tối đa 512B), `ACK timeout 250ms`, `retry tối đa 5 → FAILED + gửi lại tay`, toàn vẹn `CRC-32`, `TRANSFER_PAUSE` mang payload `ABORT` khi user hủy, `TRANSFER_RESUME (0x33)` mới chỉ định nghĩa chưa dùng.
+* Post-MVP (báo riêng, chưa implement): `0x33 resume` + ping định kỳ để tự phục hồi sau chắn tia; `SHA-256` song song CRC-32; `BER` chỉ bật khi firmware cung cấp counter; streaming chống tràn RAM; hotplug/auto-reconnect; priority queue `Control > Text > File`.

@@ -1,6 +1,7 @@
-// File Transfer Viewport Controller with dynamic telemetry updates & SQLite history loading
+// File Transfer Viewport Controller with dynamic telemetry updates & hard-drive history loading
 let selectedFilePath = '';
 let transferHistoryCache = [];
+let renderedRows = [];
 
 function initFileController() {
   const historyTable = document.querySelector('#view-file tbody');
@@ -28,11 +29,24 @@ function initFileController() {
             handleFileSelected(path);
           }
         });
+      } else if (window.UIFeedback) {
+        window.UIFeedback.showToast('warning', 'Backend not connected', 'File picker needs the SpectraLink Desktop app.');
       }
       return;
     }
 
     if (!btn) return;
+
+    // Global feedback layer (confirm modal / toasts) owns its buttons —
+    // ignore them here so modal actions like Cancel/Abort can't retrigger.
+    if (btn.closest('#modal-overlay, #toast-container')) return;
+
+    // Row-level icon actions (e.g. open storage location) carry data-action.
+    const actionBtn = btn.closest('[data-action]');
+    if (actionBtn) {
+      handleRowAction(actionBtn);
+      return;
+    }
 
     if (btn.innerText.includes('Browse') || btn.innerText.includes('Select File')) {
       if (window.bridge) {
@@ -41,11 +55,19 @@ function initFileController() {
             handleFileSelected(path);
           }
         });
+      } else if (window.UIFeedback) {
+        window.UIFeedback.showToast('warning', 'Backend not connected', 'File picker needs the SpectraLink Desktop app.');
       }
     } else if (btn.innerText.includes('Transmit') || btn.innerText.includes('Send File') || btn.innerText.includes('Start Transfer')) {
-      if (window.bridge && selectedFilePath) {
+      if (!window.bridge) {
+        if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'File transfer needs the SpectraLink Desktop app link.');
+        return;
+      }
+      if (selectedFilePath) {
+        if (window.UIFeedback) window.UIFeedback.showToast('info', 'Transmission started', 'Streaming over 880nm beam (Stop-and-Wait ARQ).');
         window.bridge.startFileTransfer(selectedFilePath);
-      } else if (!selectedFilePath && window.bridge) {
+      } else {
+        if (window.UIFeedback) window.UIFeedback.showToast('warning', 'No file selected', 'Choose a file before starting transmission.');
         window.bridge.openFileDialog((path) => {
           if (path) {
             handleFileSelected(path);
@@ -55,14 +77,71 @@ function initFileController() {
       }
     } else if (btn.innerText.includes('Cancel') || btn.innerText.includes('Abort')) {
       if (window.bridge) {
-        window.bridge.abortFileTransfer();
-        if (activeStatusBadge) {
-          activeStatusBadge.innerText = 'ABORTED';
-          activeStatusBadge.className = 'text-mono-caption font-mono-caption bg-error text-white px-2 py-0.5 rounded-full font-bold';
+        const doAbort = () => {
+          window.bridge.abortFileTransfer();
+          if (activeStatusBadge) {
+            activeStatusBadge.innerText = 'ABORTED';
+            activeStatusBadge.className = 'text-mono-caption font-mono-caption bg-error text-white px-2 py-0.5 rounded-full font-bold';
+          }
+          if (window.UIFeedback) window.UIFeedback.showToast('info', 'Transfer aborted', 'Optical transmission cancelled by user.');
+        };
+        if (window.UIFeedback) {
+          window.UIFeedback.confirmModal({
+            title: 'Abort transfer?',
+            message: 'The current optical transmission will be cancelled. Already-sent chunks are discarded.',
+            confirmLabel: 'Abort',
+            danger: true,
+          }).then((ok) => { if (ok) doAbort(); });
+        } else {
+          doAbort();
         }
       }
     }
   });
+
+  function handleRowAction(actionBtn) {
+    if (actionBtn.dataset.action !== 'open-location') return;
+    const item = renderedRows[Number(actionBtn.dataset.idx)];
+    const path = item && item.file_path;
+    if (!window.bridge) {
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'Storage location needs the SpectraLink Desktop app.');
+      return;
+    }
+    if (!path) {
+      if (window.UIFeedback) window.UIFeedback.showToast('info', 'Location not recorded yet', 'History is syncing — try again in a moment.');
+      return;
+    }
+    window.bridge.openTransferLocation(path, (openedDir) => {
+      if (!window.UIFeedback) return;
+      if (openedDir) {
+        window.UIFeedback.showToast('success', 'Storage folder opened', openedDir);
+      } else {
+        window.UIFeedback.showModal({
+          variant: 'info',
+          title: 'File no longer there',
+          message: 'The recorded file was moved or deleted. Nothing to open.',
+          details: path,
+        });
+      }
+    });
+  }
+
+  function reloadHistoryFromBridge() {
+    if (!window.bridge || typeof window.bridge.getFileHistory !== 'function') {
+      renderFilteredHistoryTable();
+      return;
+    }
+    window.bridge.getFileHistory((historyJson) => {
+      try {
+        const transfers = JSON.parse(historyJson);
+        transferHistoryCache = Array.isArray(transfers) ? transfers : [];
+      } catch (err) {
+        console.error('Failed to parse file history JSON:', err);
+        transferHistoryCache = [];
+      }
+      renderFilteredHistoryTable();
+    });
+  }
 
   function handleFileSelected(path) {
     selectedFilePath = path;
@@ -74,6 +153,7 @@ function initFileController() {
     }
     if (progressBar) progressBar.style.width = '0%';
     if (progressPct) progressPct.innerText = '0%';
+    if (window.UIFeedback) window.UIFeedback.showToast('info', 'File selected', fname + ' ready for optical transmission.');
     console.log('Selected file for optical transmission:', path);
   }
 
@@ -84,7 +164,19 @@ function initFileController() {
     });
   }
 
-  if (window.bridge) {
+  // Bridge connects asynchronously (QWebChannel); retry until ready, then wire once.
+  let bridgeWired = false;
+  function tryWireBridge() {
+    if (bridgeWired) return;
+    if (!window.bridge) {
+      setTimeout(tryWireBridge, 300);
+      return;
+    }
+    bridgeWired = true;
+    wireBridgeSignals();
+  }
+
+  function wireBridgeSignals() {
     window.bridge.transferProgress.connect((pct, speedKbps, etaSec, curChunk, totalChunks) => {
       if (progressBar) progressBar.style.width = `${pct}%`;
       if (progressPct) progressPct.innerText = `${pct}%`;
@@ -98,12 +190,9 @@ function initFileController() {
           'text-mono-caption font-mono-caption bg-secondary text-white px-2 py-0.5 rounded-full font-bold' :
           'text-mono-caption font-mono-caption bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-bold animate-pulse';
       }
-
-      console.log(`Transfer Progress: ${pct}% | ${speedKbps.toFixed(1)} KB/s | Chunk ${curChunk}/${totalChunks}`);
     });
 
     window.bridge.transferCompleted.connect((filename, bytesSent, elapsedSec, crcHex) => {
-      console.log(`File Transfer Complete: ${filename} (${bytesSent}B in ${elapsedSec.toFixed(2)}s) CRC=${crcHex}`);
       const newRec = {
         filename: filename,
         size_bytes: bytesSent,
@@ -114,6 +203,17 @@ function initFileController() {
       };
       transferHistoryCache.unshift(newRec);
       renderFilteredHistoryTable();
+      // Re-sync from hard-drive store so the new row gains its recorded file_path
+      // (used by the open-location row action) without changing signals.
+      reloadHistoryFromBridge();
+      if (window.UIFeedback) {
+        window.UIFeedback.showModal({
+          variant: 'success',
+          title: 'Transfer complete',
+          message: `${filename} verified over optical link in ${elapsedSec.toFixed(1)}s.`,
+          details: `CRC-32 ${crcHex} • ${bytesSent} bytes`,
+        });
+      }
     });
 
     window.bridge.transferFailed.connect((reason) => {
@@ -122,35 +222,34 @@ function initFileController() {
         activeStatusBadge.innerText = 'FAILED';
         activeStatusBadge.className = 'text-mono-caption font-mono-caption bg-error text-white px-2 py-0.5 rounded-full font-bold';
       }
+      if (window.UIFeedback) {
+        window.UIFeedback.showModal({
+          variant: 'error',
+          title: 'Transfer failed',
+          message: 'Optical transmission did not complete (timeout / blocked beam / disconnect).',
+          details: reason,
+          actions: [
+            { id: 'close', label: 'Close', kind: 'secondary' },
+            { id: 'retry', label: 'Retry', kind: 'primary', onClick: (close) => {
+              close();
+              if (selectedFilePath && window.bridge) window.bridge.startFileTransfer(selectedFilePath);
+            } },
+          ],
+        });
+      }
     });
 
-    // Load persisted file history from local SQLite database
-    if (typeof window.bridge.getFileHistory === 'function') {
-      window.bridge.getFileHistory((historyJson) => {
-        try {
-          const transfers = JSON.parse(historyJson);
-          if (Array.isArray(transfers) && transfers.length > 0) {
-            transferHistoryCache = transfers;
-          } else {
-            transferHistoryCache = [];
-          }
-          renderFilteredHistoryTable();
-        } catch (err) {
-          console.error('Failed to parse file history JSON:', err);
-          renderFilteredHistoryTable();
-        }
-      });
-    } else {
-      renderFilteredHistoryTable();
-    }
-  } else {
-    renderFilteredHistoryTable();
+    // Load persisted file history from local hard-drive store
+    reloadHistoryFromBridge();
   }
+
+  tryWireBridge();
 
   function renderFilteredHistoryTable() {
     if (!historyTable) return;
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
     historyTable.innerHTML = '';
+    renderedRows = [];
 
     const filtered = transferHistoryCache.filter(item => {
       if (!query) return true;
@@ -174,14 +273,18 @@ function initFileController() {
       return;
     }
 
+    // Batch all rows into a DocumentFragment: identical DOM, one reflow.
+    const fragment = document.createDocumentFragment();
     filtered.forEach(item => {
       const row = document.createElement('tr');
       row.className = 'hover:bg-surface-container-high/40 transition-colors h-11';
-      
-      const sizeStr = item.size_bytes >= 1048576 ? 
-        `${(item.size_bytes / 1048576).toFixed(1)} MB` : 
+
+      const sizeStr = item.size_bytes >= 1048576 ?
+        `${(item.size_bytes / 1048576).toFixed(1)} MB` :
         `${(item.size_bytes / 1024).toFixed(1)} KB`;
 
+      const rowIdx = renderedRows.length;
+      renderedRows.push(item);
       row.innerHTML = `
         <td class="px-space-md">
           <div class="flex items-center gap-2">
@@ -205,14 +308,18 @@ function initFileController() {
         </td>
         <td class="px-space-md text-right">
           <div class="flex items-center justify-end gap-1">
+            <button data-action="open-location" data-idx="${rowIdx}" class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Open storage location">
+              <span class="material-symbols-outlined text-[16px]">folder_open</span>
+            </button>
             <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Verified Checksum">
               <span class="material-symbols-outlined text-[16px] text-secondary">verified</span>
             </button>
           </div>
         </td>
       `;
-      historyTable.appendChild(row);
+      fragment.appendChild(row);
     });
+    historyTable.appendChild(fragment);
   }
 
   function escapeHtml(str) {

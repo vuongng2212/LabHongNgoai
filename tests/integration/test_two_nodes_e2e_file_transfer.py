@@ -44,8 +44,8 @@ class TestTwoNodesE2EFileTransfer:
             expected_crc = zlib.crc32(test_content) & 0xFFFFFFFF
 
             downloads_b = dir_path / "node_b_downloads"
-            db_b = dir_path / "node_b.db"
-            storage_b = StorageService(db_path=db_b)
+            data_b = dir_path / "node_b_data"
+            storage_b = StorageService(data_dir=data_b)
 
             service_a = FileTransferService(serial_manager=mgr_a, chunk_size=240)
             service_b = FileTransferService(
@@ -82,7 +82,7 @@ class TestTwoNodesE2EFileTransfer:
             assert received_file.exists()
             assert received_file.read_bytes() == test_content
 
-            # Verify Node B SQLite database records RX entry
+            # Verify Node B file store records RX entry
             records = storage_b.get_file_transfers()
             assert len(records) >= 1
             rx_record = records[0]

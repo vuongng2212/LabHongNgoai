@@ -23,9 +23,9 @@ hiddenimports = [
     'serial',
     'serial.tools',
     'serial.tools.list_ports',
-    'sqlite3',
     'zlib',
     'csv',
+    'json',
 ]
 
 a = Analysis(

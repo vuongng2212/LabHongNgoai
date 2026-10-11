@@ -192,7 +192,7 @@ class TestFramer:
         ack_payload = struct.pack("<BB", acked_seq, 0)  # [acked_seq, status=0]
         py_frame = pack_frame(seq=acked_seq, opcode=Opcode.ACK, payload=ack_payload)
 
-        # Build exact manual frame as defined in docs/IOT_STM32_COMMUNICATION_SPECS.md Section 5.2
+        # Build exact manual frame as defined in docs/PROTOCOL.md Section 5.2
         c_body = bytes([acked_seq, Opcode.ACK, 2, 0, acked_seq, 0])
         c_crc = compute_crc32(c_body)
         c_frame = bytes([0x55, 0xAA]) + c_body + struct.pack("<IH", c_crc, EOF_MAGIC)

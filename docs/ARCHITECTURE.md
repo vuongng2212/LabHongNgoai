@@ -1,4 +1,5 @@
 # KIẾN TRÚC HỆ THỐNG & QUY CHUẨN PHÁT TRIỂN (CONVENTIONS & BEST PRACTICES)
+**Dự án:** IR-OWC Lab Terminal — xem index tại `docs/README.md`. Mọi ví dụ opcode/tree dưới đây phải khớp `docs/PROTOCOL.md` và code thực tế.
 **Dự án:** IR-OWC Lab Terminal (Desktop Application cho Phòng Thí Nghiệm Truyền Thông Quang Không Dây Hồng Ngoại)  
 **Tech-Stack:** Python 3.11+, PySide6 (Qt6), PySerial, PyQtGraph, UV Package Manager  
 **Chuẩn lập trình:** Clean Layered Architecture, Event-Driven (Qt Signals/Slots), SOLID / KISS / DRY / YAGNI, Google-Style Docstrings, Strict Typing, TDD.
@@ -33,7 +34,7 @@ Dự án tuân thủ nghiêm ngặt các nguyên lý kỹ nghệ phần mềm đ
 
 ### 1.2. KISS - DRY - YAGNI
 - **KISS (Keep It Simple, Stupid):** Giữ giao thức Stop-and-Wait ARQ đơn giản, rõ ràng, không cố cài đặt Sliding Window phức tạp khi đặc tính kênh truyền quang hồng ngoại trong phòng lab là Half-Duplex và tốc độ 115.2 kbps.
-- **DRY (Don't Repeat Yourself):** Toàn bộ magic numbers, byte delimiters (SOF `0xAA55`, EOF `0x55AA`), Opcode (`0x01` DATA, `0x02` ACK, `0x05` PING) chỉ được định nghĩa một lần duy nhất tại `protocol/constants.py`.
+- **DRY (Don't Repeat Yourself):** Toàn bộ magic numbers, byte delimiters (SOF `0xAA55`, EOF `0x55AA`), Opcode (`0x02 DATA_TEXT`, `0x01 DATA_CHUNK`, `0x10 ACK`, `0x20 PING` — xem `docs/PROTOCOL.md`) chỉ được định nghĩa một lần duy nhất tại `protocol/constants.py`.
 - **YAGNI (You Aren't Gonna Need It):** Không viết sẵn các tính năng vượt scope như mã hóa AES-256, nén file zip phức tạp, multi-hop mesh routing khi chưa có trong yêu cầu MVP 3 tuần.
 
 ---
@@ -75,10 +76,10 @@ Khi thao tác với `struct.pack`, `struct.unpack`, hoặc toán tử bitwise (`
 
 ```python
 # PACKET HEADER STRUCTURE (Total: 6 bytes)
-# Offset 0-1: Start of Frame (SOF) -> 0xAA55 (uint16, Big-Endian magic)
+# Offset 0-1: Start of Frame (SOF) -> 0xAA55 (uint16, Little-Endian: 0x55, 0xAA)
 # Offset 2  : Sequence Number      -> 0x00..0xFF (uint8)
-# Offset 3  : Opcode / Command     -> 0x01=DATA, 0x02=ACK, 0x05=PING (uint8)
-# Offset 4-5: Payload Length (N)   -> 0..1024 bytes (uint16, Little-Endian)
+# Offset 3  : Opcode / Command     -> 0x02=TEXT, 0x01=CHUNK, 0x10=ACK, 0x20=PING (uint8, xem PROTOCOL.md)
+# Offset 4-5: Payload Length (N)   -> 0..512 bytes (uint16, Little-Endian)
 header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 ```
 
@@ -97,12 +98,14 @@ header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 
 ```text
 LabHongNgoai/
-├── .venv/                         # Virtualenv quản lý bởi uv
-├── docs/                          # Tài liệu kiến trúc, specs, runbook
-│   ├── ARCHITECTURE_AND_SPECS.md
-│   ├── CONVENTIONS_AND_ARCHITECTURE.md
-│   ├── IOT_INTEGRATION_RUNBOOK.md
-│   └── ROADMAP_AND_MVP_PLAN.md
+├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
+├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 88 passed)
+├── docs/                         # 4 file duy nhất, không thêm file planning rời
+│   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
+│   ├── PROTOCOL.md               # Wire format chốt + code C STM32
+│   ├── ARCHITECTURE.md           # Kiến trúc code + quy chuẩn dev (file này)
+│   ├── ACCEPTANCE.md             # Nghiệm thu HW 3 bước + demo 5 bước
+│   └── screenshots/              # Ảnh 4 màn hình dùng cho README + demo
 ├── src/
 │   └── ir_terminal/
 │       ├── __init__.py
@@ -111,69 +114,49 @@ LabHongNgoai/
 │       │
 │       ├── core/                  # [TẦNG CORE] Quản lý I/O & Threading
 │       │   ├── __init__.py
-│       │   ├── interfaces.py      # Abstract Base Classes (ITransport, ISerialWorker)
-│       │   ├── serial_worker.py   # QObject Worker chạy trên QThread riêng (Non-blocking I/O)
-│       │   ├── serial_manager.py  # Quản lý vòng đời kết nối COM (Connect, Disconnect, Scan)
+│       │   ├── interfaces.py      # Abstract Base Classes (ITransport)
+│       │   ├── serial_worker.py   # PySerialTransport + QObject Worker trên QThread (poll 10ms)
+│       │   ├── serial_manager.py  # Quản lý vòng đời COM (Connect, Disconnect, Scan)
 │       │   ├── ring_buffer.py     # Bộ đệm vòng byte stream chống tràn
-│       │   └── mock_serial.py     # Giả lập Serial Port (Simulate drop rate, latency, LOS blockage)
+│       │   └── mock_serial.py     # Giả lập Serial (drop rate, latency, LOS blockage)
 │       │
 │       ├── protocol/              # [TẦNG GIAO THỨC] Định nghĩa & Đóng gói Frame
 │       │   ├── __init__.py
-│       │   ├── constants.py       # SOF, EOF, OPCODES, TIMEOUTS, ERROR_CODES
-│       │   ├── framer.py          # Byte stuffing, SOF/EOF delimiter parser, CRC-32
+│       │   ├── constants.py       # SOF, EOF, OPCODES, TIMEOUTS (chunk mặc định 240B, CRC-32)
+│       │   ├── framer.py          # pack_frame / parse_frames_from_buffer + CRC-32
 │       │   ├── packet.py          # Immutable Dataclasses (Packet, Header)
-│       │   └── state_machine.py   # Stop-and-Wait ARQ & Auto-Pause State Machine
+│       │   └── file_payloads.py   # FileStart / FileChunk / FileEnd / Ack payloads
 │       │
 │       ├── services/              # [TẦNG DỊCH VỤ] Nghiệp vụ ứng dụng
 │       │   ├── __init__.py
-│       │   ├── file_service.py    # Chunking, reassembly, SHA-256 verifier
-│       │   ├── chat_service.py    # Message queuing, Half-Duplex carrier sense
-│       │   └── telemetry_service.py # Tính toán Throughput (KB/s), Loss Rate, RTT
+│       │   ├── file_transfer_service.py # Stop-and-Wait ARQ (250ms/5 retry→FAILED, CRC-32)
+│       │   ├── chat_service.py    # Gửi/nhận DATA_TEXT UTF-8 + lưu file JSON
+│       │   ├── storage_service.py # File JSON chat/file/telemetry + export CSV
+│       │   └── telemetry_service.py # Throughput/RTT/loss/sniffer (BER hiển thị, chưa đo thực)
 │       │
-│       ├── models/                # [TẦNG DỮ LIỆU] Immutable Domain Entities & Schemas
+│       ├── models/                # [TẦNG DỮ LIỆU] Entities
 │       │   ├── __init__.py
-│       │   ├── serial_info.py     # Port info, Baudrate, Parity config
-│       │   ├── transfer_state.py  # Trạng thái truyền (IDLE, TRANSMITTING, PAUSED, COMPLETED)
-│       │   ├── chat_message.py    # Text message schema, ACK status
-│       │   └── telemetry_data.py  # Metric samples cho đồ thị
+│       │   └── serial_info.py     # Port info, Baudrate config
 │       │
-│       ├── ui/                    # [TẦNG GIAO DIỆN] PySide6 Widgets (Apple Light Precision)
+│       ├── ui/                    # [TẦNG GIAO DIỆN] QWebEngine SPA
 │       │   ├── __init__.py
-│       │   ├── main_window.py     # Cửa sổ chính (Sidebar navigation + QStackedWidget)
-│       │   ├── styles/
-│       │   │   ├── __init__.py
-│       │   │   ├── theme_apple.qss# Bảng màu Apple Light Precision
-│       │   │   └── palette.py     # Mã màu hex chuẩn hóa (Cobalt Blue #2563EB, Slate Gray)
-│       │   ├── views/             # 4 Màn hình chuyên biệt
-│       │   │   ├── hardware_view.py   # View 1: Kết nối & Căn chỉnh tia
-│       │   │   ├── file_view.py       # View 2: Truyền nhận file/ảnh
-│       │   │   ├── chat_view.py       # View 3: Trò chuyện 2 chiều
-│       │   │   └── telemetry_view.py  # View 4: Đồ thị & Xuất CSV
-│       │   └── components/        # UI Widgets tái sử dụng
-│       │       ├── status_badge.py    # Badge LOS/ACK
-│       │       ├── progress_card.py   # Card thanh tiến độ
-│       │       ├── metric_card.py     # Card KPI số liệu lớn
-│       │       ├── chat_bubble.py     # Bong bóng chat kèm 2 dấu tích ACK
-│       │       └── hex_drawer.py      # Ngăn kéo xem log hex ẩn/hiện
+│       │   ├── main_window_web.py # QMainWindow + QWebEngineView + QWebChannel
+│       │   ├── backend_bridge.py  # Slots/Signals Python↔JS
+│       │   └── web/               # HTML/Tailwind/JS (4 views: hardware/file/chat/telemetry)
 │       │
 │       └── utils/                 # [TIỆN ÍCH]
 │           ├── __init__.py
-│           ├── logger.py          # Rotating file logger + Qt Signal log sink
-│           └── path_helpers.py    # Resolve đường dẫn asset an toàn cho PyInstaller
+│           ├── logger.py          # Rotating file logger + LogTag
+│           └── path_helpers.py    # Resolve asset an toàn cho PyInstaller
 │
-├── tests/                         # [KIỂM THỬ TỰ ĐỘNG] pytest + pytest-qt
-│   ├── conftest.py                # Fixtures (Mock Serial, QTest app)
-│   ├── unit/
-│   │   ├── test_framer.py         # Test đóng gói/giải mã Frame & CRC-32
-│   │   ├── test_file_chunker.py   # Test chia nhỏ & ghép file SHA-256
-│   │   └── test_state_machine.py  # Test chuyển trạng thái ARQ & Timeout Retry
-│   └── integration/
-│       ├── test_serial_pipeline.py # Test luồng truyền nhận qua Virtual COM loopback
-│       └── test_ui_events.py      # Test phản hồi nút bấm & tiến độ giao diện
+├── tests/                         # pytest (hiện tại 88 passed)
+│   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge
+│   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager
 │
+├── scripts/
+│   └── build_standalone.py        # Đóng gói PyInstaller
 ├── pyproject.toml                 # Cấu hình uv, dependencies, ruff, mypy, pytest
-├── README.md
-└── start.sh                       # Script chạy nhanh
+└── ir_terminal.spec               # PyInstaller spec
 ```
 
 ---
@@ -182,7 +165,7 @@ LabHongNgoai/
 
 ### Quy tắc bất biến (Inviolable Rules):
 1. **Không bao giờ block Main Thread (UI Thread):**
-   - Mọi thao tác I/O (`serial.read()`, `serial.write()`), tính toán nặng (băm SHA-256 file lớn), hoặc chờ timeout **phải chạy trên Worker Thread**.
+   - Mọi thao tác I/O (`serial.read()`, `serial.write()`) và chờ timeout **phải chạy trên Worker Thread**. Băm file lớn hiện vẫn đọc đồng bộ trong `FileTransferService.start_transfer` — streaming là Post-MVP.
 2. **Worker-Object Pattern với `moveToThread(QThread)`:**
    - Không bao giờ kế thừa trực tiếp từ `QThread` để override `run()` chứa business logic.
    - Luôn tạo class `SerialWorker(QObject)`, chuyển sang thread riêng bằng `worker.moveToThread(thread)` và điều khiển qua Qt Signals/Slots.
@@ -209,14 +192,9 @@ LabHongNgoai/
 
 ## 6. CHIẾN LƯỢC TEST & GIẢ LẬP PHẦN CỨNG (TESTING & HARDWARE MOCKING)
 
-Vì ứng dụng cần giao tiếp với vi điều khiển STM32 nhưng trong 2 tuần đầu nhóm phần mềm phải làm việc độc lập:
-1. **Mock Serial (`MockSerialPort`):**
-   - Giả lập `serial.Serial` trong `tests/` với các kịch bản thực tế:
-     - Tỷ lệ mất gói ngẫu nhiên (Loss Rate 1% - 10%).
-     - Độ trễ phản hồi (Latency RTT 20ms - 100ms).
-     - Giả lập chắn tia quang học (LOS Blockage) để test tính năng Auto-Pause & Resume.
-2. **Integration Test (Virtual COM Loopback):**
-   - Sử dụng cặp cổng COM ảo (`socat` trên Linux / `com0com` trên Windows) để chạy 2 instance phần mềm đối xứng (Peer-to-Peer) kiểm thử truyền file và chat thực tế.
+Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
+1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
+2. **Integration Test (2-node mock + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế. Hiện tại `88 passed` (2026-10-10).
 
 ---
 

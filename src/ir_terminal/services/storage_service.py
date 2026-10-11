@@ -1,24 +1,38 @@
-"""Persistent SQLite storage repository for durable chat history, file logs, and telemetry."""
+"""Durable file-based storage repository for chat history, file logs, and telemetry.
+
+Replaces the former SQLite backend with plain JSON document files under the
+application data directory. Client scope does not need a relational database:
+each collection is a JSON array file written atomically (temporary file plus
+rename) under a threading lock, so background Qt threads can persist safely.
+"""
 
 from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
-import sqlite3
-from collections.abc import Generator
-from contextlib import contextmanager
+import threading
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from ir_terminal.utils.logger import LogTag
-from ir_terminal.utils.path_helpers import get_db_path
+from ir_terminal.utils.path_helpers import get_data_dir
 
 logger = logging.getLogger(__name__)
 
+_CHAT_FILE = "chat_history.json"
+_TRANSFERS_FILE = "file_transfers.json"
+_TELEMETRY_FILE = "telemetry_samples.json"
+_SETTINGS_FILE = "settings.json"
+
+# Upper bound for periodic telemetry samples kept on disk.
+_MAX_TELEMETRY_SAMPLES = 5000
+
 
 class ChatMessageRecord(TypedDict):
-    """Database record representation of a chat message."""
+    """File record representation of a chat message."""
 
     id: int
     sender: str
@@ -30,7 +44,7 @@ class ChatMessageRecord(TypedDict):
 
 
 class FileTransferRecord(TypedDict):
-    """Database record representation of a file transfer event."""
+    """File record representation of a file transfer event."""
 
     id: int
     filename: str
@@ -45,7 +59,7 @@ class FileTransferRecord(TypedDict):
 
 
 class TelemetryRecord(TypedDict):
-    """Database record representation of an optical link telemetry sample."""
+    """File record representation of an optical link telemetry sample."""
 
     id: int
     timestamp_epoch: float
@@ -57,95 +71,83 @@ class TelemetryRecord(TypedDict):
     created_at: str
 
 
-class StorageService:
-    """Manages persistent SQLite database on local storage with CSV export capabilities."""
+def _utc_now_iso() -> str:
+    """Returns current UTC time as an ISO-8601 string."""
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
-    def __init__(self, db_path: Path | None = None) -> None:
-        """Initializes storage service with specified or default database file path.
+
+class StorageService:
+    """Manages durable JSON file stores on local hard drive with CSV export."""
+
+    def __init__(self, data_dir: Path | None = None) -> None:
+        """Initializes storage service with specified or default data directory.
 
         Args:
-            db_path: Optional explicit Path to the SQLite database file.
+            data_dir: Optional explicit directory holding the JSON store files.
         """
-        self._db_path = db_path if db_path is not None else get_db_path()
-        self._init_database()
+        self._data_dir = data_dir if data_dir is not None else get_data_dir()
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        logger.info("%s Initializing file storage at: %s", LogTag.STORAGE, self._data_dir)
 
-    @contextmanager
-    def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
-        """Context manager yielding a thread-safe connection to the SQLite database.
+    def _store_path(self, filename: str) -> Path:
+        """Returns absolute path of a JSON store file."""
+        return self._data_dir / filename
 
-        Guarantees proper transaction commit/rollback and connection closure upon exit.
-
-        Yields:
-            Configured sqlite3.Connection instance with Row factory.
-        """
-        conn = sqlite3.connect(str(self._db_path))
-        conn.row_factory = sqlite3.Row
+    def _load_list(self, filename: str) -> list[dict[str, Any]]:
+        """Reads a JSON array store, recovering to empty on missing/corrupt data."""
+        path = self._store_path(filename)
         try:
-            with conn:
-                yield conn
-        finally:
-            conn.close()
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return []
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("%s Corrupt store file, resetting: %s", LogTag.STORAGE, path)
+            return []
+        if not isinstance(data, list):
+            logger.warning("%s Unexpected store shape, resetting: %s", LogTag.STORAGE, path)
+            return []
+        return [dict(item) for item in data if isinstance(item, dict)]
 
-    def _init_database(self) -> None:
-        """Initializes database schema if not already present."""
-        logger.info(
-            "%s Initializing SQLite persistent database at: %s", LogTag.STORAGE, self._db_path
+    def _save_list(self, filename: str, records: list[dict[str, Any]]) -> None:
+        """Atomically rewrites a JSON array store via temporary file plus rename."""
+        path = self._store_path(filename)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        # Compact separators: identical parsed data, ~20-30% fewer bytes written.
+        tmp_path.write_text(
+            json.dumps(records, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
         )
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
+        tmp_path.replace(path)
 
-            # 1. Chat Messages Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS chat_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    sender TEXT NOT NULL,
-                    text TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    seq INTEGER NOT NULL,
-                    is_outgoing INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
+    def _load_settings(self) -> dict[str, str]:
+        """Reads the settings object store, recovering to empty on bad data."""
+        path = self._store_path(_SETTINGS_FILE)
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return {}
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("%s Corrupt settings file, resetting: %s", LogTag.STORAGE, path)
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(key): str(value) for key, value in data.items()}
 
-            # 2. File Transfers Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS file_transfers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    direction TEXT NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    crc32_hex TEXT NOT NULL,
-                    speed_kbps REAL NOT NULL,
-                    duration_sec REAL NOT NULL,
-                    status TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-            # 3. Telemetry Samples Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS telemetry_samples (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp_epoch REAL NOT NULL,
-                    throughput_kbps REAL NOT NULL,
-                    rtt_ms REAL NOT NULL,
-                    packet_loss_rate REAL NOT NULL,
-                    total_packets_sent INTEGER NOT NULL,
-                    total_packets_lost INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-
-            # 4. Application Settings Table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS app_settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            conn.commit()
+    def _append_record(self, filename: str, record: dict[str, Any]) -> int:
+        """Appends one record with the next sequential id, returns the id."""
+        with self._lock:
+            records = self._load_list(filename)
+            record_id = len(records) + 1
+            record["id"] = record_id
+            record["created_at"] = _utc_now_iso()
+            records.append(record)
+            self._save_list(filename, records)
+            return record_id
 
     def save_chat_message(
         self,
@@ -155,7 +157,7 @@ class StorageService:
         seq: int,
         is_outgoing: bool,
     ) -> int:
-        """Persists a chat message to disk.
+        """Persists a chat message to hard drive.
 
         Args:
             sender: Sender node identifier string.
@@ -165,61 +167,51 @@ class StorageService:
             is_outgoing: True if transmitted locally; False if received from remote.
 
         Returns:
-            Row ID of the inserted chat message record.
+            Sequential ID of the stored chat message record.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO chat_messages (sender, text, timestamp, seq, is_outgoing)
-                VALUES (?, ?, ?, ?, ?);
-                """,
-                (sender, text, timestamp, seq, 1 if is_outgoing else 0),
-            )
-            conn.commit()
-            msg_id = int(cursor.lastrowid or 0)
-            logger.debug(
-                "%s Saved chat message #%d (seq=%d, outgoing=%s)",
-                LogTag.STORAGE,
-                msg_id,
-                seq,
-                is_outgoing,
-            )
-            return msg_id
+        msg_id = self._append_record(
+            _CHAT_FILE,
+            {
+                "sender": sender,
+                "text": text,
+                "timestamp": timestamp,
+                "seq": seq,
+                "is_outgoing": is_outgoing,
+            },
+        )
+        logger.debug(
+            "%s Saved chat message #%d (seq=%d, outgoing=%s)",
+            LogTag.STORAGE,
+            msg_id,
+            seq,
+            is_outgoing,
+        )
+        return msg_id
 
     def get_chat_history(self, limit: int = 100) -> list[ChatMessageRecord]:
-        """Retrieves recent chat messages from database.
+        """Retrieves recent chat messages from hard drive.
 
         Args:
-            limit: Maximum number of recent records to fetch.
+            limit: Maximum number of most recent records to fetch.
 
         Returns:
-            List of ChatMessageRecord dictionary items ordered chronologically.
+            List of ChatMessageRecord items ordered chronologically.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, sender, text, timestamp, seq, is_outgoing, created_at
-                FROM chat_messages
-                ORDER BY id ASC
-                LIMIT ?;
-                """,
-                (limit,),
+        with self._lock:
+            records = self._load_list(_CHAT_FILE)
+        recent = records[-limit:] if limit > 0 else []
+        return [
+            ChatMessageRecord(
+                id=int(item.get("id", 0)),
+                sender=str(item.get("sender", "")),
+                text=str(item.get("text", "")),
+                timestamp=str(item.get("timestamp", "")),
+                seq=int(item.get("seq", 0)),
+                is_outgoing=bool(item.get("is_outgoing", False)),
+                created_at=str(item.get("created_at", "")),
             )
-            rows = cursor.fetchall()
-            return [
-                ChatMessageRecord(
-                    id=int(row["id"]),
-                    sender=str(row["sender"]),
-                    text=str(row["text"]),
-                    timestamp=str(row["timestamp"]),
-                    seq=int(row["seq"]),
-                    is_outgoing=bool(row["is_outgoing"]),
-                    created_at=str(row["created_at"]),
-                )
-                for row in rows
-            ]
+            for item in recent
+        ]
 
     def save_file_transfer(
         self,
@@ -232,7 +224,7 @@ class StorageService:
         duration_sec: float,
         status: str,
     ) -> int:
-        """Persists a file transfer record to database.
+        """Persists a file transfer record to hard drive.
 
         Args:
             filename: Base name of the transferred file.
@@ -245,78 +237,60 @@ class StorageService:
             status: Outcome status ('SUCCESS', 'FAILED', 'ABORTED').
 
         Returns:
-            Row ID of the inserted file transfer record.
+            Sequential ID of the stored file transfer record.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO file_transfers (
-                    filename, file_path, direction, size_bytes,
-                    crc32_hex, speed_kbps, duration_sec, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    filename,
-                    file_path,
-                    direction,
-                    size_bytes,
-                    crc32_hex,
-                    speed_kbps,
-                    duration_sec,
-                    status,
-                ),
-            )
-            conn.commit()
-            transfer_id = int(cursor.lastrowid or 0)
-            logger.info(
-                "%s Saved file transfer record #%d: '%s' (%dB, %s, %s)",
-                LogTag.STORAGE,
-                transfer_id,
-                filename,
-                size_bytes,
-                crc32_hex,
-                status,
-            )
-            return transfer_id
+        transfer_id = self._append_record(
+            _TRANSFERS_FILE,
+            {
+                "filename": filename,
+                "file_path": file_path,
+                "direction": direction,
+                "size_bytes": size_bytes,
+                "crc32_hex": crc32_hex,
+                "speed_kbps": speed_kbps,
+                "duration_sec": duration_sec,
+                "status": status,
+            },
+        )
+        logger.info(
+            "%s Saved file transfer record #%d: '%s' (%dB, %s, %s)",
+            LogTag.STORAGE,
+            transfer_id,
+            filename,
+            size_bytes,
+            crc32_hex,
+            status,
+        )
+        return transfer_id
 
     def get_file_transfers(self, limit: int = 50) -> list[FileTransferRecord]:
-        """Retrieves file transfer history from database.
+        """Retrieves file transfer history from hard drive.
 
         Args:
             limit: Maximum number of recent transfer records to retrieve.
 
         Returns:
-            List of FileTransferRecord dictionary items ordered newest first.
+            List of FileTransferRecord items ordered newest first.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, filename, file_path, direction, size_bytes,
-                       crc32_hex, speed_kbps, duration_sec, status, created_at
-                FROM file_transfers
-                ORDER BY id DESC
-                LIMIT ?;
-                """,
-                (limit,),
+        with self._lock:
+            records = self._load_list(_TRANSFERS_FILE)
+        recent = records[-limit:] if limit > 0 else []
+        ordered = list(reversed(recent))
+        return [
+            FileTransferRecord(
+                id=int(item.get("id", 0)),
+                filename=str(item.get("filename", "")),
+                file_path=str(item.get("file_path", "")),
+                direction=str(item.get("direction", "")),
+                size_bytes=int(item.get("size_bytes", 0)),
+                crc32_hex=str(item.get("crc32_hex", "")),
+                speed_kbps=float(item.get("speed_kbps", 0.0)),
+                duration_sec=float(item.get("duration_sec", 0.0)),
+                status=str(item.get("status", "")),
+                created_at=str(item.get("created_at", "")),
             )
-            rows = cursor.fetchall()
-            return [
-                FileTransferRecord(
-                    id=int(row["id"]),
-                    filename=str(row["filename"]),
-                    file_path=str(row["file_path"]),
-                    direction=str(row["direction"]),
-                    size_bytes=int(row["size_bytes"]),
-                    crc32_hex=str(row["crc32_hex"]),
-                    speed_kbps=float(row["speed_kbps"]),
-                    duration_sec=float(row["duration_sec"]),
-                    status=str(row["status"]),
-                    created_at=str(row["created_at"]),
-                )
-                for row in rows
-            ]
+            for item in ordered
+        ]
 
     def save_telemetry_sample(
         self,
@@ -327,7 +301,7 @@ class StorageService:
         total_packets_sent: int,
         total_packets_lost: int,
     ) -> int:
-        """Persists a realtime optical channel telemetry sample to SQLite.
+        """Persists a realtime optical channel telemetry sample to hard drive.
 
         Args:
             timestamp_epoch: Unix epoch floating timestamp.
@@ -338,37 +312,34 @@ class StorageService:
             total_packets_lost: Cumulative count of lost/retried packets.
 
         Returns:
-            Row ID of the inserted telemetry sample record.
+            Sequential ID of the stored telemetry sample record.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO telemetry_samples (
-                    timestamp_epoch, throughput_kbps, rtt_ms,
-                    packet_loss_rate, total_packets_sent, total_packets_lost
-                ) VALUES (?, ?, ?, ?, ?, ?);
-                """,
-                (
-                    timestamp_epoch,
-                    throughput_kbps,
-                    rtt_ms,
-                    packet_loss_rate,
-                    total_packets_sent,
-                    total_packets_lost,
-                ),
+        with self._lock:
+            records = self._load_list(_TELEMETRY_FILE)
+            record_id = len(records) + 1
+            records.append(
+                {
+                    "id": record_id,
+                    "timestamp_epoch": timestamp_epoch,
+                    "throughput_kbps": throughput_kbps,
+                    "rtt_ms": rtt_ms,
+                    "packet_loss_rate": packet_loss_rate,
+                    "total_packets_sent": total_packets_sent,
+                    "total_packets_lost": total_packets_lost,
+                    "created_at": _utc_now_iso(),
+                }
             )
-            conn.commit()
-            sample_id = int(cursor.lastrowid or 0)
-            logger.debug(
-                "%s Saved telemetry sample #%d (Speed=%.2f KB/s, RTT=%.1f ms, Loss=%.1f%%)",
-                LogTag.STORAGE,
-                sample_id,
-                throughput_kbps,
-                rtt_ms,
-                packet_loss_rate,
-            )
-            return sample_id
+            del records[: max(0, len(records) - _MAX_TELEMETRY_SAMPLES)]
+            self._save_list(_TELEMETRY_FILE, records)
+        logger.debug(
+            "%s Saved telemetry sample #%d (Speed=%.2f KB/s, RTT=%.1f ms, Loss=%.1f%%)",
+            LogTag.STORAGE,
+            record_id,
+            throughput_kbps,
+            rtt_ms,
+            packet_loss_rate,
+        )
+        return record_id
 
     def get_telemetry_history(self, limit: int = 100) -> list[TelemetryRecord]:
         """Retrieves historical telemetry samples ordered by ascending time.
@@ -377,34 +348,24 @@ class StorageService:
             limit: Maximum number of recent samples to retrieve.
 
         Returns:
-            List of TelemetryRecord dictionary items.
+            List of TelemetryRecord items.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, timestamp_epoch, throughput_kbps, rtt_ms,
-                       packet_loss_rate, total_packets_sent, total_packets_lost, created_at
-                FROM telemetry_samples
-                ORDER BY id ASC
-                LIMIT ?;
-                """,
-                (limit,),
+        with self._lock:
+            records = self._load_list(_TELEMETRY_FILE)
+        recent = records[-limit:] if limit > 0 else []
+        return [
+            TelemetryRecord(
+                id=int(item.get("id", 0)),
+                timestamp_epoch=float(item.get("timestamp_epoch", 0.0)),
+                throughput_kbps=float(item.get("throughput_kbps", 0.0)),
+                rtt_ms=float(item.get("rtt_ms", 0.0)),
+                packet_loss_rate=float(item.get("packet_loss_rate", 0.0)),
+                total_packets_sent=int(item.get("total_packets_sent", 0)),
+                total_packets_lost=int(item.get("total_packets_lost", 0)),
+                created_at=str(item.get("created_at", "")),
             )
-            rows = cursor.fetchall()
-            return [
-                TelemetryRecord(
-                    id=int(row["id"]),
-                    timestamp_epoch=float(row["timestamp_epoch"]),
-                    throughput_kbps=float(row["throughput_kbps"]),
-                    rtt_ms=float(row["rtt_ms"]),
-                    packet_loss_rate=float(row["packet_loss_rate"]),
-                    total_packets_sent=int(row["total_packets_sent"]),
-                    total_packets_lost=int(row["total_packets_lost"]),
-                    created_at=str(row["created_at"]),
-                )
-                for row in rows
-            ]
+            for item in recent
+        ]
 
     def export_telemetry_csv(self, output_path: Path | None = None) -> str:
         """Exports all telemetry samples to a CSV formatted string and optional file.
@@ -415,7 +376,7 @@ class StorageService:
         Returns:
             CSV content as formatted string.
         """
-        samples = self.get_telemetry_history(limit=5000)
+        samples = self.get_telemetry_history(limit=_MAX_TELEMETRY_SAMPLES)
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(
@@ -509,17 +470,13 @@ class StorageService:
             key: Setting identifier key.
             value: Setting value string.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO app_settings (key, value, updated_at)
-                VALUES (?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP;
-                """,
-                (key, value),
-            )
-            conn.commit()
+        with self._lock:
+            settings = self._load_settings()
+            settings[key] = value
+            path = self._store_path(_SETTINGS_FILE)
+            tmp_path = path.with_suffix(path.suffix + ".tmp")
+            tmp_path.write_text(json.dumps(settings, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp_path.replace(path)
 
     def get_setting(self, key: str, default: str = "") -> str:
         """Reads a configuration setting value.
@@ -531,8 +488,6 @@ class StorageService:
         Returns:
             Persisted string value or default.
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT value FROM app_settings WHERE key = ?;", (key,))
-            row = cursor.fetchone()
-            return str(row["value"]) if row is not None else default
+        with self._lock:
+            settings = self._load_settings()
+        return settings.get(key, default)

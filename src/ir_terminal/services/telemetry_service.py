@@ -82,6 +82,9 @@ class TelemetryService(QObject):
         # Traffic sliding window: list of (timestamp_epoch, byte_count)
         self._tx_byte_events: deque[tuple[float, int]] = deque()
         self._rx_byte_events: deque[tuple[float, int]] = deque()
+        # Running sums mirror the deques (refactor: avoids sum() scan each tick)
+        self._tx_window_bytes: int = 0
+        self._rx_window_bytes: int = 0
 
         # Cumulative counters
         self._total_bytes_sent: int = 0
@@ -154,6 +157,7 @@ class TelemetryService(QObject):
         now = time.time()
         self._total_bytes_sent += count
         self._tx_byte_events.append((now, count))
+        self._tx_window_bytes += count
 
     def record_bytes_received(self, count: int) -> None:
         """Registers received byte count in sliding throughput window.
@@ -164,6 +168,7 @@ class TelemetryService(QObject):
         now = time.time()
         self._total_bytes_received += count
         self._rx_byte_events.append((now, count))
+        self._rx_window_bytes += count
 
     def record_packet_sent(self, seq: int, opcode: int, length: int) -> None:
         """Registers outgoing packet transmission.
@@ -369,15 +374,15 @@ class TelemetryService(QObject):
         now = time.time()
         cutoff = now - self._window_sec
 
-        # Prune old traffic events
+        # Prune old traffic events, keeping running sums in sync (same cutoff rule)
         while self._tx_byte_events and self._tx_byte_events[0][0] < cutoff:
-            self._tx_byte_events.popleft()
+            _, pruned = self._tx_byte_events.popleft()
+            self._tx_window_bytes -= pruned
         while self._rx_byte_events and self._rx_byte_events[0][0] < cutoff:
-            self._rx_byte_events.popleft()
+            _, pruned = self._rx_byte_events.popleft()
+            self._rx_window_bytes -= pruned
 
-        total_tx_in_window = sum(count for _, count in self._tx_byte_events)
-        total_rx_in_window = sum(count for _, count in self._rx_byte_events)
-        total_bytes = total_tx_in_window + total_rx_in_window
+        total_bytes = self._tx_window_bytes + self._rx_window_bytes
 
         self._current_throughput_kbps = (total_bytes / 1024.0) / max(self._window_sec, 0.1)
 
@@ -387,7 +392,7 @@ class TelemetryService(QObject):
         else:
             self._current_loss_rate = 0.0
 
-        # Save periodic sample to SQLite if traffic occurred
+        # Save periodic sample to JSON store if traffic occurred
         if total_bytes > 0 or self._total_packets_sent > 0:
             self._storage.save_telemetry_sample(
                 timestamp_epoch=now,

@@ -55,14 +55,20 @@ class ByteRingBuffer:
                 data = data[-self._capacity :]
                 data_len = self._capacity
 
-            for b in data:
-                self._buffer[self._head] = b
-                self._head = (self._head + 1) % self._capacity
-                if self._size < self._capacity:
-                    self._size += 1
-                else:
-                    # Buffer full: drop oldest byte (advance tail pointer)
-                    self._tail = (self._tail + 1) % self._capacity
+            # Bulk two-slice copy (handles wrap-around) instead of per-byte loop.
+            first = min(data_len, self._capacity - self._head)
+            self._buffer[self._head : self._head + first] = data[:first]
+            second = data_len - first
+            if second:
+                self._buffer[0:second] = data[first:]
+            self._head = (self._head + data_len) % self._capacity
+            if self._size + data_len <= self._capacity:
+                self._size += data_len
+            else:
+                # Buffer full: drop oldest bytes (advance tail pointer)
+                overflow = self._size + data_len - self._capacity
+                self._tail = (self._tail + overflow) % self._capacity
+                self._size = self._capacity
 
             return data_len
 
@@ -80,11 +86,14 @@ class ByteRingBuffer:
                 return b""
 
             to_read = self._size if max_bytes is None else min(max_bytes, self._size)
+            # Bulk two-slice copy instead of per-byte loop.
+            first = min(to_read, self._capacity - self._tail)
             result = bytearray(to_read)
-
-            for i in range(to_read):
-                result[i] = self._buffer[self._tail]
-                self._tail = (self._tail + 1) % self._capacity
+            result[0:first] = self._buffer[self._tail : self._tail + first]
+            second = to_read - first
+            if second:
+                result[first:] = self._buffer[0:second]
+            self._tail = (self._tail + to_read) % self._capacity
 
             self._size -= to_read
             return bytes(result)
@@ -99,11 +108,13 @@ class ByteRingBuffer:
             if self._size == 0:
                 return b""
 
+            # Bulk two-slice copy instead of per-byte loop.
+            first = min(self._size, self._capacity - self._tail)
             result = bytearray(self._size)
-            curr = self._tail
-            for i in range(self._size):
-                result[i] = self._buffer[curr]
-                curr = (curr + 1) % self._capacity
+            result[0:first] = self._buffer[self._tail : self._tail + first]
+            second = self._size - first
+            if second:
+                result[first:] = self._buffer[0:second]
 
             return bytes(result)
 

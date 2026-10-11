@@ -11,6 +11,8 @@ from pytestqt.qtbot import QtBot
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
     EOF_MAGIC,
+    MAX_FILE_SIZE_BYTES,
+    MAX_PAYLOAD_SIZE,
     MAX_RETRY_COUNT,
     SOF_MAGIC,
     AckStatus,
@@ -22,15 +24,52 @@ from ir_terminal.protocol.file_payloads import (
     FileEndPayload,
     FileStartPayload,
 )
+from ir_terminal.protocol.framer import parse_frames_from_buffer
 from ir_terminal.protocol.packet import Header, Packet
 from ir_terminal.services.file_transfer_service import (
     FileTransferService,
     TransferState,
 )
+from ir_terminal.services.storage_service import StorageService
+
+
+def _rx_packet(seq: int, opcode: int, payload: bytes) -> Packet:
+    """Builds an inbound packet frame bypassing wire parsing."""
+    header = Header(sof=SOF_MAGIC, seq=seq, opcode=opcode, length=len(payload))
+    return Packet(header=header, payload=payload, crc32=0, eof=EOF_MAGIC)
+
+
+def _nack_opcodes_in(raw_frames: list[bytes]) -> list[int]:
+    """Extracts opcodes from captured raw TX byte blobs."""
+    opcodes: list[int] = []
+    for blob in raw_frames:
+        packets, _ = parse_frames_from_buffer(blob)
+        opcodes.extend(pkt.opcode for pkt in packets)
+    return opcodes
 
 
 class TestFileTransferService:
     """Test suite for optical file chunking and Stop-and-Wait ARQ engine."""
+
+    def test_oversize_file_rejected_before_transmission(self, qtbot: QtBot) -> None:
+        """Verifies files above MAX_FILE_SIZE_BYTES fail fast without entering ARQ."""
+        manager = SerialManager()
+        service = FileTransferService(serial_manager=manager)
+
+        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
+            tmp.write(b"\0" * (MAX_FILE_SIZE_BYTES + 1))
+            tmp_path = tmp.name
+
+        try:
+            with qtbot.waitSignal(service.transfer_failed, timeout=1000) as blocker:
+                service.start_transfer(tmp_path)
+
+            (reason,) = blocker.args
+            assert "exceeds" in reason
+            assert service.state == TransferState.IDLE
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+            manager.shutdown()
 
     def test_file_transfer_e2e_mock_loopback(self, qtbot: QtBot) -> None:
         """Verifies end-to-end file transfer over mock loopback serial channel."""
@@ -552,3 +591,152 @@ class TestFileTransferService:
             assert len(service._rx_received_chunks) == 0
 
         manager.shutdown()
+
+
+class TestFileTransferReceiver:
+    """Test suite for the RX (receiver) side: guards, reassembly, and accounting."""
+
+    def test_rx_start_rejected_while_tx_busy(self, qtbot: QtBot) -> None:
+        """Verifies incoming START never clobbers an ongoing TX session (NACK backpressure)."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(serial_manager=manager)
+        try:
+            service._state = TransferState.TRANSFERRING
+
+            raw_tx: list[bytes] = []
+            manager.raw_tx.connect(raw_tx.append)
+
+            start = FileStartPayload(
+                file_size=100, chunk_size=50, total_chunks=2, file_crc32=1, filename="other.bin"
+            )
+            service._handle_packet(_rx_packet(9, Opcode.TRANSFER_START, start.pack()))
+
+            assert service.state == TransferState.TRANSFERRING
+            assert service._rx_filename == ""
+            qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
+            assert Opcode.NACK in _nack_opcodes_in(raw_tx)
+        finally:
+            manager.shutdown()
+
+    def test_rx_oversize_start_rejected(self, qtbot: QtBot) -> None:
+        """Verifies receiver refuses files above MAX_FILE_SIZE_BYTES."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(serial_manager=manager)
+        try:
+            failures: list[str] = []
+            service.transfer_failed.connect(failures.append)
+
+            start = FileStartPayload(
+                file_size=MAX_FILE_SIZE_BYTES + 1,
+                chunk_size=240,
+                total_chunks=999,
+                file_crc32=1,
+                filename="huge.bin",
+            )
+            service._handle_packet(_rx_packet(3, Opcode.TRANSFER_START, start.pack()))
+
+            assert service.state == TransferState.FAILED
+            assert service._rx_received_chunks == {}
+            assert any("exceeds" in reason for reason in failures)
+        finally:
+            manager.shutdown()
+
+    def test_rx_invalid_chunk_size_rejected(self) -> None:
+        """Verifies receiver refuses zero or over-limit chunk sizes."""
+        manager = SerialManager()
+        service = FileTransferService(serial_manager=manager)
+        try:
+            failures: list[str] = []
+            service.transfer_failed.connect(failures.append)
+
+            for bad_size in (0, MAX_PAYLOAD_SIZE + 1):
+                start = FileStartPayload(
+                    file_size=100, chunk_size=bad_size, total_chunks=2, file_crc32=1, filename="x.bin"
+                )
+                service._handle_packet(_rx_packet(4, Opcode.TRANSFER_START, start.pack()))
+
+            assert any("chunk size" in reason for reason in failures)
+            assert service._state == TransferState.FAILED
+        finally:
+            manager.shutdown()
+
+    def test_rx_malformed_start_nacks_without_state_change(self, qtbot: QtBot) -> None:
+        """Verifies truncated START payload triggers NACK and keeps IDLE state."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(serial_manager=manager)
+        try:
+            raw_tx: list[bytes] = []
+            manager.raw_tx.connect(raw_tx.append)
+
+            service._handle_packet(_rx_packet(5, Opcode.TRANSFER_START, b"\x01\x02"))
+
+            assert service.state == TransferState.IDLE
+            qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
+            assert Opcode.NACK in _nack_opcodes_in(raw_tx)
+        finally:
+            manager.shutdown()
+
+    def test_rx_full_reassembly_with_duplicate_chunk(self, tmp_path: Path) -> None:
+        """Verifies end-to-end RX: START, chunks (one duplicated), END, file + record."""
+        import tempfile
+
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                storage = StorageService(data_dir=Path(tmpdir) / "data")
+                service = FileTransferService(
+                    serial_manager=manager,
+                    storage_service=storage,
+                    transfers_dir=Path(tmpdir) / "rx",
+                )
+
+                content = b"hello world test data, chunked!"
+                chunk_size = 8
+                total = (len(content) + chunk_size - 1) // chunk_size
+                crc = zlib.crc32(content) & 0xFFFFFFFF
+
+                completed: list[tuple[str, int, float, str]] = []
+                service.transfer_completed.connect(lambda *args: completed.append(args))
+
+                start = FileStartPayload(
+                    file_size=len(content),
+                    chunk_size=chunk_size,
+                    total_chunks=total,
+                    file_crc32=crc,
+                    filename="incoming.bin",
+                )
+                service._handle_packet(_rx_packet(10, Opcode.TRANSFER_START, start.pack()))
+                assert service.state.name == "RECEIVING"
+
+                for idx in range(total):
+                    part = content[idx * chunk_size : (idx + 1) * chunk_size]
+                    chunk = FileChunkPayload(chunk_id=idx, chunk_data=part)
+                    service._handle_packet(_rx_packet(11 + idx, Opcode.DATA_CHUNK, chunk.pack()))
+
+                # Duplicate retransmit of chunk 1 must not double-count bytes
+                dup = FileChunkPayload(chunk_id=1, chunk_data=content[chunk_size : 2 * chunk_size])
+                service._handle_packet(_rx_packet(40, Opcode.DATA_CHUNK, dup.pack()))
+                assert service._rx_bytes_received == len(content)
+
+                end = FileEndPayload(file_crc32=crc, total_bytes_sent=len(content))
+                service._handle_packet(_rx_packet(50, Opcode.TRANSFER_END, end.pack()))
+
+                assert service.state.name == "COMPLETED"
+                assert len(completed) == 1
+                assert completed[0][0] == "incoming.bin"
+                assert completed[0][1] == len(content)
+
+                saved = Path(tmpdir) / "rx" / "incoming.bin"
+                assert saved.read_bytes() == content
+
+                records = storage.get_file_transfers()
+                assert len(records) == 1
+                assert records[0]["direction"] == "RX"
+                assert records[0]["file_path"] == str(saved)
+                assert records[0]["status"] == "SUCCESS"
+        finally:
+            manager.shutdown()

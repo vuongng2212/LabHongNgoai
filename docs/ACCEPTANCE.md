@@ -1,5 +1,5 @@
-# SỔ TAY TÍCH HỢP VÀ BÀN GIAO CHO ĐỘI IOT (IOT INTEGRATION RUNBOOK)
-**Mục tiêu:** Hướng dẫn kết nối, cấu hình phần cứng và quy trình test liên thông giữa Phần cứng STM32/IrDA và Phần mềm Desktop PC.
+# NGHIỆM THU & BÀN GIAO (ACCEPTANCE RUNBOOK)
+**Mục tiêu:** 3 bước tích hợp STM32 + 5 bước demo client + phạm vi MVP/Post-MVP khớp `LAB_BaoGia.xlsx`. Index: `docs/README.md`. Wire chốt: `docs/PROTOCOL.md`.
 
 ---
 
@@ -61,4 +61,25 @@
 2. Mở Desktop App trên PC A và PC B, kết nối đúng cổng COM tương ứng.
 3. Bấm nút **"Ping / Handshake"** trên PC A $\rightarrow$ Kiểm tra PC B có phản hồi PONG không.
 4. Thử nghiệm **Gửi Tin Nhắn Chat** và **Gửi File Ảnh (50KB - 200KB)**.
-5. Thử nghiệm **Vật cản:** Dùng 1 bìa giấy chắn chùm tia trong 3 giây khi đang truyền file $\rightarrow$ App phải hiển thị `PAUSED` $\rightarrow$ Rút bìa giấy ra $\rightarrow$ App tự động `RESUME` và file được truyền thành công 100%, verify SHA-256 khớp.
+5. Thử nghiệm **Vật cản (chuẩn MVP):** chắn tia 3s khi đang truyền → kỳ vọng `retry 5 lần → FAILED`, bỏ vật cản → gửi lại tay thành công 100%, verify `CRC-32` khớp. (`PAUSED→RESUME tự động + SHA-256` là Post-MVP, chưa nghiệm thu ở đây.)
+
+---
+
+## 4. KỊCH BẢN DEMO 5 BƯỚC VỚI KHÁCH HÀNG
+
+| STT | Kịch bản | Thao tác | Kỳ vọng trên App |
+|-----|----------|----------|------------------|
+| 1 | Khởi tạo link quang | Chọn `COM` (hoặc `MOCK_COM_LOOPBACK`), bấm Initialize Link | Header `Connected (115200)`, gauge quang, badge `CARRIER LOCKED`, RTT Ping/Pong |
+| 2 | Chat quang realtime | Tab Chat, nhập text, gửi | Bong bóng chat 2 chiều + khung Inspector hex/metadata; lịch sử nạp lại từ file JSON |
+| 3 | Truyền file | Chọn file, bấm Transmit | Tiến độ `0→100%`, `KB/s + ETA`, xong báo `SUCCESS + CRC-32` |
+| 4 | Chắn tia (MVP) | Chắn tia khi đang truyền | `retry → FAILED` rồi gửi lại tay thành công sau khi thông tia (auto-resume là Post-MVP) |
+| 5 | Xuất báo cáo | Tab Analytics, Export CSV | File `.csv` telemetry/transfers. Lưu ý: `BER` trên UI là text hiển thị, chưa phải phép đo; loss chỉ đếm khi transfer fail |
+
+Ảnh demo: `docs/screenshots/1_hardware_setup.png … 4_lab_telemetry.png`.
+
+---
+
+## 5. PHẠM VI THANH TOÁN (TÓM TẮT TỪ `LAB_BaoGia.xlsx`)
+
+* MVP `7.500.000 / 5 ngày`: STT 1–18 (code/tài liệu/test mock, đã có — test hiện tại `88 passed`) + STT 19 (cắm 2 controller thật, gửi/nhận 2 chiều — **PENDING**).
+* Post-MVP báo riêng: resume sau chắn tia `2.4tr`, SHA-256 `1.2tr`, telemetry thực `2.4tr`, streaming file lớn `900k`, hotplug/reconnect + hàng đợi `≈1.35tr`. Không cộng vào MVP.

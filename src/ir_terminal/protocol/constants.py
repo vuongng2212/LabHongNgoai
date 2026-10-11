@@ -27,8 +27,15 @@ TOTAL_OVERHEAD: int = HEADER_SIZE + FOOTER_SIZE
 # Maximum payload size per chunk (bytes) to prevent MCU internal ring buffer overflow
 MAX_PAYLOAD_SIZE: int = 512
 
-# Default recommended chunk size for optical link stability at 115200 bps
-DEFAULT_CHUNK_SIZE: int = 256
+# Default chunk size for optical link stability at 115200 bps (MVP binding per PROTOCOL.md §7)
+DEFAULT_CHUNK_SIZE: int = 240
+
+# Maximum file size accepted for optical transfer (bytes). Larger files are
+# rejected fast with a clear error instead of being read into RAM.
+MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
+
+# Default interval (seconds) between automatic link health-check pings
+DEFAULT_HEALTH_CHECK_SEC: float = 5.0
 
 # Maximum total frame length: Header(6) + MaxPayload(512) + Footer(6) = 524 bytes
 MAX_FRAME_SIZE: int = HEADER_SIZE + MAX_PAYLOAD_SIZE + FOOTER_SIZE
@@ -54,9 +61,9 @@ class Opcode:
 
     # Session & State Control
     TRANSFER_START: int = 0x30  # Initiates file transfer session (metadata payload)
-    TRANSFER_END: int = 0x31  # Finalizes file transfer session (SHA-256 verify)
-    TRANSFER_PAUSE: int = 0x32  # Sender/Receiver paused due to optical beam blockage
-    TRANSFER_RESUME: int = 0x33  # Resume transmission from last verified sequence
+    TRANSFER_END: int = 0x31  # Finalizes file transfer session (CRC-32 verify; SHA-256 is Post-MVP)
+    TRANSFER_PAUSE: int = 0x32  # Pause/abort session (MVP: ABORT payload on user cancel)
+    TRANSFER_RESUME: int = 0x33  # Reserved for Post-MVP auto-resume, not used by MVP ARQ
 
 
 class AckStatus:

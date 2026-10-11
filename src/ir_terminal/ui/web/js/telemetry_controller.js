@@ -132,20 +132,55 @@ function initTelemetryController() {
     const btn = e.target.closest('button');
     if (!btn) return;
 
-    if (btn.innerText.includes('Export CSV') && window.bridge) {
+    // Global feedback layer (confirm modal / toasts) owns its buttons.
+    if (btn.closest('#modal-overlay, #toast-container')) return;
+
+    if (btn.innerText.includes('Export CSV')) {
+      if (!window.bridge) {
+        if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'CSV export needs the SpectraLink Desktop app.');
+        return;
+      }
+      if (window.UIFeedback) window.UIFeedback.setButtonLoading(btn, true, 'Exporting...');
       window.bridge.exportTelemetryCsv((savedPath) => {
+        if (window.UIFeedback) window.UIFeedback.setButtonLoading(btn, false);
         if (savedPath) {
           console.log('Telemetry CSV exported successfully to:', savedPath);
+          if (window.UIFeedback) {
+            window.UIFeedback.showModal({
+              variant: 'success',
+              title: 'Telemetry exported',
+              message: 'CSV report is ready for lab documentation.',
+              details: savedPath,
+            });
+          }
         }
+        // Empty path = user cancelled native save dialog: stay silent.
       });
-    } else if (btn.innerText.includes('Reset Counters') && window.bridge) {
-      window.bridge.resetTelemetryCounters();
-      snifferRecordsCache = [];
-      speedHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      rttHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-      renderFilteredSnifferTable();
-      updateKpis(0.0, 0.0, 0.0, 0, 0);
-      drawCanvasCharts();
+    } else if (btn.innerText.includes('Reset Counters')) {
+      if (!window.bridge) {
+        if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'Reset needs the SpectraLink Desktop app.');
+        return;
+      }
+      const doReset = () => {
+        window.bridge.resetTelemetryCounters();
+        snifferRecordsCache = [];
+        speedHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        rttHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        renderFilteredSnifferTable();
+        updateKpis(0.0, 0.0, 0.0, 0, 0);
+        drawCanvasCharts();
+        if (window.UIFeedback) window.UIFeedback.showToast('info', 'Counters reset', 'Telemetry metrics and sniffer buffer cleared.');
+      };
+      if (window.UIFeedback) {
+        window.UIFeedback.confirmModal({
+          title: 'Reset counters?',
+          message: 'Throughput, loss, RTT history and captured sniffer frames will be cleared.',
+          confirmLabel: 'Reset',
+          danger: true,
+        }).then((ok) => { if (ok) doReset(); });
+      } else {
+        doReset();
+      }
     }
   });
 
@@ -276,9 +311,12 @@ function initTelemetryController() {
       return;
     }
 
+    // Batch into a fragment: identical DOM, one reflow.
+    const fragment = document.createDocumentFragment();
     filtered.slice(-100).reverse().forEach(rec => {
-      snifferTableBody.appendChild(createSnifferRowElement(rec));
+      fragment.appendChild(createSnifferRowElement(rec));
     });
+    snifferTableBody.appendChild(fragment);
   }
 
   function escapeHtml(str) {
@@ -292,8 +330,19 @@ function initTelemetryController() {
     }[tag] || tag));
   }
 
-  // Connect WebChannel signals
-  if (window.bridge) {
+  // Connect WebChannel signals (bridge arrives async; retry until ready, wire once)
+  let bridgeWired = false;
+  function tryWireBridge() {
+    if (bridgeWired) return;
+    if (!window.bridge) {
+      setTimeout(tryWireBridge, 300);
+      return;
+    }
+    bridgeWired = true;
+    wireBridgeSignals();
+  }
+
+  function wireBridgeSignals() {
     window.bridge.telemetryUpdated.connect((speedKbps, lossPct, rttMs, chunksCount, framesCount) => {
       updateKpis(speedKbps, lossPct, rttMs, chunksCount, framesCount);
     });
@@ -349,9 +398,11 @@ function initTelemetryController() {
     } else {
       renderFilteredSnifferTable();
     }
-  } else {
-    renderFilteredSnifferTable();
   }
+
+  tryWireBridge();
+  // Render empty state immediately so the table is never blank pre-bridge.
+  renderFilteredSnifferTable();
 }
 
 document.addEventListener('DOMContentLoaded', () => {

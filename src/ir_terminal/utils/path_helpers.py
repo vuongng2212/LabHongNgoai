@@ -44,7 +44,7 @@ def get_app_data_dir() -> Path:
 
     Structure:
         ~/.ir_terminal/
-            ├── data/ (SQLite database)
+            ├── data/ (JSON file stores)
             ├── transfers/ (Received & saved optical files)
             └── logs/ (Tagged rotating log files)
     """
@@ -53,11 +53,11 @@ def get_app_data_dir() -> Path:
     return base_dir
 
 
-def get_db_path() -> Path:
-    """Returns the SQLite database file path."""
+def get_data_dir() -> Path:
+    """Returns the persistent application data directory for JSON file stores."""
     data_dir = get_app_data_dir() / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir / "ir_terminal.db"
+    return data_dir
 
 
 def get_transfers_dir() -> Path:

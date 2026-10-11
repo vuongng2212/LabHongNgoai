@@ -111,7 +111,8 @@ class SerialWorker(QObject):
         """Initializes non-blocking serial worker instance."""
         super().__init__()
         self._transport: ITransport | None = None
-        self._rx_accumulation = b""
+        self._rx_accumulation = bytearray()
+        self._rx_consumed = 0
         self._poll_timer: QTimer | None = None
 
     @Slot(str, int)
@@ -141,11 +142,15 @@ class SerialWorker(QObject):
                 self._transport = PySerialTransport(port_name=port_name, baudrate=baudrate)
 
             self._transport.open()
-            self._rx_accumulation = b""
+            self._rx_accumulation = bytearray()
+            self._rx_consumed = 0
 
-            # Setup periodic non-blocking poll timer on worker thread event loop
+            # Setup periodic non-blocking poll timer on worker thread event loop.
+            # Mock loopback simulation polls faster (2ms) so file-transfer demos
+            # stay snappy; real UART hardware keeps the conservative 10ms tick.
+            poll_ms = 2 if isinstance(self._transport, MockSerialPort) else 10
             self._poll_timer = QTimer(self)
-            self._poll_timer.setInterval(10)  # 10ms tick (100 Hz polling)
+            self._poll_timer.setInterval(poll_ms)  # 500 Hz mock / 100 Hz hardware
             self._poll_timer.timeout.connect(self._poll_serial)
             self._poll_timer.start()
 
@@ -160,6 +165,7 @@ class SerialWorker(QObject):
     @Slot()
     def close_port(self) -> None:
         """Stops polling timer and cleanly closes serial transport."""
+        was_open = self._transport is not None and self._transport.is_open
         if self._poll_timer is not None:
             self._poll_timer.stop()
             self._poll_timer = None
@@ -171,8 +177,14 @@ class SerialWorker(QObject):
                 logger.warning("%s Error during transport close: %s", LogTag.HW_SERIAL, exc)
 
         self._transport = None
-        self._rx_accumulation = b""
-        self.disconnected.emit()
+        self._rx_accumulation = bytearray()
+        self._rx_consumed = 0
+        # Only emit on a real connected->disconnected transition. open_port()
+        # calls close_port() as cleanup, and emitting here would fake a
+        # disconnect that wipes pending-connect UI state before the real
+        # connected/error signal arrives.
+        if was_open:
+            self.disconnected.emit()
 
     @Slot(bytes)
     def send_bytes(self, data: bytes) -> None:
@@ -204,11 +216,20 @@ class SerialWorker(QObject):
                 chunk = self._transport.read(available)
                 if chunk:
                     self.raw_data_received.emit(chunk)
-                    self._rx_accumulation += chunk
-
-                    # Parse valid packets from accumulated stream
-                    packets, remaining = parse_frames_from_buffer(self._rx_accumulation)
-                    self._rx_accumulation = remaining
+                    # Extend bytearray (amortized, no full copy) and parse a
+                    # memoryview over the unconsumed tail. Compaction only when
+                    # the consumed prefix grows large, avoiding memmove per poll.
+                    self._rx_accumulation.extend(chunk)
+                    pending = memoryview(self._rx_accumulation)[self._rx_consumed :]
+                    packets, remaining = parse_frames_from_buffer(pending)
+                    pending.release()
+                    # Release the view export before any compaction: resizing
+                    # a bytearray with live exports raises BufferError, which
+                    # would kill polling and stall the ARQ session.
+                    self._rx_consumed = len(self._rx_accumulation) - len(remaining)
+                    if self._rx_consumed >= 4096:
+                        del self._rx_accumulation[: self._rx_consumed]
+                        self._rx_consumed = 0
                     for pkt in packets:
                         self.packet_received.emit(pkt)
 

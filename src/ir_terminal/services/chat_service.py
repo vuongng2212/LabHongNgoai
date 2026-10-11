@@ -45,9 +45,19 @@ class ChatService(QObject):
 
         encoded = clean_text.encode("utf-8")
         if len(encoded) > MAX_PAYLOAD_SIZE:
-            # Safely truncate without splitting multi-byte UTF-8 character sequences
-            clean_text = encoded[:MAX_PAYLOAD_SIZE].decode("utf-8", errors="ignore")
-            payload = clean_text.encode("utf-8")
+            # Safely truncate without splitting multi-byte UTF-8 character
+            # sequences. Byte-identical to encoded[:MAX].decode(errors="ignore")
+            # without the re-encode: if the first byte past the budget is a
+            # continuation byte (10xxxxxx), the trailing char is split, so walk
+            # back over its in-budget continuation bytes and drop the lead too.
+            # Otherwise [:MAX] already ends on a character boundary.
+            cut = MAX_PAYLOAD_SIZE
+            if (encoded[cut] & 0xC0) == 0x80:
+                while cut > 0 and (encoded[cut - 1] & 0xC0) == 0x80:
+                    cut -= 1
+                cut -= 1  # drop the split character's lead byte
+            payload = encoded[:cut]
+            clean_text = payload.decode("utf-8")
         else:
             payload = encoded
 
@@ -61,7 +71,7 @@ class ChatService(QObject):
 
         now_str = time.strftime("%H:%M:%S")
 
-        # Save to durable hard drive SQLite DB
+            # Save to durable hard drive JSON store
         self._storage.save_chat_message(
             sender="Local Station Alpha",
             text=clean_text,
@@ -95,7 +105,7 @@ class ChatService(QObject):
 
             now_str = time.strftime("%H:%M:%S")
 
-            # Save to durable hard drive SQLite DB
+            # Save to durable hard drive JSON store
             self._storage.save_chat_message(
                 sender="Remote Station Bravo",
                 text=text,

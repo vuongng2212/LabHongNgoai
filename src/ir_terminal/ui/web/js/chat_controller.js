@@ -1,4 +1,4 @@
-// Realtime Optical Chat Viewport Controller with persistent SQLite history loading
+// Realtime Optical Chat Viewport Controller with persistent hard-drive history loading
 function initChatController() {
   const chatInput = document.querySelector('#view-chat input');
   const sendBtn = document.querySelector('#view-chat button.bg-primary-container, #view-chat button:has(span[data-icon="send"])');
@@ -8,11 +8,21 @@ function initChatController() {
   function doSend() {
     if (!chatInput) return;
     const text = chatInput.value.trim();
-    if (!text) return;
-    if (window.bridge) {
-      window.bridge.sendChat(text);
-      chatInput.value = '';
+    if (!text) {
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Empty message', 'Type a payload string before sending.');
+      chatInput.focus();
+      return;
     }
+    if (new Blob([text]).size > 512) {
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Payload too long', 'Maximum packet length is 512 bytes.');
+      return;
+    }
+    if (!window.bridge) {
+      if (window.UIFeedback) window.UIFeedback.showToast('error', 'Backend not ready', 'Bridge is still connecting — try again in a moment.');
+      return;
+    }
+    window.bridge.sendChat(text);
+    chatInput.value = '';
   }
 
   if (sendBtn) {
@@ -44,7 +54,19 @@ function initChatController() {
     `;
   }
 
-  if (window.bridge) {
+  // Bridge connects asynchronously (QWebChannel); retry until ready, then wire once.
+  let bridgeWired = false;
+  function tryWireBridge() {
+    if (bridgeWired) return;
+    if (!window.bridge) {
+      setTimeout(tryWireBridge, 300);
+      return;
+    }
+    bridgeWired = true;
+    wireBridgeSignals();
+  }
+
+  function wireBridgeSignals() {
     window.bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
       appendChatMessage(text, timeStr, isOutgoing);
     });
@@ -55,16 +77,20 @@ function initChatController() {
       }
     });
 
-    // Load persisted chat history from local SQLite database
+    // Load persisted chat history from local hard-drive store
     if (typeof window.bridge.getChatHistory === 'function') {
       window.bridge.getChatHistory((historyJson) => {
         try {
           const messages = JSON.parse(historyJson);
           if (Array.isArray(messages) && messages.length > 0 && chatContainer) {
             chatContainer.innerHTML = '';
+            // Batch into a fragment: identical DOM, one reflow + one scroll.
+            const fragment = document.createDocumentFragment();
             messages.forEach(msg => {
-              appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing);
+              appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing, fragment);
             });
+            chatContainer.appendChild(fragment);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
           } else {
             renderEmptyChatState();
           }
@@ -76,12 +102,13 @@ function initChatController() {
     } else {
       renderEmptyChatState();
     }
-  } else {
-    renderEmptyChatState();
   }
 
-  function appendChatMessage(text, timeStr, isOutgoing) {
-    if (!chatContainer) return;
+  tryWireBridge();
+
+  function appendChatMessage(text, timeStr, isOutgoing, target) {
+    const container = target || chatContainer;
+    if (!container) return;
     const emptyState = document.getElementById('chat-empty-state');
     if (emptyState) {
       emptyState.remove();
@@ -125,8 +152,12 @@ function initChatController() {
       `;
     }
 
-    chatContainer.appendChild(wrapper);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    container.appendChild(wrapper);
+    // Skip per-message forced layout when batch-loading into a fragment;
+    // the caller scrolls once after the batch append.
+    if (!target) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
   }
 
   function escapeHtml(str) {

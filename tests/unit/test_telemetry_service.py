@@ -19,7 +19,7 @@ class TestTelemetryService:
     def test_telemetry_throughput_and_events(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage = StorageService(db_path=Path(tmpdir) / "test.db")
+            storage = StorageService(data_dir=Path(tmpdir) / "data")
             telemetry = TelemetryService(storage_service=storage, window_sec=1.0)
 
             # Register traffic
@@ -53,7 +53,7 @@ class TestTelemetryService:
 
     def test_sniffer_records_and_csv_export(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage = StorageService(db_path=Path(tmpdir) / "test.db")
+            storage = StorageService(data_dir=Path(tmpdir) / "data")
             telemetry = TelemetryService(storage_service=storage)
 
             telemetry.record_packet_sent(seq=10, opcode=Opcode.PING, length=7)
@@ -75,7 +75,7 @@ class TestTelemetryService:
 
     def test_loss_rate_and_reset_counters(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            storage = StorageService(db_path=Path(tmpdir) / "test.db")
+            storage = StorageService(data_dir=Path(tmpdir) / "data")
             telemetry = TelemetryService(storage_service=storage)
 
             telemetry.record_packet_sent(seq=1, opcode=Opcode.DATA_CHUNK, length=240)

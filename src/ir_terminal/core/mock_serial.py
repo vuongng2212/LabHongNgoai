@@ -48,20 +48,20 @@ class MockSerialPort(ITransport):
         self._auto_respond = auto_respond
         self._is_open = False
         self._rx_buffer = ByteRingBuffer(capacity=65536)
-        self._tx_buffer = b""
+        self._tx_buffer = bytearray()
         self._los_blocked = False
 
     def open(self) -> None:
         """Opens virtual mock serial connection."""
         self._is_open = True
         self._rx_buffer.clear()
-        self._tx_buffer = b""
+        self._tx_buffer = bytearray()
 
     def close(self) -> None:
         """Closes virtual mock serial connection."""
         self._is_open = False
         self._rx_buffer.clear()
-        self._tx_buffer = b""
+        self._tx_buffer = bytearray()
 
     @property
     def is_open(self) -> bool:
@@ -99,9 +99,10 @@ class MockSerialPort(ITransport):
 
         # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond (if enabled)
         if self._auto_respond:
-            self._tx_buffer += data
+            self._tx_buffer.extend(data)
             packets, remaining = parse_frames_from_buffer(self._tx_buffer)
-            self._tx_buffer = remaining
+            # remaining is bytes; wrap back into bytearray without extra scan
+            self._tx_buffer = bytearray(remaining)
 
             for pkt in packets:
                 if pkt.opcode == Opcode.PING:
@@ -133,7 +134,9 @@ class MockSerialPort(ITransport):
     def _handle_file_ack(self, seq: int) -> None:
         """Sends ACK for file transfer chunk."""
         if self._latency_s > 0:
-            time.sleep(min(self._latency_s, 0.015))  # Fast ACK for file throughput
+            # Near-instant ACK keeps loopback simulation snappy (chat PING keeps
+            # the full simulated latency for realistic RTT display).
+            time.sleep(min(self._latency_s, 0.002))
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
         self._rx_buffer.write(ack_frame)

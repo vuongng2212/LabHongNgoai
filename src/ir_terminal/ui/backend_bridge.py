@@ -8,20 +8,26 @@ import time
 from pathlib import Path
 from typing import ClassVar
 
-from PySide6.QtCore import QObject, Signal, Slot
+from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
 from ir_terminal.core.serial_manager import SerialManager
-from ir_terminal.protocol.constants import Opcode
+from ir_terminal.protocol.constants import DEFAULT_HEALTH_CHECK_SEC, Opcode
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.chat_service import ChatService
-from ir_terminal.services.file_transfer_service import FileTransferService
+from ir_terminal.services.file_transfer_service import FileTransferService, TransferState
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.services.telemetry_service import TelemetryService
 from ir_terminal.utils.logger import LogTag
 from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
+
+# Module-level ping payload constants (refactor: single bytes objects, no
+# per-tick re-allocation or len() recompute; wire bytes unchanged).
+_PING_HEALTH_PAYLOAD: bytes = b"IR_HEALTH"
+_PING_MANUAL_PAYLOAD: bytes = b"IR_PING"
 
 
 class BackendBridge(QObject):
@@ -32,6 +38,7 @@ class BackendBridge(QObject):
     portDisconnected: ClassVar[Signal] = Signal()
     errorOccurred: ClassVar[Signal] = Signal(str)
     pingResult: ClassVar[Signal] = Signal(float, int)  # (rtt_ms, seq)
+    healthResult: ClassVar[Signal] = Signal(float, int)  # (rtt_ms, seq) silent auto check
     rawRxData: ClassVar[Signal] = Signal(str)  # hex string
     rawTxData: ClassVar[Signal] = Signal(str)  # hex string
 
@@ -91,13 +98,22 @@ class BackendBridge(QObject):
         self._last_ping_time: float = 0.0
         self._ping_seq: int = 1
 
+        self._is_connected = False
+        self._health_interval_sec = DEFAULT_HEALTH_CHECK_SEC
+        self._health_timer = QTimer(self)
+        self._health_timer.setSingleShot(False)
+        self._health_timer.setInterval(int(self._health_interval_sec * 1000))
+        self._health_timer.timeout.connect(self._on_health_tick)
+
         self._wire_signals()
 
     def _wire_signals(self) -> None:
         """Connects underlying core services to bridge signals and telemetry listeners."""
         # Serial Manager
         self._serial_manager.connected.connect(self.portConnected)
+        self._serial_manager.connected.connect(self._on_link_up)
         self._serial_manager.disconnected.connect(self.portDisconnected)
+        self._serial_manager.disconnected.connect(self._on_link_down)
         self._serial_manager.error_occurred.connect(self.errorOccurred)
         self._serial_manager.raw_rx.connect(self._on_raw_rx)
         self._serial_manager.raw_tx.connect(self._on_raw_tx)
@@ -116,6 +132,34 @@ class BackendBridge(QObject):
         # Telemetry Service
         self._telemetry.telemetry_updated.connect(self.telemetryUpdated)
         self._telemetry.sniffer_frame_logged.connect(self.snifferFrameLogged)
+
+    def _on_link_up(self, port: str, baud: int) -> None:
+        """Starts periodic health checks once the optical link is connected."""
+        self._is_connected = True
+        if self._health_interval_sec > 0:
+            self._health_timer.start()
+        logger.info("%s Link up (%s @ %d bps), health check every %.1fs",
+                    LogTag.IPC_BRIDGE, port, baud, self._health_interval_sec)
+
+    def _on_link_down(self) -> None:
+        """Stops periodic health checks once the optical link is closed."""
+        self._is_connected = False
+        self._health_timer.stop()
+
+    def _on_health_tick(self) -> None:
+        """Transmits one silent link health-check ping when the channel is idle."""
+        if not self._is_connected:
+            return
+        if self._file_service.state in (
+            TransferState.HANDSHAKING,
+            TransferState.TRANSFERRING,
+            TransferState.FINALIZING,
+        ):
+            return
+        self._ping_seq = (self._ping_seq + 1) % 256
+        self._last_ping_time = time.time()
+        self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_HEALTH_PAYLOAD)
+        self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(_PING_HEALTH_PAYLOAD))
 
     def _on_raw_rx(self, data: bytes) -> None:
         """Handles incoming raw bytes from transport."""
@@ -138,7 +182,10 @@ class BackendBridge(QObject):
                 (time.time() - self._last_ping_time) * 1000.0 if self._last_ping_time > 0 else 32.0
             )
             self._telemetry.record_rtt(rtt_ms)
-            self.pingResult.emit(rtt_ms, pkt.seq)
+            if pkt.payload == _PING_HEALTH_PAYLOAD:
+                self.healthResult.emit(rtt_ms, pkt.seq)
+            else:
+                self.pingResult.emit(rtt_ms, pkt.seq)
 
         self._telemetry.record_packet_received(pkt, latency_ms=rtt_ms)
 
@@ -200,12 +247,28 @@ class BackendBridge(QObject):
 
     @Slot()
     def sendPing(self) -> None:
-        """Transmits PING frame over optical link."""
+        """Transmits manual PING frame over optical link (echo shown as toast)."""
         self._ping_seq = (self._ping_seq + 1) % 256
         self._last_ping_time = time.time()
-        self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=b"IR_PING")
-        self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(b"IR_PING"))
+        self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_MANUAL_PAYLOAD)
+        self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD))
         logger.info("%s Transmitted PING frame (Seq #%d)", LogTag.PROTO_FRAME, self._ping_seq)
+
+    @Slot(float)
+    def setAutoPingInterval(self, seconds: float) -> None:
+        """Configures automatic link health-check period.
+
+        Args:
+            seconds: Interval between silent health pings; <= 0 disables.
+        """
+        self._health_interval_sec = seconds
+        if seconds > 0:
+            self._health_timer.setInterval(int(seconds * 1000))
+            if self._is_connected:
+                self._health_timer.start()
+        else:
+            self._health_timer.stop()
+        logger.info("%s Auto health check interval set to %.2fs", LogTag.IPC_BRIDGE, seconds)
 
     @Slot(str)
     def sendChat(self, text: str) -> None:
@@ -245,9 +308,30 @@ class BackendBridge(QObject):
         )
         return path
 
+    @Slot(str, result=str)
+    def openTransferLocation(self, file_path: str) -> str:
+        """Reveals a transferred file's storage folder in the system file manager.
+
+        Args:
+            file_path: Local path recorded for the transfer history entry.
+
+        Returns:
+            Opened directory path string on success, or empty string when the
+            recorded file no longer exists.
+        """
+        candidate = Path(file_path).expanduser()
+        if not candidate.exists():
+            logger.warning("%s Transfer location missing: %s", LogTag.IPC_BRIDGE, file_path)
+            return ""
+
+        target = candidate if candidate.is_dir() else candidate.parent
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
+        logger.info("%s Opened transfer location %s", LogTag.IPC_BRIDGE, target)
+        return str(target)
+
     @Slot(result=str)
     def getChatHistory(self) -> str:
-        """Retrieves durable chat history from SQLite database as JSON string.
+        """Retrieves durable chat history from hard drive store as JSON string.
 
         Returns:
             JSON formatted array of chat history objects.
@@ -257,7 +341,7 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def getFileHistory(self) -> str:
-        """Retrieves durable file transfer logs from SQLite database as JSON string.
+        """Retrieves durable file transfer logs from hard drive store as JSON string.
 
         Returns:
             JSON formatted array of file transfer objects.

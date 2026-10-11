@@ -23,7 +23,7 @@ class LogTag(StrEnum):
     ARQ_ENGINE = "[ARQ_ENGINE]"  # Stop-and-Wait ARQ state machine, ACK/NACK, retry, timeout
     CHAT_SVC = "[CHAT_SVC]"  # Optical text messaging, encoding, chat inspector
     FILE_SVC = "[FILE_SVC]"  # Binary file chunking, disk I/O, hash verification
-    STORAGE = "[STORAGE]"  # SQLite persistence, database CRUD, history load
+    STORAGE = "[STORAGE]"  # File-store persistence, CRUD, history load
     IPC_BRIDGE = "[IPC_BRIDGE]"  # QWebChannel Chromium-Python IPC dispatch
 
 
