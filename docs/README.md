@@ -1,6 +1,6 @@
 # CHỈ MỤC SPEC THỐNG NHẤT (SPEC INDEX — SINGLE SOURCE OF TRUTH)
 **Dự án:** IR-OWC Lab Terminal — Desktop PC ↔ STM32F407 + MCP2122 + TFDU4101 @ 115200 8N1
-**Ngày thống nhất:** 2026-10-10 — đối chiếu `LAB_BaoGia.xlsx` ↔ `codebase` ↔ `docs/` + `pytest 88 passed`.
+**Ngày thống nhất:** 2026-10-11 — đối chiếu `LAB_BaoGia.xlsx` ↔ `codebase` ↔ `docs/` + `pytest 112 passed`.
 
 > Quy tắc: khi có mâu thuẫn, thứ tự ưu tiên là:
 > **1. `LAB_BaoGia.xlsx` (báo giá/phạm vi) → 2. Code thực tế (`src/`) → 3. `docs/PROTOCOL.md` (wire format) → 4. `docs/ARCHITECTURE.md / ACCEPTANCE.md`.**
@@ -32,7 +32,7 @@ Tài liệu trong `docs/`: `README.md` (index này) → `PROTOCOL.md` (wire + fi
 
 ## 3. Đối chiếu báo giá MVP (19 dòng — `LAB_BaoGia.xlsx` sheet `Báo giá MVP`)
 
-| STT | Đầu việc | Căn cứ code | Kết luận audit 2026-10-10 |
+| STT | Đầu việc | Căn cứ code | Kết luận audit 2026-10-11 |
 |-----|----------|-------------|---------------------------|
 | 1–2 | UI 4 màn hình + bridge | `ui/web/components/*.html`, `main_window_web.py`, `app.py`, `backend_bridge.py`, `web/js/bridge_client.js` | Đã có |
 | 3–4 | Serial thật + worker QThread | `core/serial_worker.py:PySerialTransport`, `serial_manager.py` | Đã có; chờ controller thật |
@@ -42,7 +42,7 @@ Tài liệu trong `docs/`: `README.md` (index này) → `PROTOCOL.md` (wire + fi
 | 9–12 | File meta/chunk/ACK/timeout/RX/progress | `protocol/file_payloads.py`, `file_transfer_service.py`, `test_two_nodes_e2e_file_transfer.py` | Đã có, `240B/250ms/5 lần→FAILED`, CRC-32 |
 | 13 | Lưu trữ file | `storage_service.py`, `test_storage_service.py` | Đã có |
 | 14 | Sniffer/CSV | `telemetry_service.py`, `backend_bridge.py`, `test_telemetry_service.py` | UI/CSV có; `loss/BER` chưa phải số đo thực nghiệm (BER là text hiển thị `BER < 1e-9` trong HTML) |
-| 15–16 | Test unit + 2-node mock | `tests/unit/`, `tests/integration/` | Code có; **đã chạy 2026-10-10: 88 passed** (README ghi 72 là cũ) |
+| 15–16 | Test unit + 2-node mock | `tests/unit/`, `tests/integration/` | Code có; **đã chạy 2026-10-11: 112 passed** |
 | 17–18 | Build + docs | `scripts/build_standalone.py`, `ir_terminal.spec`, `README.md`, `IOT_STM32...`, `IOT_RUNBOOK` | Script/doc có; build chưa xác minh trên máy sạch; cần thống nhất 1 wire spec (§1) |
 | 19 | Nghiệm thu 2 controller thật | cần board/firmware, chưa có log HW trong repo | **PENDING — phần còn lại của MVP (1.3 ngày / 1.950.000)** |
 

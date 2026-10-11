@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import random
 import time
-from typing import ClassVar
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.ring_buffer import ByteRingBuffer
@@ -20,9 +19,6 @@ class MockSerialPort(ITransport):
         - Simulating optical packet loss / drop rate.
         - Simulating Line-of-Sight (LOS) blockage.
     """
-
-    # Global shared loopback channels for multi-instance P2P testing
-    _virtual_channels: ClassVar[dict[str, ByteRingBuffer]] = {}
 
     def __init__(
         self,

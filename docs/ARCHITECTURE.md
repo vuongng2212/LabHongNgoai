@@ -19,14 +19,14 @@ Dự án tuân thủ nghiêm ngặt các nguyên lý kỹ nghệ phần mềm đ
    - `HardwareSetupView`: Chỉ xử lý tương tác giao diện màn hình kết nối; không chứa logic kết nối serial trực tiếp.
 
 2. **Open/Closed Principle (OCP - Đóng để sửa, Mở để rộng):**
-   - Các tầng nghiệp vụ phụ thuộc vào Abstract Interface (`ITransport`, `IProtocolHandler`).
-   - Khi cần đổi từ giao tiếp `SerialTransport` (cổng COM) sang `MockSerialTransport` (kiểm thử) hoặc `SocketTransport` (WiFi/Ethernet sau này), chỉ cần tạo class mới hiện thực interface mà không sửa 1 dòng code nào trong `FileTransferService` hay `ChatService`.
+   - Các tầng nghiệp vụ phụ thuộc vào Abstract Interface (`ITransport` — ABC duy nhất hiện tại).
+   - Khi cần đổi từ giao tiếp `PySerialTransport` (cổng COM) sang `MockSerialPort` (kiểm thử) hoặc `SocketTransport` (WiFi/Ethernet sau này), chỉ cần tạo class mới hiện thực interface mà không sửa 1 dòng code nào trong `FileTransferService` hay `ChatService`.
 
 3. **Liskov Substitution Principle (LSP - Thay thế Liskov):**
    - `MockSerialPort` và `HardwareSerialPort` phải có cùng hành vi chuẩn: cùng trả về `bytes`, cùng ném ra `SerialTimeoutException` hoặc `SerialException` đồng nhất khi mất kết nối, đảm bảo test chạy đúng với thực tế phần cứng.
 
 4. **Interface Segregation Principle (ISP - Phân tách Interface):**
-   - Không tạo các "God Object" hay Interface khổng lồ chứa tất cả các hàm. Tách biệt các observer/callback thành các protocol riêng: `IFileProgressListener`, `IChatMessageListener`, `ITelemetryUpdateListener`.
+   - Không tạo các "God Object" hay Interface khổng lồ chứa tất cả các hàm. Giao tiếp liên tầng qua Qt Signals (`message_received`, `progress_updated`/`transfer_completed`, `telemetry_updated`); chỉ có `ITransport` là ABC duy nhất (`core/interfaces.py`).
 
 5. **Dependency Inversion Principle (DIP - Đảo ngược phụ thuộc):**
    - High-level modules (Services, UI Controllers) không phụ thuộc trực tiếp vào Low-level modules (PySerial C-bindings). Cả hai đều phụ thuộc vào Abstraction (`ITransport`).
@@ -99,7 +99,7 @@ header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 ```text
 LabHongNgoai/
 ├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
-├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 88 passed)
+├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 112 passed)
 ├── docs/                         # 4 file duy nhất, không thêm file planning rời
 │   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
 │   ├── PROTOCOL.md               # Wire format chốt + code C STM32
@@ -134,10 +134,6 @@ LabHongNgoai/
 │       │   ├── storage_service.py # File JSON chat/file/telemetry + export CSV
 │       │   └── telemetry_service.py # Throughput/RTT/loss/sniffer (BER hiển thị, chưa đo thực)
 │       │
-│       ├── models/                # [TẦNG DỮ LIỆU] Entities
-│       │   ├── __init__.py
-│       │   └── serial_info.py     # Port info, Baudrate config
-│       │
 │       ├── ui/                    # [TẦNG GIAO DIỆN] QWebEngine SPA
 │       │   ├── __init__.py
 │       │   ├── main_window_web.py # QMainWindow + QWebEngineView + QWebChannel
@@ -149,7 +145,7 @@ LabHongNgoai/
 │           ├── logger.py          # Rotating file logger + LogTag
 │           └── path_helpers.py    # Resolve asset an toàn cho PyInstaller
 │
-├── tests/                         # pytest (hiện tại 88 passed)
+├── tests/                         # pytest (hiện tại 112 passed)
 │   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge
 │   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager
 │
@@ -194,7 +190,7 @@ LabHongNgoai/
 
 Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
 1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế. Hiện tại `88 passed` (2026-10-10).
+2. **Integration Test (2-node mock + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế. Hiện tại `112 passed` (2026-10-11).
 
 ---
 

@@ -36,7 +36,7 @@ def get_web_index_path() -> Path:
 
 def get_assets_dir() -> Path:
     """Returns the directory containing static UI assets and stylesheets."""
-    return get_project_root() / "src" / "ir_terminal" / "ui" / "styles"
+    return get_project_root() / "src" / "ir_terminal" / "ui" / "web" / "assets"
 
 
 def get_app_data_dir() -> Path:

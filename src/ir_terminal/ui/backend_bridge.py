@@ -177,7 +177,22 @@ class BackendBridge(QObject):
             return
 
         rtt_ms = 0.0
-        if pkt.opcode == Opcode.PONG:
+        if pkt.opcode == Opcode.PING:
+            # RX responder: echo PONG so a remote PC gets RTT without firmware help.
+            # PONG never triggers a further reply, so no ping-pong loop. Guard on
+            # link state to avoid write-error spam when disconnected.
+            if self._is_connected:
+                self._serial_manager.send_packet(
+                    seq=pkt.seq, opcode=Opcode.PONG, payload=pkt.payload
+                )
+                self._telemetry.record_packet_sent(pkt.seq, Opcode.PONG, len(pkt.payload))
+                logger.info(
+                    "%s Replied PONG to PING (Seq #%d, %d bytes)",
+                    LogTag.PROTO_FRAME,
+                    pkt.seq,
+                    len(pkt.payload),
+                )
+        elif pkt.opcode == Opcode.PONG:
             rtt_ms = (
                 (time.time() - self._last_ping_time) * 1000.0 if self._last_ping_time > 0 else 32.0
             )
