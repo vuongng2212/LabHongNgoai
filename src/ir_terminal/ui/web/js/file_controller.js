@@ -1,7 +1,6 @@
 // File Transfer Viewport Controller with dynamic telemetry updates & hard-drive history loading
+// History table rendering/filtering lives in transfer_history.js (window.TransferHistory).
 let selectedFilePath = '';
-let transferHistoryCache = [];
-let renderedRows = [];
 
 function initFileController() {
   const historyTable = document.querySelector('#view-file tbody');
@@ -16,6 +15,10 @@ function initFileController() {
   const speedLabel = document.querySelector('#view-file .grid-cols-3 > div:nth-child(1) .text-headline-md');
   const etaLabel = document.querySelector('#view-file .grid-cols-3 > div:nth-child(2) .text-headline-md');
   const packetsLabel = document.querySelector('#view-file .grid-cols-3 > div:nth-child(3) .text-headline-md');
+
+  const history = window.TransferHistory
+    ? window.TransferHistory.create({ table: historyTable, searchInput: searchInput })
+    : null;
 
   // Wire Dropzone & Browse Click
   document.addEventListener('click', (e) => {
@@ -44,7 +47,7 @@ function initFileController() {
     // Row-level icon actions (e.g. open storage location) carry data-action.
     const actionBtn = btn.closest('[data-action]');
     if (actionBtn) {
-      handleRowAction(actionBtn);
+      if (history) history.handleRowAction(actionBtn);
       return;
     }
 
@@ -99,50 +102,6 @@ function initFileController() {
     }
   });
 
-  function handleRowAction(actionBtn) {
-    if (actionBtn.dataset.action !== 'open-location') return;
-    const item = renderedRows[Number(actionBtn.dataset.idx)];
-    const path = item && item.file_path;
-    if (!window.bridge) {
-      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'Storage location needs the SpectraLink Desktop app.');
-      return;
-    }
-    if (!path) {
-      if (window.UIFeedback) window.UIFeedback.showToast('info', 'Location not recorded yet', 'History is syncing — try again in a moment.');
-      return;
-    }
-    window.bridge.openTransferLocation(path, (openedDir) => {
-      if (!window.UIFeedback) return;
-      if (openedDir) {
-        window.UIFeedback.showToast('success', 'Storage folder opened', openedDir);
-      } else {
-        window.UIFeedback.showModal({
-          variant: 'info',
-          title: 'File no longer there',
-          message: 'The recorded file was moved or deleted. Nothing to open.',
-          details: path,
-        });
-      }
-    });
-  }
-
-  function reloadHistoryFromBridge() {
-    if (!window.bridge || typeof window.bridge.getFileHistory !== 'function') {
-      renderFilteredHistoryTable();
-      return;
-    }
-    window.bridge.getFileHistory((historyJson) => {
-      try {
-        const transfers = JSON.parse(historyJson);
-        transferHistoryCache = Array.isArray(transfers) ? transfers : [];
-      } catch (err) {
-        console.error('Failed to parse file history JSON:', err);
-        transferHistoryCache = [];
-      }
-      renderFilteredHistoryTable();
-    });
-  }
-
   function handleFileSelected(path) {
     selectedFilePath = path;
     const fname = path.split('/').pop().split('\\').pop();
@@ -157,23 +116,11 @@ function initFileController() {
     console.log('Selected file for optical transmission:', path);
   }
 
-  // Filter history search
-  if (searchInput) {
-    searchInput.addEventListener('input', () => {
-      renderFilteredHistoryTable();
-    });
-  }
-
-  // Bridge connects asynchronously (QWebChannel); retry until ready, then wire once.
-  let bridgeWired = false;
+  // Bridge connects asynchronously (QWebChannel); shared helper wires once ready.
   function tryWireBridge() {
-    if (bridgeWired) return;
-    if (!window.bridge) {
-      setTimeout(tryWireBridge, 300);
-      return;
-    }
-    bridgeWired = true;
-    wireBridgeSignals();
+    if (window.SpectraLinkBridge) window.SpectraLinkBridge.onReady('file', wireBridgeSignals);
+    else if (!window.bridge) setTimeout(tryWireBridge, 300);
+    else wireBridgeSignals();
   }
 
   function wireBridgeSignals() {
@@ -186,7 +133,7 @@ function initFileController() {
 
       if (activeStatusBadge) {
         activeStatusBadge.innerText = pct >= 100 ? 'COMPLETED' : 'STREAMING';
-        activeStatusBadge.className = pct >= 100 ? 
+        activeStatusBadge.className = pct >= 100 ?
           'text-mono-caption font-mono-caption bg-secondary text-white px-2 py-0.5 rounded-full font-bold' :
           'text-mono-caption font-mono-caption bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-bold animate-pulse';
       }
@@ -201,11 +148,7 @@ function initFileController() {
         duration_sec: elapsedSec,
         timestamp: 'Just now'
       };
-      transferHistoryCache.unshift(newRec);
-      renderFilteredHistoryTable();
-      // Re-sync from hard-drive store so the new row gains its recorded file_path
-      // (used by the open-location row action) without changing signals.
-      reloadHistoryFromBridge();
+      if (history) history.pushSuccess(newRec);
       if (window.UIFeedback) {
         window.UIFeedback.showModal({
           variant: 'success',
@@ -240,98 +183,10 @@ function initFileController() {
     });
 
     // Load persisted file history from local hard-drive store
-    reloadHistoryFromBridge();
+    if (history) history.reload();
   }
 
   tryWireBridge();
-
-  function renderFilteredHistoryTable() {
-    if (!historyTable) return;
-    const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-    historyTable.innerHTML = '';
-    renderedRows = [];
-
-    const filtered = transferHistoryCache.filter(item => {
-      if (!query) return true;
-      return (item.filename && item.filename.toLowerCase().includes(query)) ||
-             (item.crc32_hex && item.crc32_hex.toLowerCase().includes(query)) ||
-             (item.status && item.status.toLowerCase().includes(query));
-    });
-
-    if (filtered.length === 0) {
-      const emptyRow = document.createElement('tr');
-      emptyRow.innerHTML = `
-        <td colspan="7" class="py-8 text-center text-on-surface-variant text-body-md">
-          <div class="flex flex-col items-center justify-center gap-1">
-            <span class="material-symbols-outlined text-[24px] text-outline">folder_off</span>
-            <span class="font-medium text-on-surface">No optical file transfers recorded yet</span>
-            <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
-          </div>
-        </td>
-      `;
-      historyTable.appendChild(emptyRow);
-      return;
-    }
-
-    // Batch all rows into a DocumentFragment: identical DOM, one reflow.
-    const fragment = document.createDocumentFragment();
-    filtered.forEach(item => {
-      const row = document.createElement('tr');
-      row.className = 'hover:bg-surface-container-high/40 transition-colors h-11';
-
-      const sizeStr = item.size_bytes >= 1048576 ?
-        `${(item.size_bytes / 1048576).toFixed(1)} MB` :
-        `${(item.size_bytes / 1024).toFixed(1)} KB`;
-
-      const rowIdx = renderedRows.length;
-      renderedRows.push(item);
-      row.innerHTML = `
-        <td class="px-space-md">
-          <div class="flex items-center gap-2">
-            <span class="material-symbols-outlined text-[18px] text-primary">description</span>
-            <span class="font-mono-data font-semibold text-on-surface truncate max-w-[200px]">${escapeHtml(item.filename)}</span>
-          </div>
-        </td>
-        <td class="px-space-md font-mono-data text-on-surface-variant">${sizeStr}</td>
-        <td class="px-space-md">
-          <span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
-        </td>
-        <td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">${escapeHtml(item.timestamp || 'Today')}</td>
-        <td class="px-space-md">
-          <span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: ${escapeHtml(item.crc32_hex)}</span>
-        </td>
-        <td class="px-space-md">
-          <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
-            <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-            <span>Verified (${escapeHtml(item.status || '100%')})</span>
-          </div>
-        </td>
-        <td class="px-space-md text-right">
-          <div class="flex items-center justify-end gap-1">
-            <button data-action="open-location" data-idx="${rowIdx}" class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Open storage location">
-              <span class="material-symbols-outlined text-[16px]">folder_open</span>
-            </button>
-            <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Verified Checksum">
-              <span class="material-symbols-outlined text-[16px] text-secondary">verified</span>
-            </button>
-          </div>
-        </td>
-      `;
-      fragment.appendChild(row);
-    });
-    historyTable.appendChild(fragment);
-  }
-
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>'"]/g, tag => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[tag] || tag));
-  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

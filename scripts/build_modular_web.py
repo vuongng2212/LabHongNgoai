@@ -382,10 +382,15 @@ def build_modular_components() -> None:
   </div>
 
   <!-- Scripts -->
+  <script src="js/ui_feedback.js"></script>
+  <script src="js/shared/utils.js"></script>
+  <script src="js/shared/bridge.js"></script>
   <script src="js/app.js"></script>
   <script src="js/bridge_client.js"></script>
   <script src="js/chat_controller.js"></script>
+  <script src="js/transfer_history.js"></script>
   <script src="js/file_controller.js"></script>
+  <script src="js/telemetry_charts.js"></script>
   <script src="js/telemetry_controller.js"></script>
 </body>
 </html>

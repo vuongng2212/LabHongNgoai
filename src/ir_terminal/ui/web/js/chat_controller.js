@@ -54,16 +54,11 @@ function initChatController() {
     `;
   }
 
-  // Bridge connects asynchronously (QWebChannel); retry until ready, then wire once.
-  let bridgeWired = false;
+  // Bridge connects asynchronously (QWebChannel); shared helper wires once ready.
   function tryWireBridge() {
-    if (bridgeWired) return;
-    if (!window.bridge) {
-      setTimeout(tryWireBridge, 300);
-      return;
-    }
-    bridgeWired = true;
-    wireBridgeSignals();
+    if (window.SpectraLinkBridge) window.SpectraLinkBridge.onReady('chat', wireBridgeSignals);
+    else if (!window.bridge) setTimeout(tryWireBridge, 300);
+    else wireBridgeSignals();
   }
 
   function wireBridgeSignals() {
@@ -161,14 +156,9 @@ function initChatController() {
   }
 
   function escapeHtml(str) {
+    if (window.SpectraLinkUtils) return window.SpectraLinkUtils.escapeHtml(str);
     if (!str) return '';
-    return String(str).replace(/[&<>'"]/g, tag => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[tag] || tag));
+    return String(str);
   }
 }
 
