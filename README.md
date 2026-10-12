@@ -1,6 +1,6 @@
 # IR-OWC Lab Terminal (Infrared Optical Wireless Communication)
 
-[![Tests](https://img.shields.io/badge/tests-112%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-115%20passed-brightgreen.svg)]()
 [![Type Checked](https://img.shields.io/badge/mypy-strict%20passing-blue.svg)]()
 [![Linting](https://img.shields.io/badge/ruff-clean-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
@@ -59,7 +59,7 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (112/112 tests passed)
+# 3. Chạy bộ kiểm thử tự động (115/115 tests passed)
 QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn

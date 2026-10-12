@@ -81,5 +81,5 @@
 
 ## 5. PHẠM VI THANH TOÁN (TÓM TẮT TỪ `LAB_BaoGia.xlsx`)
 
-* MVP `7.500.000 / 5 ngày`: STT 1–18 (code/tài liệu/test mock, đã có — test hiện tại `112 passed` 2026-10-11) + STT 19 (cắm 2 controller thật, gửi/nhận 2 chiều — **PENDING**).
+* MVP `7.500.000 / 5 ngày`: STT 1–18 (code/tài liệu/test mock, đã có — test hiện tại `115 passed` 2026-10-12) + STT 19 (cắm 2 controller thật, gửi/nhận 2 chiều — **PENDING**).
 * Post-MVP báo riêng: resume sau chắn tia `2.4tr`, SHA-256 `1.2tr`, telemetry thực `2.4tr`, streaming file lớn `900k`, hotplug/reconnect + hàng đợi `≈1.35tr`. Không cộng vào MVP.

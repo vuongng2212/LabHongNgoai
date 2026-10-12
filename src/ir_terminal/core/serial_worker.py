@@ -11,6 +11,7 @@ from serial.tools import list_ports
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.mock_serial import MockSerialPort
+from ir_terminal.core.socket_transport import SocketTransport, resolve_link_endpoint
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
 from ir_terminal.protocol.framer import parse_frames_from_buffer
 from ir_terminal.protocol.packet import Packet
@@ -138,6 +139,13 @@ class SerialWorker(QObject):
                     baudrate=baudrate,
                     auto_respond=auto_respond,
                 )
+            elif (endpoint := resolve_link_endpoint(port_name)) is not None:
+                # Dual-mock path (2 apps on 1 PC via broker). Production
+                # PySerial path below is untouched by this branch.
+                host, tcp_port = endpoint
+                self._transport = SocketTransport(
+                    port_name=port_name.strip().upper(), host=host, port=tcp_port
+                )
             else:
                 self._transport = PySerialTransport(port_name=port_name, baudrate=baudrate)
 
@@ -242,9 +250,16 @@ class SerialWorker(QObject):
 def scan_available_ports() -> list[str]:
     """Scans and returns available system COM ports plus MOCK options.
 
+    LINK_A/B dual-mock ports are listed ONLY when IR_ENABLE_DUAL_MOCK=1 so
+    production users with real hardware never see or pick them by mistake.
+
     Returns:
         List of available COM port identifiers.
     """
     ports = [p.device for p in list_ports.comports()]
     ports.append("MOCK_COM_LOOPBACK")
+    import os
+
+    if os.environ.get("IR_ENABLE_DUAL_MOCK", "").strip() in ("1", "true", "TRUE", "yes"):
+        ports.extend(["LINK_A", "LINK_B"])
     return ports

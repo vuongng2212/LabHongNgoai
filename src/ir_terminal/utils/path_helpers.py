@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+
+def get_instance_name(explicit: str | None = None) -> str | None:
+    """Returns dual-mock instance name (A/B) from arg or IR_INSTANCE env."""
+    if explicit:
+        return explicit.strip().upper() or None
+    env = os.environ.get("IR_INSTANCE", "").strip().upper()
+    return env or None
 
 
 def get_project_root() -> Path:
@@ -39,7 +48,7 @@ def get_assets_dir() -> Path:
     return get_project_root() / "src" / "ir_terminal" / "ui" / "web" / "assets"
 
 
-def get_app_data_dir() -> Path:
+def get_app_data_dir(instance: str | None = None) -> Path:
     """Returns the persistent application data directory on hard drive.
 
     Structure:
@@ -47,28 +56,41 @@ def get_app_data_dir() -> Path:
             ├── data/ (JSON file stores)
             ├── transfers/ (Received & saved optical files)
             └── logs/ (Tagged rotating log files)
+
+    When instance is set (dual-mock A/B), an isolated subtree
+    ~/.ir_terminal/instances/<A|B>/ is used so two apps on one PC
+    never share JSON stores, transfers, or logs.
     """
-    base_dir = Path.home() / ".ir_terminal"
+    inst = get_instance_name(instance)
+    if inst:
+        base_dir = Path.home() / ".ir_terminal" / "instances" / inst
+    else:
+        base_dir = Path.home() / ".ir_terminal"
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir
 
 
-def get_data_dir() -> Path:
+def get_data_dir(instance: str | None = None) -> Path:
     """Returns the persistent application data directory for JSON file stores."""
-    data_dir = get_app_data_dir() / "data"
+    data_dir = get_app_data_dir(instance) / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
 
-def get_transfers_dir() -> Path:
+def get_transfers_dir(instance: str | None = None) -> Path:
     """Returns the directory where received optical files are stored permanently."""
-    transfers_dir = get_app_data_dir() / "transfers"
+    transfers_dir = get_app_data_dir(instance) / "transfers"
     transfers_dir.mkdir(parents=True, exist_ok=True)
     return transfers_dir
 
 
-def get_logs_dir() -> Path:
+def get_logs_dir(instance: str | None = None) -> Path:
     """Returns the directory where rotating system logs are stored."""
-    logs_dir = get_app_data_dir() / "logs"
+    logs_dir = get_app_data_dir(instance) / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir
+
+
+def is_dual_mock_enabled() -> bool:
+    """Returns True when LINK_A/B virtual ports should be listed in UI."""
+    return os.environ.get("IR_ENABLE_DUAL_MOCK", "").strip() in ("1", "true", "TRUE", "yes")
