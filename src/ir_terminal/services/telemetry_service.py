@@ -15,7 +15,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from ir_terminal.protocol.constants import Opcode
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.storage_service import StorageService
-from ir_terminal.utils.logger import LogTag
+from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview, opcode_name
 from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,15 @@ class TelemetryService(QObject):
         """
         self._total_packets_sent += 1
         self._total_frames_captured += 1
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s TX tracked %s (%s) total_sent=%d frames=%d",
+                LogTag.OPTICAL_PHY,
+                format_frame_summary(seq, opcode, length),
+                opcode_name(opcode),
+                self._total_packets_sent,
+                self._total_frames_captured,
+            )
         time_str = time.strftime("%H:%M:%S")
         type_str = self._opcode_to_type_str(opcode)
         frame_id = f"#0x{seq:04X}"
@@ -232,6 +241,17 @@ class TelemetryService(QObject):
         self._total_frames_captured += 1
         if latency_ms > 0.0:
             self._last_rtt_ms = latency_ms
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s RX tracked %s crc=0x%08X (%s) rtt=%.1fms total_rx=%d hex=%s",
+                LogTag.OPTICAL_PHY,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                pkt.crc32 & 0xFFFFFFFF,
+                opcode_name(pkt.opcode),
+                latency_ms,
+                self._total_packets_received,
+                format_hex_preview(pkt.payload, max_bytes=7),
+            )
 
         time_str = time.strftime("%H:%M:%S")
         type_str = self._opcode_to_type_str(pkt.opcode)
@@ -274,14 +294,27 @@ class TelemetryService(QObject):
         elif kind == "eof_errors":
             self._framer_eof_errors += count
         self._total_packets_lost += count
+        logger.warning(
+            "%s Framer %s x%d (crc_total=%d eof_total=%d lost_total=%d)",
+            LogTag.OPTICAL_PHY,
+            kind,
+            count,
+            self._framer_crc_errors,
+            self._framer_eof_errors,
+            self._total_packets_lost,
+        )
 
     def record_packet_lost(self) -> None:
         """Registers a lost packet or timeout retry event."""
         self._total_packets_lost += 1
+        total_attempts = self._total_packets_sent + self._total_packets_lost
+        loss_rate = (self._total_packets_lost / total_attempts * 100.0) if total_attempts else 0.0
         logger.warning(
-            "%s Optical packet drop/retry registered (Total lost: %d)",
+            "%s Optical packet drop/retry #%d (sent=%d loss=%.2f%%)",
             LogTag.OPTICAL_PHY,
             self._total_packets_lost,
+            self._total_packets_sent,
+            loss_rate,
         )
 
     def record_rtt(self, rtt_ms: float) -> None:
@@ -290,7 +323,16 @@ class TelemetryService(QObject):
         Args:
             rtt_ms: Measured RTT in milliseconds.
         """
+        old = self._last_rtt_ms
         self._last_rtt_ms = max(rtt_ms, 0.1)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s RTT update %.1fms -> %.1fms (raw=%.2fms)",
+                LogTag.OPTICAL_PHY,
+                old,
+                self._last_rtt_ms,
+                rtt_ms,
+            )
 
     def record_chunk_transferred(self) -> None:
         """Registers successful transfer of one file chunk."""
@@ -298,6 +340,15 @@ class TelemetryService(QObject):
 
     def reset_counters(self) -> None:
         """Resets all metrics and counters to initial state."""
+        before = {
+            "sent": self._total_packets_sent,
+            "rx": self._total_packets_received,
+            "lost": self._total_packets_lost,
+            "chunks": self._total_chunks_transferred,
+            "frames": self._total_frames_captured,
+            "tx_bytes": self._total_bytes_sent,
+            "rx_bytes": self._total_bytes_received,
+        }
         self._tx_byte_events.clear()
         self._rx_byte_events.clear()
         self._tx_window_bytes = 0
@@ -319,7 +370,11 @@ class TelemetryService(QObject):
         self._last_persist_time = 0.0
         self._sniffer_records.clear()
 
-        logger.info("%s Reset telemetry counters and sniffer buffer", LogTag.OPTICAL_PHY)
+        logger.info(
+            "%s Reset telemetry counters and sniffer buffer (was %s)",
+            LogTag.OPTICAL_PHY,
+            before,
+        )
         self.telemetry_updated.emit(0.0, 0.0, self._last_rtt_ms, 0, 0)
 
     def get_summary(self) -> TelemetrySummary:
@@ -407,7 +462,13 @@ class TelemetryService(QObject):
         csv_text = output.getvalue()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(csv_text, encoding="utf-8")
-        logger.info("%s Exported sniffer CSV to: %s", LogTag.STORAGE, output_path)
+        logger.info(
+            "%s Exported sniffer CSV: path=%s rows=%d bytes=%dB",
+            LogTag.STORAGE,
+            output_path,
+            len(records),
+            len(csv_text.encode("utf-8")),
+        )
         return csv_text
 
     def _on_tick(self) -> None:

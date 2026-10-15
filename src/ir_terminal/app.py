@@ -59,8 +59,12 @@ def create_app(instance: str | None = None) -> tuple[QApplication, WebMainWindow
     except Exception:
         pass
     logger.info(
-        "Initializing IR-OWC Lab Terminal application (QWebEngine + QWebChannel)... instance=%s",
+        "Initializing IR-OWC Lab Terminal (QWebEngine + QWebChannel)... instance=%s "
+        "data=%s transfers=%s logs=%s",
         inst or "single",
+        get_data_dir(inst),
+        get_transfers_dir(inst),
+        get_logs_dir(inst),
     )
 
     qt_instance = QApplication.instance()
@@ -91,6 +95,17 @@ def create_app(instance: str | None = None) -> tuple[QApplication, WebMainWindow
         storage_service=storage_service,
     )
     main_window = WebMainWindow(serial_manager=serial_manager, bridge=bridge)
+    logger.info(
+        "DI wiring complete: Storage=%s SerialManager=%s Chat=%s File(state=%s) "
+        "Telemetry(sent=%d) Bridge=%s Window=%s",
+        type(storage_service).__name__,
+        type(serial_manager).__name__,
+        type(chat_service).__name__,
+        file_service.state.name,
+        telemetry_service.total_packets_sent,
+        type(bridge).__name__,
+        type(main_window).__name__,
+    )
 
     return qt_app, main_window
 

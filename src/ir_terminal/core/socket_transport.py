@@ -17,6 +17,7 @@ from ir_terminal.protocol.constants import (
     SOCKET_READ_TIMEOUT_SEC,
     SOCKET_RECV_CHUNK,
 )
+from ir_terminal.utils.logger import LogTag, format_hex_preview
 
 logger = logging.getLogger(__name__)
 
@@ -55,29 +56,68 @@ class SocketTransport(ITransport):
 
     def open(self) -> None:
         """Opens TCP connection to the virtual optical link broker."""
-        self.close()
-        sock = socket.create_connection(
-            (self._host, self._port), timeout=SOCKET_CONNECT_TIMEOUT_SEC
+        logger.info(
+            "%s Socket open: %s -> %s:%d (connect_timeout=%.1fs, read_timeout=%.3fs)",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            self._host,
+            self._port,
+            SOCKET_CONNECT_TIMEOUT_SEC,
+            SOCKET_READ_TIMEOUT_SEC,
         )
+        self.close()
+        try:
+            sock = socket.create_connection(
+                (self._host, self._port), timeout=SOCKET_CONNECT_TIMEOUT_SEC
+            )
+        except Exception:
+            logger.exception(
+                "%s Socket open FAILED: %s -> %s:%d (is broker scripts/virtual_optical_link.py running?)",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                self._host,
+                self._port,
+            )
+            raise
         # Short timeout so worker poll stays non-blocking (mirrors PySerial 0.05s).
         sock.settimeout(SOCKET_READ_TIMEOUT_SEC)
         self._sock = sock
         self._rx_buffer = bytearray()
         self._is_open = True
         logger.info(
-            "SocketTransport %s connected to %s:%d", self._port_name, self._host, self._port
+            "%s SocketTransport %s connected to %s:%d",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            self._host,
+            self._port,
         )
 
     def close(self) -> None:
         """Closes TCP connection."""
+        was_open = self._is_open
+        buffered = len(self._rx_buffer)
         self._is_open = False
         if self._sock is not None:
             try:
                 self._sock.close()
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning(
+                    "%s Socket close error: %s %s:%d: %s",
+                    LogTag.HW_SERIAL,
+                    self._port_name,
+                    self._host,
+                    self._port,
+                    exc,
+                )
         self._sock = None
         self._rx_buffer = bytearray()
+        if was_open:
+            logger.info(
+                "%s Socket closed: %s was_open=True dropped_buffered=%dB",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                buffered,
+            )
 
     @property
     def is_open(self) -> bool:
@@ -94,8 +134,35 @@ class SocketTransport(ITransport):
             Number of bytes sent.
         """
         if not self.is_open or self._sock is None:
+            logger.warning(
+                "%s Socket write rejected (closed): %s len=%dB",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                len(data),
+            )
             raise RuntimeError("SocketTransport not open for write")
-        self._sock.sendall(data)
+        try:
+            self._sock.sendall(data)
+        except Exception:
+            self._is_open = False
+            logger.exception(
+                "%s Socket write FAILED: %s -> %s:%d len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                self._host,
+                self._port,
+                len(data),
+                format_hex_preview(data),
+            )
+            raise
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Socket TX: %s len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                len(data),
+                format_hex_preview(data),
+            )
         return len(data)
 
     def _fill(self) -> None:
@@ -109,14 +176,38 @@ class SocketTransport(ITransport):
                 if not chunk:
                     # Peer broker closed connection.
                     self._is_open = False
+                    logger.warning(
+                        "%s Socket broker closed: %s %s:%d (peer disconnected)",
+                        LogTag.HW_SERIAL,
+                        self._port_name,
+                        self._host,
+                        self._port,
+                    )
                     break
                 self._rx_buffer.extend(chunk)
+                if logger.isEnabledFor(logging.DEBUG):
+                    logger.debug(
+                        "%s Socket RX burst: %s got=%dB buffered=%dB hex=%s",
+                        LogTag.HW_SERIAL,
+                        self._port_name,
+                        len(chunk),
+                        len(self._rx_buffer),
+                        format_hex_preview(chunk),
+                    )
                 if len(chunk) < SOCKET_RECV_CHUNK:
                     break
         except (TimeoutError, BlockingIOError):
             return
-        except OSError:
+        except OSError as exc:
             self._is_open = False
+            logger.warning(
+                "%s Socket recv error, marking closed: %s %s:%d: %s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                self._host,
+                self._port,
+                exc,
+            )
 
     def read(self, size: int | None = None) -> bytes:
         """Reads bytes from the RX buffer.

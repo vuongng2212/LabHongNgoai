@@ -92,7 +92,12 @@ class StorageService:
         self._data_dir = data_dir if data_dir is not None else get_data_dir()
         self._data_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        logger.info("%s Initializing file storage at: %s", LogTag.STORAGE, self._data_dir)
+        logger.info(
+            "%s Storage init: data_dir=%s stores=[chat_history.json, file_transfers.json, "
+            "telemetry_samples.json, settings.json]",
+            LogTag.STORAGE,
+            self._data_dir,
+        )
 
     def _store_path(self, filename: str) -> Path:
         """Returns absolute path of a JSON store file."""
@@ -101,11 +106,24 @@ class StorageService:
     def _backup_corrupt(self, path: Path) -> None:
         """Renames a corrupt store to .corrupt-TIMESTAMP instead of wiping silently."""
         try:
+            size = path.stat().st_size if path.exists() else -1
             backup = path.with_suffix(f"{path.suffix}.corrupt-{int(__import__('time').time())}")
             path.replace(backup)
-            logger.warning("%s Backed up corrupt store %s -> %s", LogTag.STORAGE, path, backup)
+            logger.warning(
+                "%s Backed up corrupt store %s (%dB) -> %s",
+                LogTag.STORAGE,
+                path,
+                size,
+                backup,
+            )
         except Exception as exc:
-            logger.warning("%s Could not back up corrupt store %s: %s", LogTag.STORAGE, path, exc)
+            logger.warning(
+                "%s Could not back up corrupt store %s (%s: %s)",
+                LogTag.STORAGE,
+                path,
+                type(exc).__name__,
+                exc,
+            )
 
     def _load_list(self, filename: str) -> list[dict[str, Any]]:
         """Reads a JSON array store, recovering to empty on missing/corrupt data."""
@@ -113,18 +131,49 @@ class StorageService:
         try:
             raw = path.read_text(encoding="utf-8")
         except FileNotFoundError:
+            logger.debug("%s Store miss (first run): %s", LogTag.STORAGE, path)
+            return []
+        except Exception as exc:
+            logger.warning(
+                "%s Store read FAILED %s (%s: %s)",
+                LogTag.STORAGE,
+                path,
+                type(exc).__name__,
+                exc,
+            )
             return []
         try:
             data = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.warning("%s Corrupt store file, backing up: %s", LogTag.STORAGE, path)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "%s Corrupt store (invalid JSON at line=%d col=%d): %s (%dB) — backing up",
+                LogTag.STORAGE,
+                exc.lineno,
+                exc.colno,
+                path,
+                len(raw.encode("utf-8")),
+            )
             self._backup_corrupt(path)
             return []
         if not isinstance(data, list):
-            logger.warning("%s Unexpected store shape, backing up: %s", LogTag.STORAGE, path)
+            logger.warning(
+                "%s Unexpected store shape (type=%s, expected list): %s — backing up",
+                LogTag.STORAGE,
+                type(data).__name__,
+                path,
+            )
             self._backup_corrupt(path)
             return []
-        return [dict(item) for item in data if isinstance(item, dict)]
+        items = [dict(item) for item in data if isinstance(item, dict)]
+        logger.debug(
+            "%s Store load: %s records=%d skipped=%d bytes=%dB",
+            LogTag.STORAGE,
+            path,
+            len(items),
+            len(data) - len(items),
+            len(raw.encode("utf-8")),
+        )
+        return items
 
     def _save_list(self, filename: str, records: list[dict[str, Any]]) -> None:
         """Atomically rewrites a JSON array store via temporary file plus rename."""
@@ -213,11 +262,14 @@ class StorageService:
             max_records=_MAX_CHAT_MESSAGES,
         )
         logger.debug(
-            "%s Saved chat message #%d (seq=%d, outgoing=%s)",
+            "%s Saved chat #%d: sender=%s seq=%d outgoing=%s text_len=%dB preview=%r",
             LogTag.STORAGE,
             msg_id,
+            sender,
             seq,
             is_outgoing,
+            len(text.encode("utf-8")),
+            text[:60],
         )
         return msg_id
 
@@ -287,13 +339,18 @@ class StorageService:
             max_records=_MAX_TRANSFER_RECORDS,
         )
         logger.info(
-            "%s Saved file transfer record #%d: '%s' (%dB, %s, %s)",
+            "%s Saved transfer #%d: file='%s' dir=%s size=%dB crc=%s status=%s "
+            "speed=%.2fKB/s duration=%.2fs path=%s",
             LogTag.STORAGE,
             transfer_id,
             filename,
+            direction,
             size_bytes,
             crc32_hex,
             status,
+            speed_kbps,
+            duration_sec,
+            file_path,
         )
         return transfer_id
 
@@ -443,7 +500,13 @@ class StorageService:
         if output_path is not None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(csv_text, encoding="utf-8")
-            logger.info("%s Exported telemetry CSV to: %s", LogTag.STORAGE, output_path)
+            logger.info(
+                "%s Exported telemetry CSV: path=%s rows=%d bytes=%dB",
+                LogTag.STORAGE,
+                output_path,
+                len(samples),
+                len(csv_text.encode("utf-8")),
+            )
 
         return csv_text
 
@@ -493,7 +556,13 @@ class StorageService:
         if output_path is not None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(csv_text, encoding="utf-8")
-            logger.info("%s Exported file transfers CSV to: %s", LogTag.STORAGE, output_path)
+            logger.info(
+                "%s Exported transfers CSV: path=%s rows=%d bytes=%dB",
+                LogTag.STORAGE,
+                output_path,
+                len(transfers),
+                len(csv_text.encode("utf-8")),
+            )
 
         return csv_text
 

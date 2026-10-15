@@ -11,6 +11,12 @@ from ir_terminal.core.serial_worker import SerialWorker, scan_available_ports
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, SHUTDOWN_WAIT_MS
 from ir_terminal.protocol.framer import pack_frame
 from ir_terminal.protocol.packet import Packet
+from ir_terminal.utils.logger import (
+    LogTag,
+    format_frame_summary,
+    format_hex_preview,
+    opcode_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +74,20 @@ class SerialManager(QObject):
         self._is_connected = True
         self._current_port = port
         self._current_baud = baud
+        logger.info(
+            "%s Manager link UP: port=%s baud=%d",
+            LogTag.HW_SERIAL,
+            port,
+            baud,
+        )
 
     def _on_disconnected(self) -> None:
+        logger.info(
+            "%s Manager link DOWN: was port=%s baud=%d",
+            LogTag.HW_SERIAL,
+            self._current_port,
+            self._current_baud,
+        )
         self._is_connected = False
         self._current_port = ""
 
@@ -90,23 +108,69 @@ class SerialManager(QObject):
 
     def connect_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
         """Requests opening serial port in background thread."""
+        logger.info(
+            "%s Manager connect requested: port=%s baud=%d (dispatch to worker thread)",
+            LogTag.HW_SERIAL,
+            port_name,
+            baudrate,
+        )
         self._sig_open.emit(port_name, baudrate)
 
     def disconnect_port(self) -> None:
         """Requests closing serial port in background thread."""
+        logger.info(
+            "%s Manager disconnect requested: current_port=%s",
+            LogTag.HW_SERIAL,
+            self._current_port,
+        )
         self._sig_close.emit()
 
     def inject_raw_rx(self, data: bytes) -> None:
         """Injects simulated raw bytes via worker thread (thread-safe)."""
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Manager RX inject: len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                len(data),
+                format_hex_preview(data),
+            )
         self._sig_inject.emit(data)
 
     def send_raw(self, data: bytes) -> None:
         """Sends raw byte sequence through serial worker."""
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Manager TX raw: len=%dB hex=%s connected=%s port=%s",
+                LogTag.HW_SERIAL,
+                len(data),
+                format_hex_preview(data),
+                self._is_connected,
+                self._current_port,
+            )
         self._sig_send.emit(data)
 
     def send_packet(self, seq: int, opcode: int, payload: bytes = b"") -> None:
         """Packs and transmits a structured protocol frame."""
-        frame = pack_frame(seq=seq, opcode=opcode, payload=payload)
+        try:
+            frame = pack_frame(seq=seq, opcode=opcode, payload=payload)
+        except Exception:
+            logger.exception(
+                "%s Manager pack FAILED %s payload_hex=%s",
+                LogTag.PROTO_FRAME,
+                format_frame_summary(seq, opcode, len(payload)),
+                format_hex_preview(payload, max_bytes=16),
+            )
+            raise
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Manager TX %s (%s) port=%s frame_len=%dB frame_hex=%s",
+                LogTag.PROTO_FRAME,
+                format_frame_summary(seq, opcode, len(payload)),
+                opcode_name(opcode),
+                self._current_port or "<no-port>",
+                len(frame),
+                format_hex_preview(frame),
+            )
         self.send_raw(frame)
 
     @staticmethod
@@ -116,10 +180,30 @@ class SerialManager(QObject):
 
     def shutdown(self) -> None:
         """Cleanly halts background thread and worker."""
+        logger.info(
+            "%s Manager shutdown: requesting worker close (port=%s, connected=%s)",
+            LogTag.HW_SERIAL,
+            self._current_port,
+            self._is_connected,
+        )
         try:
             self._sig_close.emit()
             self._thread.quit()
             if not self._thread.wait(SHUTDOWN_WAIT_MS):
-                logger.warning("SerialManager thread did not stop in %d ms", SHUTDOWN_WAIT_MS)
+                logger.warning(
+                    "%s SerialManager thread did not stop in %d ms "
+                    "(thread_running=%s, port=%s)",
+                    LogTag.HW_SERIAL,
+                    SHUTDOWN_WAIT_MS,
+                    self._thread.isRunning(),
+                    self._current_port,
+                )
+            else:
+                logger.info("%s SerialManager worker thread stopped cleanly", LogTag.HW_SERIAL)
         except Exception as exc:
-            logger.warning("SerialManager shutdown error: %s", exc)
+            logger.warning(
+                "%s SerialManager shutdown error (%s: %s)",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+            )

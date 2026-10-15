@@ -19,7 +19,7 @@ from ir_terminal.services.chat_service import ChatService
 from ir_terminal.services.file_transfer_service import FileTransferService, TransferState
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.services.telemetry_service import TelemetryService
-from ir_terminal.utils.logger import LogTag
+from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview, opcode_name
 from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
@@ -149,27 +149,59 @@ class BackendBridge(QObject):
         self._is_connected = True
         if self._health_interval_sec > 0:
             self._health_timer.start()
-        logger.info("%s Link up (%s @ %d bps), health check every %.1fs",
-                    LogTag.IPC_BRIDGE, port, baud, self._health_interval_sec)
+        logger.info(
+            "%s Bridge link UP: port=%s baud=%d health_every=%.1fs auto_ping=%s",
+            LogTag.IPC_BRIDGE,
+            port,
+            baud,
+            self._health_interval_sec,
+            self._health_timer.isActive(),
+        )
 
     def _on_link_down(self) -> None:
         """Stops periodic health checks once the optical link is closed."""
+        was_connected = self._is_connected
         self._is_connected = False
         self._health_timer.stop()
+        logger.info(
+            "%s Bridge link DOWN (was_connected=%s) health_timer_stopped",
+            LogTag.IPC_BRIDGE,
+            was_connected,
+        )
 
     def _on_ports_changed(self, ports: list[str]) -> None:
         """Forwards hotplug port-list changes to the Web UI."""
         try:
+            logger.info("%s Hotplug ports -> UI: %s", LogTag.IPC_BRIDGE, ports)
             self.portsChanged.emit(json.dumps(list(ports)))
         except Exception as exc:
-            logger.debug("%s portsChanged forward failed: %s", LogTag.IPC_BRIDGE, exc)
+            logger.debug(
+                "%s portsChanged forward failed (%s: %s) ports=%s",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+                ports,
+            )
 
     def _on_framer_error(self, kind: str, count: int) -> None:
         """Counts framer corruption as link loss for telemetry."""
         try:
+            logger.debug(
+                "%s Framer %s x%d -> telemetry loss counter",
+                LogTag.PROTO_FRAME,
+                kind,
+                count,
+            )
             self._telemetry.record_framer_error(kind, int(count))
         except Exception as exc:
-            logger.debug("%s framer_error forward failed: %s", LogTag.IPC_BRIDGE, exc)
+            logger.debug(
+                "%s framer_error forward failed (%s: %s) kind=%s count=%d",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+                kind,
+                count,
+            )
 
     def shutdown(self) -> None:
         """Stops health timer (called on window close / app quit)."""
@@ -196,19 +228,47 @@ class BackendBridge(QObject):
     def _on_raw_rx(self, data: bytes) -> None:
         """Handles incoming raw bytes from transport."""
         self._telemetry.record_bytes_received(len(data))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Bridge RAW RX: len=%dB hex=%s",
+                LogTag.IPC_BRIDGE,
+                len(data),
+                format_hex_preview(data),
+            )
         self.rawRxData.emit(data.hex(" ").upper())
 
     def _on_raw_tx(self, data: bytes) -> None:
         """Handles outgoing raw bytes to transport."""
         self._telemetry.record_bytes_sent(len(data))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Bridge RAW TX: len=%dB hex=%s",
+                LogTag.IPC_BRIDGE,
+                len(data),
+                format_hex_preview(data),
+            )
         self.rawTxData.emit(data.hex(" ").upper())
 
     def _on_packet_received(self, pkt: object) -> None:
         """Handles parsed incoming packet for RTT and telemetry tracking."""
         if not isinstance(pkt, Packet):
+            logger.debug(
+                "%s Bridge ignored non-Packet: type=%s",
+                LogTag.IPC_BRIDGE,
+                type(pkt).__name__,
+            )
             return
 
         rtt_ms = 0.0
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Bridge PKT %s (%s) crc=0x%08X payload_hex=%s",
+                LogTag.PROTO_FRAME,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                opcode_name(pkt.opcode),
+                pkt.crc32 & 0xFFFFFFFF,
+                format_hex_preview(pkt.payload, max_bytes=16),
+            )
         if pkt.opcode == Opcode.PING:
             # RX responder: echo PONG so a remote PC gets RTT without firmware help.
             # PONG never triggers a further reply, so no ping-pong loop. Guard on
@@ -219,10 +279,17 @@ class BackendBridge(QObject):
                 )
                 self._telemetry.record_packet_sent(pkt.seq, Opcode.PONG, len(pkt.payload))
                 logger.info(
-                    "%s Replied PONG to PING (Seq #%d, %d bytes)",
+                    "%s Auto-PONG %s echo_len=%dB payload_hex=%s",
                     LogTag.PROTO_FRAME,
-                    pkt.seq,
+                    format_frame_summary(pkt.seq, Opcode.PONG, len(pkt.payload)),
                     len(pkt.payload),
+                    format_hex_preview(pkt.payload, max_bytes=16),
+                )
+            else:
+                logger.debug(
+                    "%s PING ignored (link down): %s",
+                    LogTag.PROTO_FRAME,
+                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
                 )
         elif pkt.opcode == Opcode.PONG:
             if self._last_ping_time > 0:
@@ -230,7 +297,16 @@ class BackendBridge(QObject):
             else:
                 rtt_ms = 0.0
             self._telemetry.record_rtt(rtt_ms)
-            if pkt.payload == _PING_HEALTH_PAYLOAD:
+            is_health = pkt.payload == _PING_HEALTH_PAYLOAD
+            logger.info(
+                "%s PONG %s rtt=%.1fms kind=%s payload_hex=%s",
+                LogTag.PROTO_FRAME,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                rtt_ms,
+                "health" if is_health else "manual",
+                format_hex_preview(pkt.payload, max_bytes=16),
+            )
+            if is_health:
                 self.healthResult.emit(rtt_ms, pkt.seq)
             else:
                 self.pingResult.emit(rtt_ms, pkt.seq)
@@ -282,30 +358,52 @@ class BackendBridge(QObject):
         try:
             name = (port_name or "").strip()
             if not name:
+                logger.warning("%s Connect rejected: empty port name (baud=%d)", LogTag.HW_SERIAL, baudrate)
                 self.errorOccurred.emit("Connect failed: empty port name")
                 return
             if baudrate <= 0:
+                logger.warning(
+                    "%s Connect rejected: invalid baudrate=%d port=%s",
+                    LogTag.HW_SERIAL,
+                    baudrate,
+                    name,
+                )
                 self.errorOccurred.emit(f"Connect failed: invalid baudrate {baudrate}")
                 return
             logger.info(
-                "%s Connect requested: port=%s baudrate=%d",
+                "%s UI connect requested: port=%s baud=%d connected=%s",
                 LogTag.HW_SERIAL,
                 name,
                 baudrate,
+                self._is_connected,
             )
             self._serial_manager.connect_port(name, baudrate)
         except Exception as exc:
-            logger.exception("%s Connect slot failed: %s", LogTag.HW_SERIAL, exc)
+            logger.exception(
+                "%s Connect slot FAILED (%s: %s) port=%s baud=%d",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+                port_name,
+                baudrate,
+            )
             self.errorOccurred.emit(f"Connect failed: {exc}")
 
     @Slot()
     def disconnectPort(self) -> None:
         """Disconnects current Serial connection."""
         try:
-            logger.info("%s Disconnect requested by UI", LogTag.HW_SERIAL)
+            logger.info(
+                "%s UI disconnect requested (connected=%s)", LogTag.HW_SERIAL, self._is_connected
+            )
             self._serial_manager.disconnect_port()
         except Exception as exc:
-            logger.exception("%s Disconnect slot failed: %s", LogTag.HW_SERIAL, exc)
+            logger.exception(
+                "%s Disconnect slot FAILED (%s: %s)",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+            )
             self.errorOccurred.emit(f"Disconnect failed: {exc}")
 
     @Slot()
@@ -316,9 +414,21 @@ class BackendBridge(QObject):
             self._last_ping_time = time.time()
             self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_MANUAL_PAYLOAD)
             self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD))
-            logger.info("%s Transmitted PING frame (Seq #%d)", LogTag.PROTO_FRAME, self._ping_seq)
+            logger.info(
+                "%s UI manual PING %s payload=%s connected=%s",
+                LogTag.PROTO_FRAME,
+                format_frame_summary(self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD)),
+                _PING_MANUAL_PAYLOAD.decode("ascii", errors="replace"),
+                self._is_connected,
+            )
         except Exception as exc:
-            logger.exception("%s sendPing failed: %s", LogTag.PROTO_FRAME, exc)
+            logger.exception(
+                "%s sendPing FAILED (%s: %s) seq=%d",
+                LogTag.PROTO_FRAME,
+                type(exc).__name__,
+                exc,
+                self._ping_seq,
+            )
             self.errorOccurred.emit(f"Ping failed: {exc}")
 
     @Slot(float)
@@ -335,7 +445,13 @@ class BackendBridge(QObject):
                 self._health_timer.start()
         else:
             self._health_timer.stop()
-        logger.info("%s Auto health check interval set to %.2fs", LogTag.IPC_BRIDGE, seconds)
+        logger.info(
+            "%s Health interval set to %.2fs (connected=%s timer_active=%s)",
+            LogTag.IPC_BRIDGE,
+            seconds,
+            self._is_connected,
+            self._health_timer.isActive(),
+        )
 
     @Slot(str)
     def sendChat(self, text: str) -> None:
@@ -346,11 +462,26 @@ class BackendBridge(QObject):
         """
         try:
             if not (text or "").strip():
+                logger.debug("%s sendChat rejected: empty message", LogTag.CHAT_SVC)
                 self.errorOccurred.emit("Chat message is empty")
                 return
+            preview = text.strip()[:80]
+            logger.debug(
+                "%s UI sendChat: len=%dB preview=%r connected=%s",
+                LogTag.CHAT_SVC,
+                len(text.encode("utf-8")),
+                preview,
+                self._is_connected,
+            )
             self._chat_service.send_message(text)
         except Exception as exc:
-            logger.exception("%s sendChat failed: %s", LogTag.CHAT_SVC, exc)
+            logger.exception(
+                "%s sendChat FAILED (%s: %s) preview=%r",
+                LogTag.CHAT_SVC,
+                type(exc).__name__,
+                exc,
+                (text or "")[:80],
+            )
             self.errorOccurred.emit(f"Chat failed: {exc}")
 
     @Slot(str)
@@ -362,23 +493,59 @@ class BackendBridge(QObject):
         """
         try:
             if not (file_path or "").strip():
+                logger.warning("%s startFileTransfer rejected: empty path", LogTag.FILE_SVC)
                 self.errorOccurred.emit("File transfer failed: empty path")
                 return
-            if not Path(file_path).is_file():
+            candidate = Path(file_path)
+            if not candidate.is_file():
+                logger.warning(
+                    "%s startFileTransfer rejected: not found path=%s connected=%s",
+                    LogTag.FILE_SVC,
+                    file_path,
+                    self._is_connected,
+                )
                 self.errorOccurred.emit(f"File transfer failed: not found: {file_path}")
                 return
+            try:
+                size = candidate.stat().st_size
+            except OSError:
+                size = -1
+            logger.info(
+                "%s UI startFileTransfer: path=%s size=%dB connected=%s arq_state=%s",
+                LogTag.FILE_SVC,
+                file_path,
+                size,
+                self._is_connected,
+                self._file_service.state.name,
+            )
             self._file_service.start_transfer(file_path)
         except Exception as exc:
-            logger.exception("%s startFileTransfer failed: %s", LogTag.FILE_SVC, exc)
+            logger.exception(
+                "%s startFileTransfer FAILED (%s: %s) path=%s",
+                LogTag.FILE_SVC,
+                type(exc).__name__,
+                exc,
+                file_path,
+            )
             self.errorOccurred.emit(f"File transfer failed: {exc}")
 
     @Slot()
     def abortFileTransfer(self) -> None:
         """Aborts current optical file transfer."""
         try:
+            logger.info(
+                "%s UI abortFileTransfer: arq_state=%s",
+                LogTag.FILE_SVC,
+                self._file_service.state.name,
+            )
             self._file_service.abort_transfer()
         except Exception as exc:
-            logger.exception("%s abortFileTransfer failed: %s", LogTag.FILE_SVC, exc)
+            logger.exception(
+                "%s abortFileTransfer FAILED (%s: %s)",
+                LogTag.FILE_SVC,
+                type(exc).__name__,
+                exc,
+            )
             self.errorOccurred.emit(f"Abort failed: {exc}")
 
     def _dialog_parent(self) -> QWidget | None:
@@ -419,12 +586,23 @@ class BackendBridge(QObject):
         """
         candidate = Path(file_path).expanduser()
         if not candidate.exists():
-            logger.warning("%s Transfer location missing: %s", LogTag.IPC_BRIDGE, file_path)
+            logger.warning(
+                "%s openTransferLocation missing: recorded=%s cwd=%s",
+                LogTag.IPC_BRIDGE,
+                file_path,
+                Path.cwd(),
+            )
             return ""
 
         target = candidate if candidate.is_dir() else candidate.parent
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(target)))
-        logger.info("%s Opened transfer location %s", LogTag.IPC_BRIDGE, target)
+        logger.info(
+            "%s Opened transfer location: recorded=%s opened=%s exists=%s",
+            LogTag.IPC_BRIDGE,
+            file_path,
+            target,
+            candidate.exists(),
+        )
         return str(target)
 
     @Slot(result=str)
@@ -486,10 +664,20 @@ class BackendBridge(QObject):
                 return ""
 
             self._telemetry.export_telemetry_csv(Path(dest_path))
-            logger.info("%s Exported telemetry CSV to %s", LogTag.IPC_BRIDGE, dest_path)
+            logger.info(
+                "%s Exported telemetry CSV: dest=%s connected=%s",
+                LogTag.IPC_BRIDGE,
+                dest_path,
+                self._is_connected,
+            )
             return dest_path
         except Exception as exc:
-            logger.exception("%s Export telemetry CSV failed: %s", LogTag.IPC_BRIDGE, exc)
+            logger.exception(
+                "%s Export telemetry CSV FAILED (%s: %s)",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+            )
             self.errorOccurred.emit(f"Export telemetry failed: {exc}")
             return ""
 
@@ -512,18 +700,31 @@ class BackendBridge(QObject):
                 return ""
 
             self._storage.export_transfers_csv(Path(dest_path))
-            logger.info("%s Exported file transfers CSV to %s", LogTag.IPC_BRIDGE, dest_path)
+            logger.info(
+                "%s Exported transfers CSV: dest=%s connected=%s",
+                LogTag.IPC_BRIDGE,
+                dest_path,
+                self._is_connected,
+            )
             return dest_path
         except Exception as exc:
-            logger.exception("%s Export transfers CSV failed: %s", LogTag.IPC_BRIDGE, exc)
+            logger.exception(
+                "%s Export transfers CSV FAILED (%s: %s)",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+            )
             self.errorOccurred.emit(f"Export transfers failed: {exc}")
             return ""
 
     @Slot()
     def resetTelemetryCounters(self) -> None:
         """Resets telemetry metrics and sniffer counters."""
+        summary = self._telemetry.get_summary()
         self._telemetry.reset_counters()
-        logger.info("%s Reset telemetry counters requested via UI", LogTag.IPC_BRIDGE)
+        logger.info(
+            "%s Reset telemetry via UI (was %s)", LogTag.IPC_BRIDGE, summary
+        )
 
     @Slot()
     def closeWindow(self) -> None:

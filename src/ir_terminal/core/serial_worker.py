@@ -19,7 +19,7 @@ from ir_terminal.protocol.constants import (
 )
 from ir_terminal.protocol.framer import FramerStats, parse_frames_with_stats
 from ir_terminal.protocol.packet import Packet
-from ir_terminal.utils.logger import LogTag
+from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
 from ir_terminal.utils.path_helpers import is_dual_mock_enabled
 
 logger = logging.getLogger(__name__)
@@ -61,10 +61,22 @@ class SerialWorker(QObject):
         try:
             self.close_port()
             logger.info(
-                "%s Opening serial port: %s at %d bps", LogTag.HW_SERIAL, port_name, baudrate
+                "%s Opening serial port: %s at %d bps (thread=%s)",
+                LogTag.HW_SERIAL,
+                port_name,
+                baudrate,
+                "worker",
             )
 
             self._transport = create_transport(port_name=port_name, baudrate=baudrate)
+            transport_kind = type(self._transport).__name__
+            logger.info(
+                "%s Transport created: %s for port=%s baud=%d",
+                LogTag.HW_SERIAL,
+                transport_kind,
+                port_name,
+                baudrate,
+            )
 
             self._transport.open()
             self._rx_accumulation = bytearray()
@@ -84,11 +96,25 @@ class SerialWorker(QObject):
             self._poll_timer.start()
             self._start_port_watcher()
 
+            logger.info(
+                "%s Port OPENED: %s @ %d bps via %s poll=%dms rx_cap=%dB",
+                LogTag.HW_SERIAL,
+                port_name,
+                baudrate,
+                transport_kind,
+                poll_ms,
+                RING_BUFFER_CAPACITY,
+            )
             self.connected.emit(port_name, baudrate)
 
         except Exception as exc:
             logger.exception(
-                "%s Failed to open serial port %s: %s", LogTag.HW_SERIAL, port_name, exc
+                "%s Failed to open serial port %s @ %d bps (%s: %s)",
+                LogTag.HW_SERIAL,
+                port_name,
+                baudrate,
+                type(exc).__name__,
+                exc,
             )
             self.error_occurred.emit(f"Connection failed: {exc}")
 
@@ -96,6 +122,9 @@ class SerialWorker(QObject):
     def close_port(self) -> None:
         """Stops polling timer and cleanly closes serial transport."""
         was_open = self._transport is not None and self._transport.is_open
+        transport_kind = type(self._transport).__name__ if self._transport else "none"
+        buffered = len(self._rx_accumulation) - self._rx_consumed
+        stats = self._framer_stats.snapshot()
         if self._poll_timer is not None:
             self._poll_timer.stop()
             self._poll_timer = None
@@ -105,7 +134,13 @@ class SerialWorker(QObject):
             try:
                 self._transport.close()
             except Exception as exc:
-                logger.warning("%s Error during transport close: %s", LogTag.HW_SERIAL, exc)
+                logger.warning(
+                    "%s Error during transport close (%s): %s: %s",
+                    LogTag.HW_SERIAL,
+                    transport_kind,
+                    type(exc).__name__,
+                    exc,
+                )
 
         self._transport = None
         self._rx_accumulation = bytearray()
@@ -115,6 +150,19 @@ class SerialWorker(QObject):
         # disconnect that wipes pending-connect UI state before the real
         # connected/error signal arrives.
         if was_open:
+            logger.info(
+                "%s Port CLOSED (%s): buffered=%dB dropped=%dB frames_ok=%d "
+                "crc_err=%d eof_err=%d len_err=%d noise=%dB",
+                LogTag.HW_SERIAL,
+                transport_kind,
+                buffered,
+                self._rx_dropped,
+                stats["frames_ok"],
+                stats["crc_errors"],
+                stats["eof_errors"],
+                stats["len_errors"],
+                stats["noise_bytes"],
+            )
             self.disconnected.emit()
 
     @Slot(bytes)
@@ -126,6 +174,13 @@ class SerialWorker(QObject):
         """
         if not data:
             return
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s RX inject: len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                len(data),
+                format_hex_preview(data),
+            )
         self._append_rx_chunk(data)
         self._drain_rx_buffer(emit_raw=False)
 
@@ -139,15 +194,20 @@ class SerialWorker(QObject):
             self._rx_consumed = max(0, self._rx_consumed - overflow)
             self._rx_dropped += overflow
             logger.warning(
-                "%s RX accumulation overflow: dropped %d oldest bytes",
+                "%s RX accumulation overflow: dropped %d oldest bytes "
+                "(cap=%dB total_dropped=%dB incoming_hex=%s)",
                 LogTag.HW_SERIAL,
                 overflow,
+                RING_BUFFER_CAPACITY,
+                self._rx_dropped,
+                format_hex_preview(chunk, max_bytes=16),
             )
 
     def _drain_rx_buffer(self, emit_raw: bool = True) -> None:
         """Parses accumulated bytes and emits packets with framer diagnostics."""
         before = self._framer_stats.snapshot()
         pending = memoryview(self._rx_accumulation)[self._rx_consumed :]
+        pending_len = len(pending)
         packets, remaining = parse_frames_with_stats(pending, self._framer_stats)[:2]
         pending.release()
         # Release the view export before any compaction: resizing
@@ -161,8 +221,34 @@ class SerialWorker(QObject):
         for kind in ("crc_errors", "eof_errors", "len_errors"):
             delta = after[kind] - before[kind]
             if delta > 0:
+                logger.warning(
+                    "%s Framer %s x%d (scanned=%dB parsed=%d totals=%s)",
+                    LogTag.PROTO_FRAME,
+                    kind,
+                    delta,
+                    pending_len,
+                    len(packets),
+                    after,
+                )
                 self.framer_error.emit(kind, delta)
+        if after["noise_bytes"] != before["noise_bytes"]:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "%s Framer noise_bytes=%d (+%d) scanned=%dB",
+                    LogTag.PROTO_FRAME,
+                    after["noise_bytes"],
+                    after["noise_bytes"] - before["noise_bytes"],
+                    pending_len,
+                )
         for pkt in packets:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "%s RX packet %s crc=0x%08X payload_hex=%s",
+                    LogTag.PROTO_FRAME,
+                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
+                    pkt.crc32 & 0xFFFFFFFF,
+                    format_hex_preview(pkt.payload, max_bytes=16),
+                )
             self.packet_received.emit(pkt)
 
     @Slot(bytes)
@@ -173,14 +259,29 @@ class SerialWorker(QObject):
             data: Raw bytes to write out to UART.
         """
         if not self._transport or not self._transport.is_open:
+            logger.warning(
+                "%s TX rejected (not connected): len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                len(data),
+                format_hex_preview(data),
+            )
             self.error_occurred.emit("Cannot send data: Serial port is not connected")
             return
 
         try:
             self._transport.write(data)
+            if logger.isEnabledFor(logging.DEBUG):
+                self._describe_tx_bytes(data)
             self.raw_data_sent.emit(data)
         except Exception as exc:
-            logger.exception("%s Write error to serial port: %s", LogTag.HW_SERIAL, exc)
+            logger.exception(
+                "%s Write error (%s: %s): len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+                len(data),
+                format_hex_preview(data),
+            )
             self.error_occurred.emit(f"Write error: {exc}")
 
     @Slot()
@@ -194,6 +295,14 @@ class SerialWorker(QObject):
             if available > 0:
                 chunk = self._transport.read(available)
                 if chunk:
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "%s Poll RX: req=%dB got=%dB hex=%s",
+                            LogTag.HW_SERIAL,
+                            available,
+                            len(chunk),
+                            format_hex_preview(chunk),
+                        )
                     self.raw_data_received.emit(chunk)
                     # Extend bytearray (amortized, no full copy) and parse a
                     # memoryview over the unconsumed tail. Compaction only when
@@ -202,13 +311,44 @@ class SerialWorker(QObject):
                     self._drain_rx_buffer(emit_raw=False)
 
         except Exception as exc:
-            logger.exception("%s Serial read poll error: %s", LogTag.HW_SERIAL, exc)
+            logger.exception(
+                "%s Serial read poll error (%s: %s); closing port",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+            )
             self.error_occurred.emit(f"Read error: {exc}")
             self.close_port()
+
+    def _describe_tx_bytes(self, data: bytes) -> None:
+        """Logs a one-line TX descriptor, decoding the frame header when possible."""
+        if len(data) >= 6 and data[0] == 0x55 and data[1] == 0xAA:
+            seq = data[2]
+            opcode = data[3]
+            payload_len = int.from_bytes(data[4:6], "little")
+            logger.debug(
+                "%s TX bytes %s frame_len=%dB hex=%s",
+                LogTag.PROTO_FRAME,
+                format_frame_summary(seq, opcode, payload_len),
+                len(data),
+                format_hex_preview(data),
+            )
+        else:
+            logger.debug(
+                "%s TX raw len=%dB hex=%s (no SOF header)",
+                LogTag.HW_SERIAL,
+                len(data),
+                format_hex_preview(data),
+            )
 
     def _start_port_watcher(self) -> None:
         """Starts hotplug polling (emits ports_changed only on change)."""
         self._last_ports = scan_available_ports()
+        logger.debug(
+            "%s Hotplug watcher started: initial_ports=%s",
+            LogTag.HW_SERIAL,
+            self._last_ports,
+        )
         if self._port_poll_timer is None:
             self._port_poll_timer = QTimer(self)
             self._port_poll_timer.setInterval(1500)
@@ -227,10 +367,21 @@ class SerialWorker(QObject):
         try:
             current = scan_available_ports()
             if current != self._last_ports:
+                logger.info(
+                    "%s Hotplug ports changed: %s -> %s",
+                    LogTag.HW_SERIAL,
+                    self._last_ports,
+                    current,
+                )
                 self._last_ports = current
                 self.ports_changed.emit(current)
         except Exception as exc:
-            logger.debug("%s Port watcher poll failed: %s", LogTag.HW_SERIAL, exc)
+            logger.debug(
+                "%s Port watcher poll failed (%s: %s)",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+            )
 
     @property
     def rx_dropped_bytes(self) -> int:

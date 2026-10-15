@@ -27,6 +27,104 @@ class LogTag(StrEnum):
     IPC_BRIDGE = "[IPC_BRIDGE]"  # QWebChannel Chromium-Python IPC dispatch
 
 
+_LOG_FORMAT = (
+    "[%(asctime)s.%(msecs)03d] [%(levelname)-7s] [%(threadName)s] "
+    "[%(name)s:%(funcName)s:%(lineno)d] %(message)s"
+)
+_LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+# Maximum bytes rendered inline in a hex preview. Full frames can be 524B;
+# previews keep per-packet logs single-line while still showing SOF/SEQ/CMD/LEN.
+MAX_HEX_PREVIEW_BYTES: int = 32
+
+_OPCODE_NAMES: dict[int, str] = {
+    0x01: "DATA_CHUNK",
+    0x02: "DATA_TEXT",
+    0x10: "ACK",
+    0x11: "NACK",
+    0x20: "PING",
+    0x21: "PONG",
+    0x30: "TRANSFER_START",
+    0x31: "TRANSFER_END",
+    0x32: "TRANSFER_PAUSE",
+    0x33: "TRANSFER_RESUME",
+}
+
+_ACK_STATUS_NAMES: dict[int, str] = {
+    0x00: "OK",
+    0x01: "CRC_ERROR",
+    0x02: "OUT_OF_ORDER",
+    0x03: "TIMEOUT",
+}
+
+
+def opcode_name(opcode: int) -> str:
+    """Returns human-readable opcode mnemonic for log lines.
+
+    Args:
+        opcode: Raw opcode byte value.
+
+    Returns:
+        Mnemonic such as ``DATA_TEXT`` or fallback ``OP_0xFF``.
+    """
+    return _OPCODE_NAMES.get(opcode, f"OP_0x{opcode:02X}")
+
+
+def ack_status_name(status: int) -> str:
+    """Returns human-readable ACK status mnemonic for log lines.
+
+    Args:
+        status: Raw ACK status byte value.
+
+    Returns:
+        Mnemonic such as ``OK`` or fallback ``STATUS_0xFF``.
+    """
+    return _ACK_STATUS_NAMES.get(status, f"STATUS_0x{status:02X}")
+
+
+def format_hex_preview(
+    data: bytes | bytearray | memoryview, max_bytes: int = MAX_HEX_PREVIEW_BYTES
+) -> str:
+    """Formats bytes as truncated upper-case hex for single-line log context.
+
+    Args:
+        data: Raw bytes to preview.
+        max_bytes: Maximum bytes rendered before truncation.
+
+    Returns:
+        String like ``55 AA 02 ... (len=240B, shown=32B)`` or ``<empty>``.
+    """
+    total = len(data)
+    if total == 0:
+        return "<empty>"
+    shown = min(total, max_bytes)
+    view = bytes(data[:shown]) if not isinstance(data, bytes) else data[:shown]
+    hex_part = view.hex(" ").upper()
+    if total > shown:
+        return f"{hex_part} ... (len={total}B, shown={shown}B)"
+    return f"{hex_part} (len={total}B)"
+
+
+def format_frame_summary(
+    seq: int, opcode: int, payload_len: int, crc32: int | None = None
+) -> str:
+    """Formats a compact frame descriptor for consistent cross-layer log correlation.
+
+    Args:
+        seq: Sequence number byte.
+        opcode: Opcode byte.
+        payload_len: Payload length in bytes.
+        crc32: Optional CRC-32 value.
+
+    Returns:
+        String like ``seq=5 opcode=DATA_TEXT(0x02) len=12 crc=0x1234ABCD``.
+    """
+    base = f"seq={seq} opcode={opcode_name(opcode)}(0x{opcode:02X}) len={payload_len}B"
+    if crc32 is not None:
+        base += f" crc=0x{crc32 & 0xFFFFFFFF:08X}"
+    return base
+
+
 class QtLogEmitter(QObject):
     """Qt Object that emits a signal whenever a log record is formatted."""
 
@@ -64,10 +162,7 @@ def _add_file_handler(logger: logging.Logger, log_dir: Path) -> None:
                 return
         except Exception:
             continue
-    formatter = logging.Formatter(
-        fmt="[%(asctime)s] [%(levelname)-7s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    formatter = logging.Formatter(fmt=_LOG_FORMAT, datefmt=_LOG_DATEFMT)
     fh = _RFH(target, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
     fh.setFormatter(formatter)
     logger.addHandler(fh)
@@ -95,10 +190,7 @@ def setup_logger(
     if logger.handlers:
         return logger, _qt_log_emitter
 
-    formatter = logging.Formatter(
-        fmt="[%(asctime)s] [%(levelname)-7s] [%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
+    formatter = logging.Formatter(fmt=_LOG_FORMAT, datefmt=_LOG_DATEFMT)
 
     # 1. Console Stream Handler
     console_handler = logging.StreamHandler()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import struct
 import zlib
 
@@ -13,6 +14,9 @@ from ir_terminal.protocol.constants import (
     SOF_MAGIC,
 )
 from ir_terminal.protocol.packet import Header, Packet
+from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview, opcode_name
+
+logger = logging.getLogger(__name__)
 
 # Module-level pre-packed constants and Struct objects (refactor: avoid
 # re-packing SOF/EOF and re-creating Struct layouts on every frame).
@@ -79,10 +83,31 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
     """
     payload_len = len(payload)
     if payload_len > MAX_PAYLOAD_SIZE:
+        logger.error(
+            "%s pack_frame rejected: payload %dB exceeds MAX %dB | %s",
+            LogTag.PROTO_FRAME,
+            payload_len,
+            MAX_PAYLOAD_SIZE,
+            format_frame_summary(seq, opcode, payload_len),
+        )
         raise ValueError(f"Payload size {payload_len} exceeds max allowed {MAX_PAYLOAD_SIZE} bytes")
     if not (0 <= seq <= 255):
+        logger.error(
+            "%s pack_frame rejected: seq %d out of range 0..255 | opcode=%s len=%dB",
+            LogTag.PROTO_FRAME,
+            seq,
+            opcode_name(opcode),
+            payload_len,
+        )
         raise ValueError(f"Sequence number {seq} must be in range 0..255")
     if not (0 <= opcode <= 255):
+        logger.error(
+            "%s pack_frame rejected: opcode %d out of range 0..255 | seq=%d len=%dB",
+            LogTag.PROTO_FRAME,
+            opcode,
+            seq,
+            payload_len,
+        )
         raise ValueError(f"Opcode {opcode} must be in range 0..255")
 
     # =========================================================================
@@ -110,7 +135,17 @@ def pack_frame(seq: int, opcode: int, payload: bytes = b"") -> bytes:
     # =========================================================================
     footer_bytes = _FOOTER_STRUCT.pack(crc_val, EOF_MAGIC)
 
-    return b"".join((_SOF_BYTES, header_fields[2:], payload, footer_bytes))
+    frame = b"".join((_SOF_BYTES, header_fields[2:], payload, footer_bytes))
+    # Guard hex formatting: TX hot path must not pay for previews when DEBUG is off.
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "%s TX pack %s frame_len=%dB hex=%s",
+            LogTag.PROTO_FRAME,
+            format_frame_summary(seq, opcode, payload_len, crc_val),
+            len(frame),
+            format_hex_preview(frame),
+        )
+    return frame
 
 
 def parse_frames_from_buffer(buffer: bytes | bytearray | memoryview) -> tuple[list[Packet], bytes]:
@@ -190,6 +225,14 @@ def parse_frames_with_stats(
         # Advance index to the SOF position (discarding any preceding noise bytes)
         if sof_pos > idx:
             own_stats.noise_bytes += sof_pos - idx
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "%s RX skipped %d noise byte(s) before SOF @offset=%d hex=%s",
+                    LogTag.PROTO_FRAME,
+                    sof_pos - idx,
+                    idx,
+                    format_hex_preview(bytes(view[idx : min(sof_pos, idx + 16)])),
+                )
         idx = sof_pos
 
         # 2. Check if we have at least the complete 6-byte header
@@ -210,6 +253,16 @@ def parse_frames_with_stats(
         if payload_len > MAX_PAYLOAD_SIZE:
             # Invalid length; SOF was likely false positive noise; advance past this SOF
             own_stats.len_errors += 1
+            logger.warning(
+                "%s RX len_error @offset=%d: LEN=%d exceeds MAX=%d "
+                "(probable false SOF) | %s hex=%s",
+                LogTag.PROTO_FRAME,
+                idx,
+                payload_len,
+                MAX_PAYLOAD_SIZE,
+                format_frame_summary(seq, opcode, payload_len),
+                format_hex_preview(bytes(view[idx : min(idx + HEADER_SIZE + 8, buf_len)])),
+            )
             idx += 2
             continue
 
@@ -235,6 +288,14 @@ def parse_frames_with_stats(
         if rx_eof != EOF_MAGIC:
             # EOF delimiter mismatch; corrupted frame; advance past SOF
             own_stats.eof_errors += 1
+            logger.warning(
+                "%s RX eof_error @offset=%d: got=0x%04X expected=0x%04X | %s",
+                LogTag.PROTO_FRAME,
+                footer_offset,
+                rx_eof,
+                EOF_MAGIC,
+                format_frame_summary(seq, opcode, payload_len, rx_crc),
+            )
             idx += 2
             continue
 
@@ -249,6 +310,15 @@ def parse_frames_with_stats(
         if rx_crc != expected_crc:
             # CRC mismatch; frame was corrupted over optical medium
             own_stats.crc_errors += 1
+            logger.warning(
+                "%s RX crc_error @offset=%d: rx=0x%08X expected=0x%08X | %s hex=%s",
+                LogTag.PROTO_FRAME,
+                idx,
+                rx_crc,
+                expected_crc,
+                format_frame_summary(seq, opcode, payload_len, rx_crc),
+                format_hex_preview(bytes(view[idx : min(idx + total_frame_len, buf_len)])),
+            )
             idx += 2
             continue
 
@@ -258,6 +328,15 @@ def parse_frames_with_stats(
         packet = Packet(header=header, payload=payload, crc32=rx_crc, eof=EOF_MAGIC)
         packets.append(packet)
         own_stats.frames_ok += 1
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s RX ok @offset=%d %s frame_len=%dB payload_hex=%s",
+                LogTag.PROTO_FRAME,
+                idx,
+                format_frame_summary(seq, opcode, payload_len, rx_crc),
+                total_frame_len,
+                format_hex_preview(payload, max_bytes=16),
+            )
 
         # Advance buffer index past this entire frame
         idx += total_frame_len

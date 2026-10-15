@@ -29,7 +29,13 @@ from ir_terminal.protocol.file_payloads import (
 )
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.storage_service import StorageService
-from ir_terminal.utils.logger import LogTag
+from ir_terminal.utils.logger import (
+    LogTag,
+    ack_status_name,
+    format_frame_summary,
+    format_hex_preview,
+    opcode_name,
+)
 from ir_terminal.utils.path_helpers import get_transfers_dir
 
 logger = logging.getLogger(__name__)
@@ -122,9 +128,21 @@ class FileTransferService(QObject):
         return self._state
 
     def _set_state(self, new_state: TransferState) -> None:
+        old_state = self._state
         self._state = new_state
         self.state_changed.emit(new_state.name)
-        logger.info("%s FileTransfer state -> %s", LogTag.ARQ_ENGINE, new_state.name)
+        elapsed = max(time.time() - self._start_time, 0.0) if self._start_time else 0.0
+        logger.info(
+            "%s ARQ state %s -> %s (elapsed=%.2fs chunk=%d/%d retry=%d/5 seq=%d)",
+            LogTag.ARQ_ENGINE,
+            old_state.name,
+            new_state.name,
+            elapsed,
+            self._current_chunk_idx,
+            self._total_chunks,
+            self._retry_count,
+            self._seq,
+        )
 
     def start_transfer(self, file_path_str: str) -> None:
         """Starts transmitting a file over optical link."""
@@ -135,16 +153,24 @@ class FileTransferService(QObject):
             TransferState.ABORTED,
         ):
             logger.warning(
-                "%s Cannot start transfer: busy in state %s",
+                "%s TX start rejected: busy in %s (file=%s chunk=%d/%d)",
                 LogTag.FILE_SVC,
                 self._state.name,
+                file_path_str,
+                self._current_chunk_idx,
+                self._total_chunks,
             )
             return
 
         file_path = Path(file_path_str)
         if not file_path.exists() or not file_path.is_file():
             err_msg = f"File not found: {file_path_str}"
-            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            logger.error(
+                "%s TX start FAILED: %s (state=%s)",
+                LogTag.FILE_SVC,
+                err_msg,
+                self._state.name,
+            )
             self.transfer_failed.emit(err_msg)
             return
 
@@ -154,7 +180,12 @@ class FileTransferService(QObject):
                 f"File exceeds {MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit: "
                 f"{file_path.name} ({oversize} bytes)"
             )
-            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            logger.error(
+                "%s TX start FAILED: %s (limit=%dB)",
+                LogTag.FILE_SVC,
+                err_msg,
+                MAX_FILE_SIZE_BYTES,
+            )
             self.transfer_failed.emit(err_msg)
             return
 
@@ -162,7 +193,13 @@ class FileTransferService(QObject):
             self._file_data = file_path.read_bytes()
         except Exception as e:
             err_msg = f"Failed to read file: {e}"
-            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            logger.exception(
+                "%s TX start FAILED: cannot read %s (%s: %s)",
+                LogTag.FILE_SVC,
+                file_path,
+                type(e).__name__,
+                e,
+            )
             self.transfer_failed.emit(err_msg)
             return
 
@@ -206,12 +243,16 @@ class FileTransferService(QObject):
         )
         self._ack_timer.start()
         logger.info(
-            "%s Initiated file transfer: '%s' (%d bytes, %d chunks, CRC 0x%08X)",
+            "%s TX START %s file='%s' size=%dB chunks=%d chunk_size=%dB "
+            "file_crc=0x%08X payload_hex=%s timeout=250ms retry=0/5",
             LogTag.FILE_SVC,
+            format_frame_summary(self._seq, Opcode.TRANSFER_START, len(self._cached_start_payload)),
             file_path.name,
             self._file_size,
             self._total_chunks,
+            self._chunk_size,
             self._file_crc32,
+            format_hex_preview(self._cached_start_payload, max_bytes=24),
         )
 
     def abort_transfer(self) -> None:
@@ -222,7 +263,14 @@ class FileTransferService(QObject):
             self._rx_received_count = 0
             self._rx_bytes_received = 0
             self.transfer_failed.emit("Incoming transfer aborted by user")
-            logger.info("%s Incoming file transfer aborted by user", LogTag.FILE_SVC)
+            logger.info(
+                "%s RX aborted by user: file='%s' had=%d/%d chunks (%dB)",
+                LogTag.FILE_SVC,
+                self._rx_filename,
+                self._rx_received_count,
+                self._rx_total_chunks,
+                self._rx_bytes_received,
+            )
             return
 
         if self._state in (
@@ -237,6 +285,7 @@ class FileTransferService(QObject):
                 opcode=Opcode.TRANSFER_PAUSE,
                 payload=b"ABORT",
             )
+            fname = self._current_file_path.name if self._current_file_path else "?"
             self._set_state(TransferState.ABORTED)
             # Invalidate caches so a later session cannot reuse stale bytes
             self._cached_start_payload = None
@@ -245,7 +294,15 @@ class FileTransferService(QObject):
             self._cached_end_key = -1
             self._cached_end_payload = None
             self.transfer_failed.emit("Transfer cancelled by user")
-            logger.info("%s Transfer aborted by user", LogTag.FILE_SVC)
+            logger.info(
+                "%s TX aborted by user %s file='%s' sent=%dB chunk=%d/%d",
+                LogTag.FILE_SVC,
+                format_frame_summary(self._seq, Opcode.TRANSFER_PAUSE, len(b"ABORT")),
+                fname,
+                self._bytes_transferred,
+                self._current_chunk_idx,
+                self._total_chunks,
+            )
 
     def _send_current_chunk(self, new_seq: bool = True) -> None:
         """Transmits current binary chunk.
@@ -284,14 +341,18 @@ class FileTransferService(QObject):
             payload=packed,
         )
         self._ack_timer.start()
-        logger.debug(
-            "%s Sent Chunk %d/%d (Seq #%d, %d bytes)",
-            LogTag.ARQ_ENGINE,
-            self._current_chunk_idx + 1,
-            self._total_chunks,
-            self._seq,
-            chunk_len,
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s TX CHUNK %s chunk_id=%d (%d/%d) chunk_bytes=%dB payload_hex=%s %s",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(self._seq, Opcode.DATA_CHUNK, len(packed)),
+                self._current_chunk_idx,
+                self._current_chunk_idx + 1,
+                self._total_chunks,
+                chunk_len,
+                format_hex_preview(packed, max_bytes=16),
+                "RETRY" if not new_seq else f"retry={self._retry_count}/5",
+            )
 
     def _send_file_end(self, new_seq: bool = True) -> None:
         """Transmits completion verification frame.
@@ -302,6 +363,7 @@ class FileTransferService(QObject):
         self._set_state(TransferState.FINALIZING)
         # TRANSFER_END payload depends only on (crc, bytes_transferred), both
         # frozen once FINALIZING is entered, so retransmits reuse packed bytes.
+        packed_end: bytes
         if (
             not new_seq
             and self._cached_end_payload is not None
@@ -326,10 +388,13 @@ class FileTransferService(QObject):
         )
         self._ack_timer.start()
         logger.info(
-            "%s Sent TRANSFER_END (Seq #%d, CRC 0x%08X)",
+            "%s TX END %s file_crc=0x%08X bytes=%dB payload_hex=%s %s",
             LogTag.FILE_SVC,
-            self._seq,
+            format_frame_summary(self._seq, Opcode.TRANSFER_END, len(packed_end)),
             self._file_crc32,
+            self._bytes_transferred,
+            format_hex_preview(packed_end),
+            "RETRY" if not new_seq else f"retry={self._retry_count}/5",
         )
 
     def _persist_failure(self, reason: str) -> None:
@@ -338,7 +403,7 @@ class FileTransferService(QObject):
             fname = self._current_file_path.name if self._current_file_path else self._rx_filename
             fpath = str(self._current_file_path) if self._current_file_path else ""
             size = self._file_size if self._file_size else self._rx_file_size
-            self._storage.save_file_transfer(
+            rec_id = self._storage.save_file_transfer(
                 filename=fname or "unknown",
                 file_path=fpath,
                 direction="TX" if self._file_size else "RX",
@@ -348,14 +413,43 @@ class FileTransferService(QObject):
                 duration_sec=round(max(time.time() - (self._start_time or time.time()), 0.0), 2),
                 status="FAILED",
             )
+            logger.info(
+                "%s Persisted FAILED record #%d: file='%s' state=%s reason=%s",
+                LogTag.FILE_SVC,
+                rec_id,
+                fname or "unknown",
+                self._state.name,
+                reason,
+            )
         except Exception as exc:
-            logger.warning("%s Could not persist FAILED record: %s", LogTag.FILE_SVC, exc)
+            logger.warning(
+                "%s Could not persist FAILED record (%s: %s) reason=%s",
+                LogTag.FILE_SVC,
+                type(exc).__name__,
+                exc,
+                reason,
+            )
 
     def _handle_packet(self, pkt: object) -> None:
         """Processes incoming ACK/NACK frames or incoming file transfer packets (RX)."""
         if not isinstance(pkt, Packet):
+            logger.debug(
+                "%s Ignored non-Packet: type=%s state=%s",
+                LogTag.ARQ_ENGINE,
+                type(pkt).__name__,
+                self._state.name,
+            )
             return
 
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s RX dispatch %s (%s) state=%s crc=0x%08X",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                opcode_name(pkt.opcode),
+                self._state.name,
+                pkt.crc32 & 0xFFFFFFFF,
+            )
         if pkt.opcode == Opcode.ACK:
             self._on_ack_received(pkt)
         elif pkt.opcode == Opcode.NACK:
@@ -368,12 +462,27 @@ class FileTransferService(QObject):
             self._on_transfer_end_received(pkt)
         elif pkt.opcode == Opcode.TRANSFER_PAUSE:
             self._on_transfer_pause_received(pkt)
+        else:
+            logger.debug(
+                "%s Ignored opcode %s in state %s",
+                LogTag.ARQ_ENGINE,
+                opcode_name(pkt.opcode),
+                self._state.name,
+            )
 
     def _on_transfer_pause_received(self, pkt: Packet) -> None:
         """Handles remote ABORT/PAUSE: stops RX session and ACKs the peer."""
         if self._state != TransferState.RECEIVING:
+            logger.debug(
+                "%s Ignored TRANSFER_PAUSE in %s: %s",
+                LogTag.FILE_SVC,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
             return
         reason = pkt.payload.decode("utf-8", errors="replace") if pkt.payload else "PAUSED"
+        rx_file = self._rx_filename
+        rx_had = (self._rx_received_count, self._rx_total_chunks, self._rx_bytes_received)
         self._rx_received_chunks.clear()
         self._rx_received_count = 0
         self._rx_bytes_received = 0
@@ -382,14 +491,30 @@ class FileTransferService(QObject):
         self._set_state(TransferState.ABORTED)
         self._persist_failure(f"Remote aborted transfer: {reason}")
         self.transfer_failed.emit(f"Remote aborted transfer: {reason}")
-        logger.info("%s Remote aborted incoming transfer (%s)", LogTag.FILE_SVC, reason)
+        logger.info(
+            "%s RX remote-abort %s reason=%r file='%s' had=%d/%d chunks (%dB)",
+            LogTag.FILE_SVC,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            reason,
+            rx_file,
+            rx_had[0],
+            rx_had[1],
+            rx_had[2],
+        )
 
     def _on_transfer_start_received(self, pkt: Packet) -> None:
         """Handles incoming TRANSFER_START frame by preparing receiver buffer and acknowledging."""
         try:
             start_payload = FileStartPayload.unpack(pkt.payload)
         except Exception as e:
-            logger.error("%s Failed to parse FileStartPayload: %s", LogTag.FILE_SVC, e)
+            logger.exception(
+                "%s RX START parse FAILED %s (%s: %s) hex=%s",
+                LogTag.FILE_SVC,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
+                type(e).__name__,
+                e,
+                format_hex_preview(pkt.payload, max_bytes=24),
+            )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
@@ -403,9 +528,12 @@ class FileTransferService(QObject):
             TransferState.RECEIVING,
         ):
             logger.warning(
-                "%s Incoming transfer rejected: busy in %s state",
+                "%s RX START rejected: busy in %s | %s file='%s' size=%dB",
                 LogTag.ARQ_ENGINE,
                 self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                start_payload.filename,
+                start_payload.file_size,
             )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
@@ -416,7 +544,12 @@ class FileTransferService(QObject):
                 f"Incoming file exceeds {MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit: "
                 f"{start_payload.filename} ({start_payload.file_size} bytes)"
             )
-            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            logger.error(
+                "%s RX START rejected: %s | %s",
+                LogTag.FILE_SVC,
+                err_msg,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             self._set_state(TransferState.FAILED)
@@ -426,7 +559,13 @@ class FileTransferService(QObject):
 
         if start_payload.chunk_size == 0 or start_payload.chunk_size > MAX_PAYLOAD_SIZE:
             err_msg = f"Incoming transfer has invalid chunk size: {start_payload.chunk_size}"
-            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            logger.error(
+                "%s RX START rejected: %s | %s payload_hex=%s",
+                LogTag.FILE_SVC,
+                err_msg,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                format_hex_preview(pkt.payload, max_bytes=24),
+            )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             self._set_state(TransferState.FAILED)
@@ -436,7 +575,12 @@ class FileTransferService(QObject):
 
         if start_payload.total_chunks == 0 or start_payload.total_chunks > 65535:
             err_msg = f"Incoming transfer has invalid total_chunks: {start_payload.total_chunks}"
-            logger.error("%s %s", LogTag.FILE_SVC, err_msg)
+            logger.error(
+                "%s RX START rejected: %s | %s",
+                LogTag.FILE_SVC,
+                err_msg,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             self._set_state(TransferState.FAILED)
@@ -456,12 +600,16 @@ class FileTransferService(QObject):
 
         self._set_state(TransferState.RECEIVING)
         logger.info(
-            "%s Incoming file transfer: '%s' (%d bytes, %d chunks, CRC 0x%08X)",
+            "%s RX START accepted %s file='%s' size=%dB chunks=%d chunk_size=%dB "
+            "file_crc=0x%08X payload_hex=%s",
             LogTag.FILE_SVC,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
             self._rx_filename,
             self._rx_file_size,
             self._rx_total_chunks,
+            self._rx_chunk_size,
             self._rx_file_crc32,
+            format_hex_preview(pkt.payload, max_bytes=24),
         )
 
         ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
@@ -471,29 +619,44 @@ class FileTransferService(QObject):
     def _on_data_chunk_received(self, pkt: Packet) -> None:
         """Handles incoming DATA_CHUNK frame by recording chunk bytes and acknowledging."""
         if self._state != TransferState.RECEIVING:
-            logger.warning("%s Received DATA_CHUNK while not in RECEIVING state", LogTag.ARQ_ENGINE)
+            logger.warning(
+                "%s RX CHUNK out-of-state: state=%s | %s",
+                LogTag.ARQ_ENGINE,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
             return
 
         try:
             chunk_payload = FileChunkPayload.unpack(pkt.payload)
         except Exception as e:
-            logger.error("%s Failed to parse FileChunkPayload: %s", LogTag.ARQ_ENGINE, e)
+            logger.exception(
+                "%s RX CHUNK parse FAILED %s (%s: %s) hex=%s",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                type(e).__name__,
+                e,
+                format_hex_preview(pkt.payload, max_bytes=16),
+            )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
 
         if chunk_payload.chunk_id >= self._rx_total_chunks:
             logger.error(
-                "%s DATA_CHUNK id %d out of range (total %d)",
+                "%s RX CHUNK id=%d out of range (total=%d) | %s data_len=%dB",
                 LogTag.ARQ_ENGINE,
                 chunk_payload.chunk_id,
                 self._rx_total_chunks,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                len(chunk_payload.chunk_data),
             )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
 
         previous = self._rx_received_chunks.get(chunk_payload.chunk_id)
+        is_duplicate = previous is not None
         if previous is not None:
             self._rx_bytes_received -= len(previous)
         else:
@@ -516,16 +679,41 @@ class FileTransferService(QObject):
         eta_sec = rem_chunks * (elapsed / max(received_count, 1))
 
         self.progress_updated.emit(pct, speed_kbps, eta_sec, received_count, total)
+        logger.debug(
+            "%s RX CHUNK id=%d (%d/%d) %s data=%dB total_rx=%dB elapsed=%.2fs %s",
+            LogTag.ARQ_ENGINE,
+            chunk_payload.chunk_id,
+            received_count,
+            total,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            len(chunk_payload.chunk_data),
+            self._rx_bytes_received,
+            elapsed,
+            "DUPLICATE-overwrite" if is_duplicate else f"pct={pct}%",
+        )
 
     def _on_transfer_end_received(self, pkt: Packet) -> None:
         """Handles incoming TRANSFER_END frame by verifying integrity, saving file, and acknowledging."""
         if self._state != TransferState.RECEIVING:
+            logger.debug(
+                "%s Ignored TRANSFER_END in %s: %s",
+                LogTag.FILE_SVC,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
             return
 
         try:
             end_payload = FileEndPayload.unpack(pkt.payload)
         except Exception as e:
-            logger.error("%s Failed to parse FileEndPayload: %s", LogTag.FILE_SVC, e)
+            logger.exception(
+                "%s RX END parse FAILED %s (%s: %s) hex=%s",
+                LogTag.FILE_SVC,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                type(e).__name__,
+                e,
+                format_hex_preview(pkt.payload),
+            )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             self._set_state(TransferState.FAILED)
@@ -533,11 +721,30 @@ class FileTransferService(QObject):
             self.transfer_failed.emit("Corrupted TRANSFER_END payload")
             return
 
+        logger.info(
+            "%s RX END verify %s claimed_crc=0x%08X claimed_bytes=%d file='%s' "
+            "have=%d/%d chunks (%dB)",
+            LogTag.FILE_SVC,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
+            end_payload.file_crc32,
+            end_payload.total_bytes_sent,
+            self._rx_filename,
+            self._rx_received_count,
+            self._rx_total_chunks,
+            self._rx_bytes_received,
+        )
+
         # Assemble chunks sequentially
         assembled_data = bytearray()
         for idx in range(self._rx_total_chunks):
             if idx not in self._rx_received_chunks:
-                logger.error("%s Missing chunk %d upon TRANSFER_END", LogTag.ARQ_ENGINE, idx)
+                logger.error(
+                    "%s RX END missing chunk %d/%d upon TRANSFER_END | %s",
+                    LogTag.ARQ_ENGINE,
+                    idx,
+                    self._rx_total_chunks,
+                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                )
                 ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
                 self._serial_manager.send_packet(
                     seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack()
@@ -552,10 +759,15 @@ class FileTransferService(QObject):
         calculated_crc = zlib.crc32(assembled_data) & 0xFFFFFFFF
         if calculated_crc != end_payload.file_crc32 or calculated_crc != self._rx_file_crc32:
             logger.error(
-                "%s Checksum mismatch: calculated 0x%08X vs expected 0x%08X",
+                "%s RX CRC MISMATCH: calc=0x%08X end_frame=0x%08X start_frame=0x%08X "
+                "assembled=%dB expected=%dB | %s",
                 LogTag.FILE_SVC,
                 calculated_crc,
                 end_payload.file_crc32,
+                self._rx_file_crc32,
+                len(assembled_data),
+                self._rx_file_size,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
             )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
@@ -578,6 +790,12 @@ class FileTransferService(QObject):
             )
 
         dest_path.write_bytes(assembled_data)
+        logger.debug(
+            "%s RX saved bytes to disk: path=%s size=%dB",
+            LogTag.FILE_SVC,
+            dest_path,
+            len(assembled_data),
+        )
 
         # Send ACK
         ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
@@ -588,7 +806,7 @@ class FileTransferService(QObject):
         crc_hex = f"0x{calculated_crc:08X}"
 
         # Persist to database
-        self._storage.save_file_transfer(
+        rec_id = self._storage.save_file_transfer(
             filename=dest_path.name,
             file_path=str(dest_path),
             direction="RX",
@@ -605,13 +823,17 @@ class FileTransferService(QObject):
         )
         self.transfer_completed.emit(dest_path.name, len(assembled_data), elapsed, crc_hex)
         logger.info(
-            "%s File received successfully: '%s' (%d bytes) in %.2fs (Speed: %.2f KB/s, CRC: %s)",
+            "%s RX COMPLETE %s file='%s' path=%s size=%dB elapsed=%.2fs "
+            "speed=%.2fKB/s crc=%s stored_id=%d",
             LogTag.FILE_SVC,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
             dest_path.name,
+            dest_path,
             len(assembled_data),
             elapsed,
             speed_kbps,
             crc_hex,
+            rec_id,
         )
 
     def _on_ack_received(self, pkt: Packet) -> None:
@@ -621,31 +843,56 @@ class FileTransferService(QObject):
             TransferState.TRANSFERRING,
             TransferState.FINALIZING,
         ):
+            logger.debug(
+                "%s Ignored ACK in %s: %s",
+                LogTag.ARQ_ENGINE,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
+            )
             return
 
         try:
             ack_info = AckPayload.unpack(pkt.payload)
             acked_seq = ack_info.acked_seq
             status = ack_info.status
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "%s ACK payload undecodable %s (%s: %s) hex=%s — assuming seq/OK",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                type(exc).__name__,
+                exc,
+                format_hex_preview(pkt.payload),
+            )
             acked_seq = pkt.seq
             status = AckStatus.OK
 
         if acked_seq != self._seq:
             logger.debug(
-                "%s Stale ACK received: expected seq %d, got %d",
+                "%s Stale ACK ignored: expected seq=%d got acked_seq=%d status=%s(%d) "
+                "state=%s frame=%s",
                 LogTag.ARQ_ENGINE,
                 self._seq,
                 acked_seq,
+                ack_status_name(status),
+                status,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
             )
             return
 
         if status != AckStatus.OK:
             logger.warning(
-                "%s Remote receiver reported error status %d for seq %d",
+                "%s ACK error status: acked_seq=%d status=%s(%d) state=%s retry=%d/5 "
+                "frame=%s payload_hex=%s",
                 LogTag.ARQ_ENGINE,
-                status,
                 acked_seq,
+                ack_status_name(status),
+                status,
+                self._state.name,
+                self._retry_count + 1,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                format_hex_preview(pkt.payload),
             )
             self._ack_timer.stop()
             self._retry_count += 1
@@ -656,13 +903,27 @@ class FileTransferService(QObject):
                 )
                 self._persist_failure(err_msg)
                 self.transfer_failed.emit(err_msg)
-                logger.error("%s %s", LogTag.ARQ_ENGINE, err_msg)
+                logger.error(
+                    "%s TX FAILED %s: %s",
+                    LogTag.ARQ_ENGINE,
+                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                    err_msg,
+                )
                 return
             self._retransmit()
             return
 
         self._ack_timer.stop()
         self._retry_count = 0
+        logger.debug(
+            "%s ACK ok: acked_seq=%d state=%s chunk=%d/%d frame=%s",
+            LogTag.ARQ_ENGINE,
+            acked_seq,
+            self._state.name,
+            self._current_chunk_idx,
+            self._total_chunks,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+        )
 
         if self._state == TransferState.HANDSHAKING:
             self._set_state(TransferState.TRANSFERRING)
@@ -699,7 +960,7 @@ class FileTransferService(QObject):
             self._set_state(TransferState.COMPLETED)
 
             # Persist transfer record into hard drive JSON store
-            self._storage.save_file_transfer(
+            rec_id = self._storage.save_file_transfer(
                 filename=fname,
                 file_path=fpath,
                 direction="TX",
@@ -712,12 +973,18 @@ class FileTransferService(QObject):
 
             self.transfer_completed.emit(fname, self._bytes_transferred, elapsed, crc_hex)
             logger.info(
-                "%s File transfer complete: '%s' in %.2fs (Speed: %.2f KB/s, CRC: %s)",
+                "%s TX COMPLETE file='%s' path=%s size=%dB chunks=%d elapsed=%.2fs "
+                "speed=%.2fKB/s crc=%s stored_id=%d final_ack=%s",
                 LogTag.FILE_SVC,
                 fname,
+                fpath,
+                self._bytes_transferred,
+                self._total_chunks,
                 elapsed,
                 speed_kbps,
                 crc_hex,
+                rec_id,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
             )
 
     def _on_nack_received(self, pkt: Packet) -> None:
@@ -727,9 +994,29 @@ class FileTransferService(QObject):
             TransferState.TRANSFERRING,
             TransferState.FINALIZING,
         ):
+            logger.debug(
+                "%s Ignored NACK in %s: %s",
+                LogTag.ARQ_ENGINE,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
             return
 
-        logger.warning("%s NACK received from remote for seq %d", LogTag.ARQ_ENGINE, pkt.seq)
+        try:
+            nack_info = AckPayload.unpack(pkt.payload)
+            nack_detail = f"acked_seq={nack_info.acked_seq} status={ack_status_name(nack_info.status)}({nack_info.status})"
+        except Exception:
+            nack_detail = f"raw_hex={format_hex_preview(pkt.payload)}"
+        logger.warning(
+            "%s NACK %s state=%s retry=%d/5 seq=%d %s payload_hex=%s",
+            LogTag.ARQ_ENGINE,
+            format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            self._state.name,
+            self._retry_count + 1,
+            self._seq,
+            nack_detail,
+            format_hex_preview(pkt.payload),
+        )
         self._ack_timer.stop()
         self._retry_count += 1
         if self._retry_count > MAX_RETRY_COUNT:
@@ -737,7 +1024,15 @@ class FileTransferService(QObject):
             err_msg = f"Transfer failed: Max retries ({MAX_RETRY_COUNT}) exceeded on NACK"
             self._persist_failure(err_msg)
             self.transfer_failed.emit(err_msg)
-            logger.error("%s %s", LogTag.ARQ_ENGINE, err_msg)
+            logger.error(
+                "%s TX FAILED on NACK %s: %s (chunk=%d/%d seq=%d)",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                err_msg,
+                self._current_chunk_idx,
+                self._total_chunks,
+                self._seq,
+            )
             return
 
         self._retransmit()
@@ -749,6 +1044,11 @@ class FileTransferService(QObject):
             TransferState.TRANSFERRING,
             TransferState.FINALIZING,
         ):
+            logger.debug(
+                "%s Ignored ACK timeout in %s",
+                LogTag.ARQ_ENGINE,
+                self._state.name,
+            )
             return
 
         self._retry_count += 1
@@ -757,20 +1057,42 @@ class FileTransferService(QObject):
             err_msg = f"Transfer failed: ACK timeout after {MAX_RETRY_COUNT} retries"
             self._persist_failure(err_msg)
             self.transfer_failed.emit(err_msg)
-            logger.error("%s %s", LogTag.ARQ_ENGINE, err_msg)
+            logger.error(
+                "%s TX FAILED timeout state=%s chunk=%d/%d seq=%d retry=%d/5: %s",
+                LogTag.ARQ_ENGINE,
+                self._state.name,
+                self._current_chunk_idx,
+                self._total_chunks,
+                self._seq,
+                self._retry_count,
+                err_msg,
+            )
             return
 
         logger.warning(
-            "%s ACK timeout (retry %d/%d) for state %s",
+            "%s ACK timeout 250ms (retry %d/%d) state=%s chunk=%d/%d seq=%d sent=%dB",
             LogTag.ARQ_ENGINE,
             self._retry_count,
             MAX_RETRY_COUNT,
             self._state.name,
+            self._current_chunk_idx,
+            self._total_chunks,
+            self._seq,
+            self._bytes_transferred,
         )
         self._retransmit()
 
     def _retransmit(self) -> None:
         """Retransmits current unacknowledged packet using existing sequence number."""
+        logger.info(
+            "%s Retransmit state=%s retry=%d/5 seq=%d chunk=%d/%d",
+            LogTag.ARQ_ENGINE,
+            self._state.name,
+            self._retry_count,
+            self._seq,
+            self._current_chunk_idx,
+            self._total_chunks,
+        )
         if self._state == TransferState.HANDSHAKING:
             # Reuse the packed START bytes from start_transfer (identical content).
             if self._cached_start_payload is None and self._current_file_path:

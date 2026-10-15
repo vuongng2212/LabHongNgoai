@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 import serial
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
+from ir_terminal.utils.logger import LogTag, format_hex_preview
+
+logger = logging.getLogger(__name__)
 
 
 class PySerialTransport(ITransport):
@@ -24,21 +29,59 @@ class PySerialTransport(ITransport):
 
     def open(self) -> None:
         """Opens physical serial port connection."""
-        self._serial = serial.Serial(
-            port=self._port_name,
-            baudrate=self._baudrate,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=0.05,
-            write_timeout=0.2,
+        logger.info(
+            "%s PySerial open: port=%s baud=%d (8N1, timeout=0.05s, write_timeout=0.2s)",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            self._baudrate,
+        )
+        try:
+            self._serial = serial.Serial(
+                port=self._port_name,
+                baudrate=self._baudrate,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=0.05,
+                write_timeout=0.2,
+            )
+        except Exception:
+            logger.exception(
+                "%s PySerial open FAILED: port=%s baud=%d",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                self._baudrate,
+            )
+            raise
+        logger.info(
+            "%s PySerial opened: port=%s baud=%d is_open=%s",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            self._baudrate,
+            self._serial.is_open,
         )
 
     def close(self) -> None:
         """Closes physical serial port connection."""
+        was_open = bool(self._serial and self._serial.is_open)
         if self._serial and self._serial.is_open:
-            self._serial.close()
-        self._serial = None
+            try:
+                self._serial.close()
+            except Exception:
+                logger.exception(
+                    "%s PySerial close error: port=%s", LogTag.HW_SERIAL, self._port_name
+                )
+                raise
+            finally:
+                self._serial = None
+        else:
+            self._serial = None
+        logger.info(
+            "%s PySerial closed: port=%s was_open=%s",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            was_open,
+        )
 
     @property
     def is_open(self) -> bool:
@@ -55,9 +98,36 @@ class PySerialTransport(ITransport):
             Number of bytes written.
         """
         if not self._serial or not self._serial.is_open:
+            logger.warning(
+                "%s PySerial write rejected (port closed): port=%s len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                len(data),
+                format_hex_preview(data),
+            )
             raise RuntimeError("Serial port not open for write")
-        written = self._serial.write(data)
-        return int(written) if written is not None else 0
+        try:
+            written = self._serial.write(data)
+        except Exception:
+            logger.exception(
+                "%s PySerial write FAILED: port=%s len=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                len(data),
+                format_hex_preview(data),
+            )
+            raise
+        count = int(written) if written is not None else 0
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s PySerial TX: port=%s wrote=%d/%dB hex=%s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                count,
+                len(data),
+                format_hex_preview(data),
+            )
+        return count
 
     def read(self, size: int | None = None) -> bytes:
         """Reads incoming bytes from serial buffer.
@@ -73,8 +143,27 @@ class PySerialTransport(ITransport):
         read_size = self._serial.in_waiting if size is None else size
         if read_size <= 0:
             return b""
-        data = self._serial.read(read_size)
-        return bytes(data) if data is not None else b""
+        try:
+            data = self._serial.read(read_size)
+        except Exception:
+            logger.exception(
+                "%s PySerial read FAILED: port=%s requested=%dB",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                read_size,
+            )
+            raise
+        result = bytes(data) if data is not None else b""
+        if result and logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s PySerial RX: port=%s req=%dB got=%dB hex=%s",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                read_size,
+                len(result),
+                format_hex_preview(result),
+            )
+        return result
 
     @property
     def in_waiting(self) -> int:

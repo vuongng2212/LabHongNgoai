@@ -12,7 +12,7 @@ from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import MAX_PAYLOAD_SIZE, Opcode
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.storage_service import StorageService
-from ir_terminal.utils.logger import LogTag
+from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview, opcode_name
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ class ChatService(QObject):
         """Encodes, transmits, and persists chat message over infrared beam."""
         clean_text = text.strip()
         if not clean_text:
+            logger.debug("%s Chat send skipped: empty/whitespace message", LogTag.CHAT_SVC)
             return
 
         encoded = clean_text.encode("utf-8")
@@ -72,11 +73,21 @@ class ChatService(QObject):
 
         self._seq = (self._seq + 1) % 256
 
-        self._serial_manager.send_packet(
-            seq=self._seq,
-            opcode=Opcode.DATA_TEXT,
-            payload=payload,
-        )
+        try:
+            self._serial_manager.send_packet(
+                seq=self._seq,
+                opcode=Opcode.DATA_TEXT,
+                payload=payload,
+            )
+        except Exception:
+            logger.exception(
+                "%s Chat TX FAILED %s text=%r hex=%s",
+                LogTag.CHAT_SVC,
+                format_frame_summary(self._seq, Opcode.DATA_TEXT, len(payload)),
+                clean_text[:80],
+                format_hex_preview(payload, max_bytes=16),
+            )
+            raise
 
         now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
@@ -86,15 +97,17 @@ class ChatService(QObject):
                 original_len,
             )
             logger.warning(
-                "%s Chat message truncated %d->%dB (max %dB)",
+                "%s Chat message truncated %d->%dB (max %dB) seq=%d preview=%r",
                 LogTag.CHAT_SVC,
                 original_len,
                 len(payload),
                 MAX_PAYLOAD_SIZE,
+                self._seq,
+                clean_text[:80],
             )
 
             # Save to durable hard drive JSON store
-        self._storage.save_chat_message(
+        msg_id = self._storage.save_chat_message(
             sender=self._local_name,
             text=clean_text,
             timestamp=now_str,
@@ -107,28 +120,44 @@ class ChatService(QObject):
             payload.hex(" ").upper(), self._seq, Opcode.DATA_TEXT, len(payload)
         )
         logger.info(
-            "%s Sent chat: '%s' (Seq #%d, %d bytes)",
+            "%s Chat TX %s (%s) sender=%s stored_id=%d text=%r hex=%s",
             LogTag.CHAT_SVC,
-            clean_text,
-            self._seq,
-            len(payload),
+            format_frame_summary(self._seq, Opcode.DATA_TEXT, len(payload)),
+            opcode_name(Opcode.DATA_TEXT),
+            self._local_name,
+            msg_id,
+            clean_text[:120],
+            format_hex_preview(payload, max_bytes=16),
         )
 
     def handle_packet(self, pkt: object) -> None:
         """Processes incoming packet from serial transport and saves to disk."""
         if not isinstance(pkt, Packet):
+            logger.debug(
+                "%s Chat ignored non-Packet: type=%s",
+                LogTag.CHAT_SVC,
+                type(pkt).__name__,
+            )
             return
 
         if pkt.opcode == Opcode.DATA_TEXT:
             try:
                 text = pkt.payload.decode("utf-8")
-            except UnicodeDecodeError:
+            except UnicodeDecodeError as exc:
+                logger.warning(
+                    "%s Chat RX undecodable UTF-8 %s (%s: %s) hex=%s — showing hex",
+                    LogTag.CHAT_SVC,
+                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
+                    type(exc).__name__,
+                    exc,
+                    format_hex_preview(pkt.payload, max_bytes=16),
+                )
                 text = pkt.payload.hex(" ")
 
             now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
             # Save to durable hard drive JSON store
-            self._storage.save_chat_message(
+            msg_id = self._storage.save_chat_message(
                 sender=self._remote_name,
                 text=text,
                 timestamp=now_str,
@@ -141,9 +170,19 @@ class ChatService(QObject):
                 pkt.payload.hex(" ").upper(), pkt.seq, pkt.opcode, len(pkt.payload)
             )
             logger.info(
-                "%s Received optical chat: '%s' (Seq #%d, %d bytes)",
+                "%s Chat RX %s crc=0x%08X sender=%s stored_id=%d text=%r hex=%s",
                 LogTag.CHAT_SVC,
-                text,
-                pkt.seq,
-                len(pkt.payload),
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                pkt.crc32 & 0xFFFFFFFF,
+                self._remote_name,
+                msg_id,
+                text[:120],
+                format_hex_preview(pkt.payload, max_bytes=16),
+            )
+        else:
+            logger.debug(
+                "%s Chat ignored opcode %s %s",
+                LogTag.CHAT_SVC,
+                opcode_name(pkt.opcode),
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
             )

@@ -5,10 +5,14 @@ All multi-byte integer fields strictly follow Little-Endian byte ordering.
 
 from __future__ import annotations
 
+import logging
 import struct
 from dataclasses import dataclass
 
 from ir_terminal.protocol.constants import AckStatus
+from ir_terminal.utils.logger import LogTag, format_hex_preview
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,12 @@ class FileStartPayload:
         """
         fname_bytes = self.filename.encode("utf-8")
         if len(fname_bytes) > 255:
+            logger.warning(
+                "%s FileStart filename truncated: %dB->255B name=%r",
+                LogTag.FILE_SVC,
+                len(fname_bytes),
+                self.filename,
+            )
             fname_bytes = fname_bytes[:255]
 
         # =========================================================================
@@ -76,6 +86,12 @@ class FileStartPayload:
             ValueError: If data is shorter than 13 bytes or filename is truncated.
         """
         if len(data) < 13:
+            logger.error(
+                "%s FileStartPayload unpack FAILED: got=%dB need>=13B hex=%s",
+                LogTag.FILE_SVC,
+                len(data),
+                format_hex_preview(data),
+            )
             raise ValueError(f"Payload too short for FileStartPayload: {len(data)} < 13 bytes")
 
         # =========================================================================
@@ -90,6 +106,13 @@ class FileStartPayload:
             "<IHHIB", data[:13]
         )
         if len(data) < 13 + fname_len:
+            logger.error(
+                "%s FileStartPayload filename truncated: declared=%dB got=%dB hex=%s",
+                LogTag.FILE_SVC,
+                fname_len,
+                len(data) - 13,
+                format_hex_preview(data),
+            )
             raise ValueError(f"Filename truncated: expected {fname_len} bytes")
 
         fname = data[13 : 13 + fname_len].decode("utf-8", errors="replace")
@@ -145,6 +168,11 @@ class FileChunkPayload:
             ValueError: If data length is less than 2 bytes.
         """
         if len(data) < 2:
+            logger.error(
+                "%s FileChunkPayload unpack FAILED: got=%dB need>=2B",
+                LogTag.ARQ_ENGINE,
+                len(data),
+            )
             raise ValueError("Data too short for FileChunkPayload")
         # =========================================================================
         # FILE_CHUNK HEADER UNPACK (Total: 2 bytes prefix)
@@ -197,6 +225,12 @@ class FileEndPayload:
             ValueError: If data length is less than 8 bytes.
         """
         if len(data) < 8:
+            logger.error(
+                "%s FileEndPayload unpack FAILED: got=%dB need>=8B hex=%s",
+                LogTag.FILE_SVC,
+                len(data),
+                format_hex_preview(data),
+            )
             raise ValueError("Data too short for FileEndPayload")
         # =========================================================================
         # FILE_END UNPACK (Total: 8 bytes)
@@ -250,6 +284,12 @@ class AckPayload:
             ValueError: If data length is less than 2 bytes.
         """
         if len(data) < 2:
+            logger.error(
+                "%s AckPayload unpack FAILED: got=%dB need>=2B hex=%s",
+                LogTag.ARQ_ENGINE,
+                len(data),
+                format_hex_preview(data),
+            )
             raise ValueError("Data too short for AckPayload")
         # =========================================================================
         # ACK/NACK PAYLOAD UNPACK (Total: 2 bytes)

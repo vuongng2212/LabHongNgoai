@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import threading
 import time
@@ -10,6 +11,9 @@ from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.ring_buffer import ByteRingBuffer
 from ir_terminal.protocol.constants import RING_BUFFER_CAPACITY, Opcode
 from ir_terminal.protocol.framer import pack_frame, parse_frames_from_buffer
+from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
+
+logger = logging.getLogger(__name__)
 
 
 class MockSerialPort(ITransport):
@@ -62,14 +66,35 @@ class MockSerialPort(ITransport):
         self._tx_buffer = bytearray()
         with self._lock:
             self._pending = []
+        logger.info(
+            "%s Mock open: port=%s baud=%d latency=%.1fms loss=%.3f auto_respond=%s",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            self._baudrate,
+            self._latency_s * 1000.0,
+            self._loss_rate,
+            self._auto_respond,
+        )
 
     def close(self) -> None:
         """Closes virtual mock serial connection."""
+        was_open = self._is_open
         self._is_open = False
         self._rx_buffer.clear()
         self._tx_buffer = bytearray()
         with self._lock:
+            pending = len(self._pending)
             self._pending = []
+        logger.info(
+            "%s Mock closed: port=%s was_open=%s dropped_pending=%d "
+            "loss_drops=%d los_drops=%d",
+            LogTag.HW_SERIAL,
+            self._port_name,
+            was_open,
+            pending,
+            self._dropped_by_loss,
+            self._dropped_by_los,
+        )
 
     @property
     def is_open(self) -> bool:
@@ -83,6 +108,13 @@ class MockSerialPort(ITransport):
             blocked: True to block optical transmission; False to restore link.
         """
         self._los_blocked = blocked
+        logger.warning(
+            "%s Mock LOS %s: port=%s (beam %s)",
+            LogTag.OPTICAL_PHY,
+            "BLOCKED — packets will vanish" if blocked else "CLEARED — link restored",
+            self._port_name,
+            "obstructed" if blocked else "clear",
+        )
 
     def write(self, data: bytes) -> int:
         """Simulates sending data to STM32 and automatically handles PING/PONG responses.
@@ -94,6 +126,12 @@ class MockSerialPort(ITransport):
             Number of bytes written.
         """
         if not self._is_open:
+            logger.warning(
+                "%s Mock write rejected (closed): port=%s len=%dB",
+                LogTag.HW_SERIAL,
+                self._port_name,
+                len(data),
+            )
             raise RuntimeError("Cannot write to closed MockSerialPort")
 
         if self._los_blocked:
@@ -101,6 +139,15 @@ class MockSerialPort(ITransport):
             # Counted (not silent) so ARQ/telemetry can observe the blockage.
             with self._lock:
                 self._dropped_by_los += 1
+                los_total = self._dropped_by_los
+            logger.debug(
+                "%s Mock TX dropped by LOS: port=%s len=%dB hex=%s total_los_drops=%d",
+                LogTag.OPTICAL_PHY,
+                self._port_name,
+                len(data),
+                format_hex_preview(data),
+                los_total,
+            )
             return len(data)
 
         # Check if packet should be dropped due to simulated channel noise
@@ -108,6 +155,17 @@ class MockSerialPort(ITransport):
             # Packet dropped by simulated atmospheric noise (counted).
             with self._lock:
                 self._dropped_by_loss += 1
+                loss_total = self._dropped_by_loss
+            logger.debug(
+                "%s Mock TX dropped by noise: port=%s loss_rate=%.3f len=%dB hex=%s "
+                "total_loss_drops=%d",
+                LogTag.OPTICAL_PHY,
+                self._port_name,
+                self._loss_rate,
+                len(data),
+                format_hex_preview(data),
+                loss_total,
+            )
             return len(data)
 
         # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond (if enabled)
@@ -156,6 +214,13 @@ class MockSerialPort(ITransport):
     def _handle_ping_packet(self, seq: int, payload: bytes) -> None:
         """Generates a PONG response frame after simulated optical latency."""
         pong_frame = pack_frame(seq=seq, opcode=Opcode.PONG, payload=payload)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Mock auto-PONG %s latency=%.1fms",
+                LogTag.OPTICAL_PHY,
+                format_frame_summary(seq, Opcode.PONG, len(payload)),
+                self._latency_s * 1000.0,
+            )
         self._schedule_response(pong_frame, self._latency_s)
 
     def _handle_chat_packet(self, seq: int, payload: bytes) -> None:
@@ -163,6 +228,13 @@ class MockSerialPort(ITransport):
         # ACK the chat frame with matching sequence number
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Mock auto-ACK chat %s payload_hex=%s",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(seq, Opcode.ACK, len(ack_payload)),
+                format_hex_preview(payload, max_bytes=16),
+            )
         self._schedule_response(ack_frame, self._latency_s)
 
     def _handle_file_ack(self, seq: int) -> None:
@@ -172,6 +244,13 @@ class MockSerialPort(ITransport):
         delay = min(self._latency_s, 0.002)
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Mock auto-ACK file %s delay=%.1fms",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(seq, Opcode.ACK, len(ack_payload)),
+                delay * 1000.0,
+            )
         self._schedule_response(ack_frame, delay)
 
     def read(self, size: int | None = None) -> bytes:

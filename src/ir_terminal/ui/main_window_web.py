@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.ui.backend_bridge import BackendBridge
+from ir_terminal.utils.logger import LogTag
 from ir_terminal.utils.path_helpers import get_web_index_path
 
 logger = logging.getLogger(__name__)
@@ -37,11 +38,11 @@ class WebAppPage(QWebEnginePage):
         """
         text = f"JS Console [{source_id}:{line_number}]: {message}"
         if level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
-            logger.error(text)
+            logger.error("%s %s", LogTag.IPC_BRIDGE, text)
         elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel:
-            logger.warning(text)
+            logger.warning("%s %s", LogTag.IPC_BRIDGE, text)
         else:
-            logger.info(text)
+            logger.debug("%s %s", LogTag.IPC_BRIDGE, text)
 
 
 class WebMainWindow(QMainWindow):
@@ -61,22 +62,44 @@ class WebMainWindow(QMainWindow):
         super().__init__()
         self._serial_manager = serial_manager
         if bridge is None:
-            logger.warning("WebMainWindow created without injected bridge; using default")
+            logger.warning(
+                "%s WebMainWindow without injected bridge; creating default "
+                "(port=%s connected=%s)",
+                LogTag.IPC_BRIDGE,
+                serial_manager.current_port,
+                serial_manager.is_connected,
+            )
         self._bridge = bridge or BackendBridge(self._serial_manager)
 
         self._init_window()
         self._init_webengine()
+        logger.info(
+            "%s WebMainWindow ready: 1380x880 bridge=%s",
+            LogTag.IPC_BRIDGE,
+            type(self._bridge).__name__,
+        )
 
     def closeEvent(self, event: object) -> None:
         """Ensures worker thread and timers stop on window close (no QThread leak)."""
+        logger.info("%s WebMainWindow close requested; shutting down bridge+serial", LogTag.IPC_BRIDGE)
         try:
             self._bridge.shutdown()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "%s Bridge shutdown on close FAILED (%s: %s)",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+            )
         try:
             self._serial_manager.shutdown()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "%s Serial shutdown on close FAILED (%s: %s)",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+            )
         super().closeEvent(event)  # type: ignore[arg-type]
 
     def _init_window(self) -> None:
