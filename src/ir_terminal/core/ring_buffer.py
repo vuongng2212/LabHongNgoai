@@ -22,6 +22,7 @@ class ByteRingBuffer:
         self._head = 0  # Write pointer
         self._tail = 0  # Read pointer
         self._size = 0  # Current valid bytes in buffer
+        self._dropped = 0  # Cumulative bytes dropped due to overflow
         self._lock = threading.Lock()
 
     @property
@@ -33,6 +34,12 @@ class ByteRingBuffer:
         """Returns the number of readable bytes currently in the buffer."""
         with self._lock:
             return self._size
+
+    @property
+    def dropped_bytes(self) -> int:
+        """Returns cumulative bytes dropped due to overflow (diagnostics)."""
+        with self._lock:
+            return self._dropped
 
     def write(self, data: bytes) -> int:
         """Appends byte sequence to the buffer.
@@ -69,6 +76,7 @@ class ByteRingBuffer:
                 overflow = self._size + data_len - self._capacity
                 self._tail = (self._tail + overflow) % self._capacity
                 self._size = self._capacity
+                self._dropped += overflow
 
             return data_len
 

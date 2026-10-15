@@ -7,9 +7,9 @@ import sys
 block_cipher = None
 project_root = Path(SPECPATH).resolve() if "SPECPATH" in globals() else Path.cwd().resolve()
 
-# Bundle web assets (HTML, CSS, JS, local TTF fonts)
+# Bundle web assets (HTML, CSS, JS, local TTF fonts) once; the runtime
+# resolver (path_helpers.get_web_index_path) checks both frozen layouts.
 datas = [
-    (str(project_root / 'src' / 'ir_terminal' / 'ui' / 'web'), 'src/ir_terminal/ui/web'),
     (str(project_root / 'src' / 'ir_terminal' / 'ui' / 'web'), 'ir_terminal/ui/web'),
 ]
 

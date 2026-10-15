@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import random
+import threading
 import time
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.ring_buffer import ByteRingBuffer
-from ir_terminal.protocol.constants import Opcode
+from ir_terminal.protocol.constants import RING_BUFFER_CAPACITY, Opcode
 from ir_terminal.protocol.framer import pack_frame, parse_frames_from_buffer
 
 
@@ -43,21 +44,32 @@ class MockSerialPort(ITransport):
         self._loss_rate = simulated_loss_rate
         self._auto_respond = auto_respond
         self._is_open = False
-        self._rx_buffer = ByteRingBuffer(capacity=65536)
+        self._rx_buffer = ByteRingBuffer(capacity=RING_BUFFER_CAPACITY)
         self._tx_buffer = bytearray()
         self._los_blocked = False
+        # Non-blocking latency queue: (due_monotonic, frame_bytes). Responses are
+        # enqueued in write() and delivered when due in read()/in_waiting, so the
+        # worker event loop is never blocked by time.sleep().
+        self._pending: list[tuple[float, bytes]] = []
+        self._dropped_by_loss: int = 0
+        self._dropped_by_los: int = 0
+        self._lock = threading.Lock()
 
     def open(self) -> None:
         """Opens virtual mock serial connection."""
         self._is_open = True
         self._rx_buffer.clear()
         self._tx_buffer = bytearray()
+        with self._lock:
+            self._pending = []
 
     def close(self) -> None:
         """Closes virtual mock serial connection."""
         self._is_open = False
         self._rx_buffer.clear()
         self._tx_buffer = bytearray()
+        with self._lock:
+            self._pending = []
 
     @property
     def is_open(self) -> bool:
@@ -85,12 +97,17 @@ class MockSerialPort(ITransport):
             raise RuntimeError("Cannot write to closed MockSerialPort")
 
         if self._los_blocked:
-            # Beam is physically blocked; packets disappear into void
+            # Beam is physically blocked; packets disappear into void.
+            # Counted (not silent) so ARQ/telemetry can observe the blockage.
+            with self._lock:
+                self._dropped_by_los += 1
             return len(data)
 
         # Check if packet should be dropped due to simulated channel noise
         if self._loss_rate > 0 and random.random() < self._loss_rate:
-            # Packet dropped by simulated atmospheric noise
+            # Packet dropped by simulated atmospheric noise (counted).
+            with self._lock:
+                self._dropped_by_loss += 1
             return len(data)
 
         # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond (if enabled)
@@ -110,32 +127,52 @@ class MockSerialPort(ITransport):
 
         return len(data)
 
+    def _schedule_response(self, frame: bytes, delay_s: float) -> None:
+        """Enqueues a response frame for delivery after delay_s (non-blocking)."""
+        if delay_s <= 0:
+            self._rx_buffer.write(frame)
+            return
+        due = time.monotonic() + delay_s
+        with self._lock:
+            self._pending.append((due, frame))
+
+    def _deliver_due(self) -> None:
+        """Moves due responses into the RX buffer (called on worker thread)."""
+        now = time.monotonic()
+        due_frames: list[bytes] = []
+        with self._lock:
+            if not self._pending:
+                return
+            remaining: list[tuple[float, bytes]] = []
+            for due, frame in self._pending:
+                if due <= now:
+                    due_frames.append(frame)
+                else:
+                    remaining.append((due, frame))
+            self._pending = remaining
+        for frame in due_frames:
+            self._rx_buffer.write(frame)
+
     def _handle_ping_packet(self, seq: int, payload: bytes) -> None:
         """Generates a PONG response frame after simulated optical latency."""
-        if self._latency_s > 0:
-            time.sleep(self._latency_s)
-
         pong_frame = pack_frame(seq=seq, opcode=Opcode.PONG, payload=payload)
-        self._rx_buffer.write(pong_frame)
+        self._schedule_response(pong_frame, self._latency_s)
 
     def _handle_chat_packet(self, seq: int, payload: bytes) -> None:
         """Echoes back chat response from Station Bravo node."""
-        if self._latency_s > 0:
-            time.sleep(self._latency_s)
         # ACK the chat frame with matching sequence number
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
-        self._rx_buffer.write(ack_frame)
+        self._schedule_response(ack_frame, self._latency_s)
 
     def _handle_file_ack(self, seq: int) -> None:
         """Sends ACK for file transfer chunk."""
-        if self._latency_s > 0:
-            # Near-instant ACK keeps loopback simulation snappy (chat PING keeps
-            # the full simulated latency for realistic RTT display).
-            time.sleep(min(self._latency_s, 0.002))
+        # Near-instant ACK keeps loopback simulation snappy (chat PING keeps
+        # the full simulated latency for realistic RTT display).
+        delay = min(self._latency_s, 0.002)
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
-        self._rx_buffer.write(ack_frame)
+        self._schedule_response(ack_frame, delay)
 
     def read(self, size: int | None = None) -> bytes:
         """Reads received bytes from mock RX buffer.
@@ -145,6 +182,7 @@ class MockSerialPort(ITransport):
         """
         if not self._is_open:
             return b""
+        self._deliver_due()
         return self._rx_buffer.read(max_bytes=size)
 
     @property
@@ -152,7 +190,47 @@ class MockSerialPort(ITransport):
         """Returns number of available bytes in mock RX buffer."""
         if not self._is_open:
             return 0
+        self._deliver_due()
         return len(self._rx_buffer)
+
+    @property
+    def dropped_by_loss(self) -> int:
+        """Returns cumulative frames dropped by simulated loss."""
+        with self._lock:
+            return self._dropped_by_loss
+
+    @property
+    def dropped_by_los(self) -> int:
+        """Returns cumulative frames dropped by LOS blockage."""
+        with self._lock:
+            return self._dropped_by_los
+
+    def flush_due(self, force: bool = False) -> int:
+        """Delivers due (or all, if force) pending responses for deterministic tests.
+
+        Args:
+            force: True to deliver all pending regardless of due time.
+
+        Returns:
+            Number of frames delivered.
+        """
+        due_frames: list[bytes] = []
+        with self._lock:
+            if force:
+                due_frames = [frame for _, frame in self._pending]
+                self._pending = []
+            else:
+                now = time.monotonic()
+                remaining: list[tuple[float, bytes]] = []
+                for due, frame in self._pending:
+                    if due <= now:
+                        due_frames.append(frame)
+                    else:
+                        remaining.append((due, frame))
+                self._pending = remaining
+        for frame in due_frames:
+            self._rx_buffer.write(frame)
+        return len(due_frames)
 
     def inject_rx_data(self, data: bytes) -> None:
         """Directly pushes raw bytes into RX buffer for unit testing.

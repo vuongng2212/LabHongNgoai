@@ -7,9 +7,8 @@ from typing import ClassVar
 
 from PySide6.QtCore import QObject, QThread, Signal
 
-from ir_terminal.core.mock_serial import MockSerialPort
 from ir_terminal.core.serial_worker import SerialWorker, scan_available_ports
-from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
+from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, SHUTDOWN_WAIT_MS
 from ir_terminal.protocol.framer import pack_frame
 from ir_terminal.protocol.packet import Packet
 
@@ -26,11 +25,14 @@ class SerialManager(QObject):
     raw_tx: ClassVar[Signal] = Signal(bytes)
     raw_rx: ClassVar[Signal] = Signal(bytes)
     packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
+    ports_changed: ClassVar[Signal] = Signal(list)
+    framer_error: ClassVar[Signal] = Signal(str, int)
 
     # Internal dispatch signals to worker thread
     _sig_open: ClassVar[Signal] = Signal(str, int)
     _sig_close: ClassVar[Signal] = Signal()
     _sig_send: ClassVar[Signal] = Signal(bytes)
+    _sig_inject: ClassVar[Signal] = Signal(bytes)
 
     def __init__(self) -> None:
         super().__init__()
@@ -42,6 +44,7 @@ class SerialManager(QObject):
         self._sig_open.connect(self._worker.open_port)
         self._sig_close.connect(self._worker.close_port)
         self._sig_send.connect(self._worker.send_bytes)
+        self._sig_inject.connect(self._worker.inject_rx_data)
 
         # Forward worker signals to manager subscribers
         self._worker.connected.connect(self.connected)
@@ -50,6 +53,8 @@ class SerialManager(QObject):
         self._worker.raw_data_sent.connect(self.raw_tx)
         self._worker.raw_data_received.connect(self.raw_rx)
         self._worker.packet_received.connect(self.packet_received)
+        self._worker.ports_changed.connect(self.ports_changed)
+        self._worker.framer_error.connect(self.framer_error)
 
         self._thread.start()
         self._is_connected = False
@@ -92,10 +97,8 @@ class SerialManager(QObject):
         self._sig_close.emit()
 
     def inject_raw_rx(self, data: bytes) -> None:
-        """Injects simulated raw bytes directly into worker's transport buffer."""
-        transport = self._worker._transport if self._worker else None
-        if isinstance(transport, MockSerialPort):
-            transport.inject_rx_data(data)
+        """Injects simulated raw bytes via worker thread (thread-safe)."""
+        self._sig_inject.emit(data)
 
     def send_raw(self, data: bytes) -> None:
         """Sends raw byte sequence through serial worker."""
@@ -113,6 +116,10 @@ class SerialManager(QObject):
 
     def shutdown(self) -> None:
         """Cleanly halts background thread and worker."""
-        self.disconnect_port()
-        self._thread.quit()
-        self._thread.wait(1000)
+        try:
+            self._sig_close.emit()
+            self._thread.quit()
+            if not self._thread.wait(SHUTDOWN_WAIT_MS):
+                logger.warning("SerialManager thread did not stop in %d ms", SHUTDOWN_WAIT_MS)
+        except Exception as exc:
+            logger.warning("SerialManager shutdown error: %s", exc)

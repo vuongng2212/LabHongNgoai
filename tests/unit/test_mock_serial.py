@@ -40,7 +40,9 @@ class TestMockSerial:
         ping_frame = pack_frame(seq=99, opcode=Opcode.PING, payload=b"OPTICAL_TEST")
         port.write(ping_frame)
 
-        # Mock automatically responds with PONG after latency
+        # Non-blocking mock: response is delivered after latency; force-flush
+        # for a deterministic unit test without sleeping the worker thread.
+        port.flush_due(force=True)
         assert port.in_waiting > 0
         rx_data = port.read(port.in_waiting)
         packets, _ = parse_frames_from_buffer(rx_data)

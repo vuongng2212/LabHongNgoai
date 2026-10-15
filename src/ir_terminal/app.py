@@ -14,7 +14,12 @@ from ir_terminal.services.telemetry_service import TelemetryService
 from ir_terminal.ui.backend_bridge import BackendBridge
 from ir_terminal.ui.main_window_web import WebMainWindow
 from ir_terminal.utils.logger import setup_logger
-from ir_terminal.utils.path_helpers import get_data_dir, get_instance_name, get_transfers_dir
+from ir_terminal.utils.path_helpers import (
+    get_data_dir,
+    get_instance_name,
+    get_logs_dir,
+    get_transfers_dir,
+)
 
 
 def create_app(instance: str | None = None) -> tuple[QApplication, WebMainWindow]:
@@ -31,6 +36,28 @@ def create_app(instance: str | None = None) -> tuple[QApplication, WebMainWindow
     """
     logger, _ = setup_logger()
     inst = get_instance_name(instance)
+    # Re-point file handler at the isolated instance log dir when available.
+    try:
+        import logging
+        from pathlib import Path as _Path
+
+        _log_dir = get_logs_dir(inst)
+        _root = logging.getLogger("ir_terminal")
+        for _h in list(_root.handlers):
+            _name = type(_h).__name__
+            if _name == "RotatingFileHandler":
+                _base = getattr(_h, "baseFilename", "")
+                if _base and _Path(_base).parent != _log_dir:
+                    _root.removeHandler(_h)
+                    try:
+                        _h.close()
+                    except Exception:
+                        pass
+        from ir_terminal.utils.logger import _add_file_handler as _add_fh
+
+        _add_fh(_root, _log_dir)
+    except Exception:
+        pass
     logger.info(
         "Initializing IR-OWC Lab Terminal application (QWebEngine + QWebChannel)... instance=%s",
         inst or "single",

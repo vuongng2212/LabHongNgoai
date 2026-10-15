@@ -35,7 +35,13 @@ class WebAppPage(QWebEnginePage):
             line_number: Line number of the JS file.
             source_id: Source file URI or name.
         """
-        logger.debug("JS Console [%s:%d]: %s", source_id, line_number, message)
+        text = f"JS Console [{source_id}:{line_number}]: {message}"
+        if level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
+            logger.error(text)
+        elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.WarningMessageLevel:
+            logger.warning(text)
+        else:
+            logger.info(text)
 
 
 class WebMainWindow(QMainWindow):
@@ -54,10 +60,24 @@ class WebMainWindow(QMainWindow):
         """
         super().__init__()
         self._serial_manager = serial_manager
+        if bridge is None:
+            logger.warning("WebMainWindow created without injected bridge; using default")
         self._bridge = bridge or BackendBridge(self._serial_manager)
 
         self._init_window()
         self._init_webengine()
+
+    def closeEvent(self, event: object) -> None:
+        """Ensures worker thread and timers stop on window close (no QThread leak)."""
+        try:
+            self._bridge.shutdown()
+        except Exception:
+            pass
+        try:
+            self._serial_manager.shutdown()
+        except Exception:
+            pass
+        super().closeEvent(event)  # type: ignore[arg-type]
 
     def _init_window(self) -> None:
         """Configures window properties, minimum bounds, and title."""
@@ -76,9 +96,8 @@ class WebMainWindow(QMainWindow):
         self._page = WebAppPage(self._view)
         self._view.setPage(self._page)
 
-        # Enable local storage and JS
+        # Enable local storage and JS (least privilege: file URLs only).
         settings = self._view.settings()
-        settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
 
@@ -93,7 +112,11 @@ class WebMainWindow(QMainWindow):
         self._bridge.maximizeWindowRequested.connect(self._toggle_maximize)
 
         # Load HTML index
-        index_path = get_web_index_path()
+        try:
+            index_path = get_web_index_path()
+        except FileNotFoundError as exc:
+            logger.error("Web UI index.html not found: %s", exc)
+            raise
         self._view.load(QUrl.fromLocalFile(str(index_path.resolve())))
 
         layout.addWidget(self._view)

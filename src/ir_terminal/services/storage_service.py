@@ -30,6 +30,10 @@ _SETTINGS_FILE = "settings.json"
 # Upper bound for periodic telemetry samples kept on disk.
 _MAX_TELEMETRY_SAMPLES = 5000
 
+# Upper bounds for chat / transfer histories (prevents unbounded JSON growth).
+_MAX_CHAT_MESSAGES = 2000
+_MAX_TRANSFER_RECORDS = 5000
+
 
 class ChatMessageRecord(TypedDict):
     """File record representation of a chat message."""
@@ -94,6 +98,15 @@ class StorageService:
         """Returns absolute path of a JSON store file."""
         return self._data_dir / filename
 
+    def _backup_corrupt(self, path: Path) -> None:
+        """Renames a corrupt store to .corrupt-TIMESTAMP instead of wiping silently."""
+        try:
+            backup = path.with_suffix(f"{path.suffix}.corrupt-{int(__import__('time').time())}")
+            path.replace(backup)
+            logger.warning("%s Backed up corrupt store %s -> %s", LogTag.STORAGE, path, backup)
+        except Exception as exc:
+            logger.warning("%s Could not back up corrupt store %s: %s", LogTag.STORAGE, path, exc)
+
     def _load_list(self, filename: str) -> list[dict[str, Any]]:
         """Reads a JSON array store, recovering to empty on missing/corrupt data."""
         path = self._store_path(filename)
@@ -104,23 +117,37 @@ class StorageService:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning("%s Corrupt store file, resetting: %s", LogTag.STORAGE, path)
+            logger.warning("%s Corrupt store file, backing up: %s", LogTag.STORAGE, path)
+            self._backup_corrupt(path)
             return []
         if not isinstance(data, list):
-            logger.warning("%s Unexpected store shape, resetting: %s", LogTag.STORAGE, path)
+            logger.warning("%s Unexpected store shape, backing up: %s", LogTag.STORAGE, path)
+            self._backup_corrupt(path)
             return []
         return [dict(item) for item in data if isinstance(item, dict)]
 
     def _save_list(self, filename: str, records: list[dict[str, Any]]) -> None:
         """Atomically rewrites a JSON array store via temporary file plus rename."""
+        import os
+
         path = self._store_path(filename)
         tmp_path = path.with_suffix(path.suffix + ".tmp")
         # Compact separators: identical parsed data, ~20-30% fewer bytes written.
-        tmp_path.write_text(
-            json.dumps(records, ensure_ascii=False, separators=(",", ":")),
-            encoding="utf-8",
-        )
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(records, ensure_ascii=False, separators=(",", ":")))
+            f.flush()
+            os.fsync(f.fileno())
         tmp_path.replace(path)
+
+    @staticmethod
+    def _next_id(records: list[dict[str, Any]]) -> int:
+        """Returns monotonic id (max+1), safe after pruning."""
+        if not records:
+            return 1
+        try:
+            return max(int(r.get("id", 0)) for r in records) + 1
+        except (TypeError, ValueError):
+            return len(records) + 1
 
     def _load_settings(self) -> dict[str, str]:
         """Reads the settings object store, recovering to empty on bad data."""
@@ -132,20 +159,25 @@ class StorageService:
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
-            logger.warning("%s Corrupt settings file, resetting: %s", LogTag.STORAGE, path)
+            logger.warning("%s Corrupt settings file, backing up: %s", LogTag.STORAGE, path)
+            self._backup_corrupt(path)
             return {}
         if not isinstance(data, dict):
             return {}
         return {str(key): str(value) for key, value in data.items()}
 
-    def _append_record(self, filename: str, record: dict[str, Any]) -> int:
-        """Appends one record with the next sequential id, returns the id."""
+    def _append_record(
+        self, filename: str, record: dict[str, Any], max_records: int | None = None
+    ) -> int:
+        """Appends one record with monotonic id, returns the id."""
         with self._lock:
             records = self._load_list(filename)
-            record_id = len(records) + 1
+            record_id = self._next_id(records)
             record["id"] = record_id
             record["created_at"] = _utc_now_iso()
             records.append(record)
+            if max_records is not None and len(records) > max_records:
+                del records[: len(records) - max_records]
             self._save_list(filename, records)
             return record_id
 
@@ -178,6 +210,7 @@ class StorageService:
                 "seq": seq,
                 "is_outgoing": is_outgoing,
             },
+            max_records=_MAX_CHAT_MESSAGES,
         )
         logger.debug(
             "%s Saved chat message #%d (seq=%d, outgoing=%s)",
@@ -251,6 +284,7 @@ class StorageService:
                 "duration_sec": duration_sec,
                 "status": status,
             },
+            max_records=_MAX_TRANSFER_RECORDS,
         )
         logger.info(
             "%s Saved file transfer record #%d: '%s' (%dB, %s, %s)",
@@ -316,7 +350,7 @@ class StorageService:
         """
         with self._lock:
             records = self._load_list(_TELEMETRY_FILE)
-            record_id = len(records) + 1
+            record_id = self._next_id(records)
             records.append(
                 {
                     "id": record_id,

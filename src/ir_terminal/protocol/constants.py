@@ -87,3 +87,27 @@ MAX_RETRY_COUNT: int = 5
 # Serial Port Baudrate
 DEFAULT_BAUDRATE: int = 115200
 AVAILABLE_BAUDRATES: tuple[int, ...] = (9600, 19200, 38400, 57600, 115200, 230400)
+
+# ==============================================================================
+# 4. TRANSPORT / BUFFER / POLL TUNING (single source for magic numbers)
+# ==============================================================================
+# Fixed-capacity RX ring buffer (bytes). Shared by MockSerialPort RX path.
+RING_BUFFER_CAPACITY: int = 65536
+
+# Worker RX accumulation compaction threshold (bytes of consumed prefix).
+RX_COMPACT_THRESHOLD: int = 4096
+
+# TCP socket chunk / timeouts for dual-mock LINK_A/B transport.
+SOCKET_RECV_CHUNK: int = 4096
+SOCKET_CONNECT_TIMEOUT_SEC: float = 3.0
+SOCKET_READ_TIMEOUT_SEC: float = 0.02
+
+# Worker poll intervals (ms): mock stays snappy, hardware conservative.
+MOCK_POLL_MS: int = 2
+HW_POLL_MS: int = 10
+
+# Background thread shutdown grace (ms).
+SHUTDOWN_WAIT_MS: int = 3000
+
+# Telemetry sliding window (seconds) for throughput averaging.
+TELEMETRY_WINDOW_SEC: float = 3.0

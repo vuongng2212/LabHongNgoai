@@ -24,16 +24,22 @@ class ChatService(QObject):
     frame_inspected: ClassVar[Signal] = Signal(
         str, int, int, int
     )  # (hex_dump, seq, opcode, length)
+    message_truncated: ClassVar[Signal] = Signal(str, int)  # (reason, original_bytes)
 
     def __init__(
         self,
         serial_manager: SerialManager,
         storage_service: StorageService | None = None,
+        local_name: str = "Local Station Alpha",
+        remote_name: str = "Remote Station Bravo",
     ) -> None:
         super().__init__()
         self._serial_manager = serial_manager
         self._storage = storage_service or StorageService()
         self._seq: int = 0
+        self._local_name = local_name
+        self._remote_name = remote_name
+        self._seen_rx_seq: set[int] = set()
 
         self._serial_manager.packet_received.connect(self.handle_packet)
 
@@ -44,7 +50,10 @@ class ChatService(QObject):
             return
 
         encoded = clean_text.encode("utf-8")
+        truncated = False
+        original_len = len(encoded)
         if len(encoded) > MAX_PAYLOAD_SIZE:
+            truncated = True
             # Safely truncate without splitting multi-byte UTF-8 character
             # sequences. Byte-identical to encoded[:MAX].decode(errors="ignore")
             # without the re-encode: if the first byte past the budget is a
@@ -69,11 +78,24 @@ class ChatService(QObject):
             payload=payload,
         )
 
-        now_str = time.strftime("%H:%M:%S")
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        if truncated:
+            self.message_truncated.emit(
+                f"Message truncated {original_len}->{len(payload)}B (max {MAX_PAYLOAD_SIZE}B)",
+                original_len,
+            )
+            logger.warning(
+                "%s Chat message truncated %d->%dB (max %dB)",
+                LogTag.CHAT_SVC,
+                original_len,
+                len(payload),
+                MAX_PAYLOAD_SIZE,
+            )
 
             # Save to durable hard drive JSON store
         self._storage.save_chat_message(
-            sender="Local Station Alpha",
+            sender=self._local_name,
             text=clean_text,
             timestamp=now_str,
             seq=self._seq,
@@ -103,11 +125,11 @@ class ChatService(QObject):
             except UnicodeDecodeError:
                 text = pkt.payload.hex(" ")
 
-            now_str = time.strftime("%H:%M:%S")
+            now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
             # Save to durable hard drive JSON store
             self._storage.save_chat_message(
-                sender="Remote Station Bravo",
+                sender=self._remote_name,
                 text=text,
                 timestamp=now_str,
                 seq=pkt.seq,

@@ -20,6 +20,15 @@ from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
 
+# Carrier label shown in sniffer (single source; TFDU4101 peak per PROTOCOL.md).
+CARRIER_LABEL = "880nm NIR"
+
+# In-memory sniffer cap (live view only; totals tracked separately).
+SNIFFER_MAX_RECORDS = 200
+
+# Minimum interval between JSON telemetry persists (s) to avoid rewrite-per-tick.
+TELEMETRY_PERSIST_SEC = 5.0
+
 
 class SnifferRecord(TypedDict):
     """Sniffer inspection record for raw optical frame trace."""
@@ -94,13 +103,19 @@ class TelemetryService(QObject):
         self._total_packets_lost: int = 0
         self._total_chunks_transferred: int = 0
 
-        # Physical link metrics
+        # Physical link metrics (0.0 = no measurement yet; never seed fake RTT).
         self._current_throughput_kbps: float = 0.0
-        self._last_rtt_ms: float = 32.0
+        self._current_tx_kbps: float = 0.0
+        self._current_rx_kbps: float = 0.0
+        self._last_rtt_ms: float = 0.0
         self._current_loss_rate: float = 0.0
+        self._total_frames_captured: int = 0
+        self._framer_crc_errors: int = 0
+        self._framer_eof_errors: int = 0
+        self._last_persist_time: float = 0.0
 
-        # Sniffer frame trace ring buffer (max 200 items in memory)
-        self._sniffer_records: deque[SnifferRecord] = deque(maxlen=200)
+        # Sniffer frame trace ring buffer (live view; totals tracked separately)
+        self._sniffer_records: deque[SnifferRecord] = deque(maxlen=SNIFFER_MAX_RECORDS)
 
         # Periodic ticker
         self._timer = QTimer(self)
@@ -145,8 +160,8 @@ class TelemetryService(QObject):
 
     @property
     def total_frames_captured(self) -> int:
-        """Returns total frames captured in sniffer buffer."""
-        return len(self._sniffer_records)
+        """Returns total frames captured (cumulative, not live-buffer length)."""
+        return self._total_frames_captured
 
     def record_bytes_sent(self, count: int) -> None:
         """Registers transmitted byte count in sliding throughput window.
@@ -179,6 +194,7 @@ class TelemetryService(QObject):
             length: Payload byte length.
         """
         self._total_packets_sent += 1
+        self._total_frames_captured += 1
         time_str = time.strftime("%H:%M:%S")
         type_str = self._opcode_to_type_str(opcode)
         frame_id = f"#0x{seq:04X}"
@@ -187,7 +203,7 @@ class TelemetryService(QObject):
         rec: SnifferRecord = {
             "time_str": time_str,
             "frame_id": frame_id,
-            "carrier": "880nm NIR",
+            "carrier": CARRIER_LABEL,
             "type_str": type_str,
             "payload_preview": payload_preview,
             "checksum_status": "CRC32 Valid",
@@ -198,7 +214,7 @@ class TelemetryService(QObject):
         self.sniffer_frame_logged.emit(
             time_str,
             frame_id,
-            "880nm NIR",
+            CARRIER_LABEL,
             type_str,
             payload_preview,
             "CRC32 Valid",
@@ -209,10 +225,11 @@ class TelemetryService(QObject):
         """Registers incoming packet and records sniffer entry.
 
         Args:
-            pkt: Verified Packet instance.
+            pkt: Verified Packet instance (CRC already checked by framer).
             latency_ms: Measured latency in milliseconds for this packet exchange.
         """
         self._total_packets_received += 1
+        self._total_frames_captured += 1
         if latency_ms > 0.0:
             self._last_rtt_ms = latency_ms
 
@@ -225,7 +242,7 @@ class TelemetryService(QObject):
         rec: SnifferRecord = {
             "time_str": time_str,
             "frame_id": frame_id,
-            "carrier": "880nm NIR",
+            "carrier": CARRIER_LABEL,
             "type_str": type_str,
             "payload_preview": payload_preview,
             "checksum_status": "CRC32 Valid",
@@ -236,12 +253,27 @@ class TelemetryService(QObject):
         self.sniffer_frame_logged.emit(
             time_str,
             frame_id,
-            "880nm NIR",
+            CARRIER_LABEL,
             type_str,
             payload_preview,
             "CRC32 Valid",
             self._last_rtt_ms,
         )
+
+    def record_framer_error(self, kind: str, count: int = 1) -> None:
+        """Counts a framer-level corruption (CRC/EOF/LEN) as link loss.
+
+        Args:
+            kind: Error bucket ('crc_errors', 'eof_errors', 'len_errors').
+            count: Delta to add.
+        """
+        if count <= 0:
+            return
+        if kind == "crc_errors":
+            self._framer_crc_errors += count
+        elif kind == "eof_errors":
+            self._framer_eof_errors += count
+        self._total_packets_lost += count
 
     def record_packet_lost(self) -> None:
         """Registers a lost packet or timeout retry event."""
@@ -268,14 +300,23 @@ class TelemetryService(QObject):
         """Resets all metrics and counters to initial state."""
         self._tx_byte_events.clear()
         self._rx_byte_events.clear()
+        self._tx_window_bytes = 0
+        self._rx_window_bytes = 0
         self._total_bytes_sent = 0
         self._total_bytes_received = 0
         self._total_packets_sent = 0
         self._total_packets_received = 0
         self._total_packets_lost = 0
         self._total_chunks_transferred = 0
+        self._total_frames_captured = 0
+        self._framer_crc_errors = 0
+        self._framer_eof_errors = 0
         self._current_throughput_kbps = 0.0
+        self._current_tx_kbps = 0.0
+        self._current_rx_kbps = 0.0
         self._current_loss_rate = 0.0
+        self._last_rtt_ms = 0.0
+        self._last_persist_time = 0.0
         self._sniffer_records.clear()
 
         logger.info("%s Reset telemetry counters and sniffer buffer", LogTag.OPTICAL_PHY)
@@ -295,7 +336,7 @@ class TelemetryService(QObject):
             total_packets_received=self._total_packets_received,
             total_packets_lost=self._total_packets_lost,
             total_chunks_transferred=self._total_chunks_transferred,
-            total_frames_captured=len(self._sniffer_records),
+            total_frames_captured=self._total_frames_captured,
         )
 
     def get_sniffer_records(self, limit: int = 100) -> list[SnifferRecord]:
@@ -382,9 +423,20 @@ class TelemetryService(QObject):
             _, pruned = self._rx_byte_events.popleft()
             self._rx_window_bytes -= pruned
 
+        # Actual span (not fixed window) so idle gaps don't dilute throughput.
+        oldest: float | None = None
+        if self._tx_byte_events:
+            oldest = self._tx_byte_events[0][0]
+        if self._rx_byte_events:
+            oldest = min(oldest, self._rx_byte_events[0][0]) if oldest else self._rx_byte_events[0][0]
+        span = max(now - oldest, 0.1) if oldest is not None else max(self._window_sec, 0.1)
+        span = min(span, max(self._window_sec, 0.1))
+
+        self._current_tx_kbps = (self._tx_window_bytes / 1024.0) / span
+        self._current_rx_kbps = (self._rx_window_bytes / 1024.0) / span
         total_bytes = self._tx_window_bytes + self._rx_window_bytes
 
-        self._current_throughput_kbps = (total_bytes / 1024.0) / max(self._window_sec, 0.1)
+        self._current_throughput_kbps = (total_bytes / 1024.0) / span
 
         total_attempts = self._total_packets_sent + self._total_packets_lost
         if total_attempts > 0:
@@ -392,8 +444,12 @@ class TelemetryService(QObject):
         else:
             self._current_loss_rate = 0.0
 
-        # Save periodic sample to JSON store if traffic occurred
-        if total_bytes > 0 or self._total_packets_sent > 0:
+        # Batch JSON persist (at most every TELEMETRY_PERSIST_SEC) to avoid
+        # rewriting the whole store on every 1s tick.
+        if (total_bytes > 0 or self._total_packets_sent > 0) and (
+            now - self._last_persist_time >= TELEMETRY_PERSIST_SEC
+        ):
+            self._last_persist_time = now
             self._storage.save_telemetry_sample(
                 timestamp_epoch=now,
                 throughput_kbps=self._current_throughput_kbps,
@@ -408,7 +464,7 @@ class TelemetryService(QObject):
             self._current_loss_rate,
             self._last_rtt_ms,
             self._total_chunks_transferred,
-            len(self._sniffer_records),
+            self._total_frames_captured,
         )
 
     @staticmethod

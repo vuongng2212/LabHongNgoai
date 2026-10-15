@@ -40,11 +40,17 @@ def get_web_index_path() -> Path:
     for p in candidates:
         if p.exists() and p.is_file():
             return p
-    return candidates[0]
+    raise FileNotFoundError(f"index.html not found in any bundle path: {candidates}")
 
 
 def get_assets_dir() -> Path:
     """Returns the directory containing static UI assets and stylesheets."""
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass is not None:
+        # PyInstaller layout (see ir_terminal.spec): datas -> ir_terminal/ui/web.
+        bundled = Path(str(meipass)) / "ir_terminal" / "ui" / "web" / "assets"
+        if bundled.exists():
+            return bundled
     return get_project_root() / "src" / "ir_terminal" / "ui" / "web" / "assets"
 
 

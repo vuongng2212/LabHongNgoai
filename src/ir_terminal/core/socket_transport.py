@@ -12,6 +12,11 @@ import logging
 import socket
 
 from ir_terminal.core.interfaces import ITransport
+from ir_terminal.protocol.constants import (
+    SOCKET_CONNECT_TIMEOUT_SEC,
+    SOCKET_READ_TIMEOUT_SEC,
+    SOCKET_RECV_CHUNK,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +56,11 @@ class SocketTransport(ITransport):
     def open(self) -> None:
         """Opens TCP connection to the virtual optical link broker."""
         self.close()
-        sock = socket.create_connection((self._host, self._port), timeout=3.0)
+        sock = socket.create_connection(
+            (self._host, self._port), timeout=SOCKET_CONNECT_TIMEOUT_SEC
+        )
         # Short timeout so worker poll stays non-blocking (mirrors PySerial 0.05s).
-        sock.settimeout(0.02)
+        sock.settimeout(SOCKET_READ_TIMEOUT_SEC)
         self._sock = sock
         self._rx_buffer = bytearray()
         self._is_open = True
@@ -98,13 +105,13 @@ class SocketTransport(ITransport):
             return
         try:
             while True:
-                chunk = sock.recv(4096)
+                chunk = sock.recv(SOCKET_RECV_CHUNK)
                 if not chunk:
                     # Peer broker closed connection.
                     self._is_open = False
                     break
                 self._rx_buffer.extend(chunk)
-                if len(chunk) < 4096:
+                if len(chunk) < SOCKET_RECV_CHUNK:
                     break
         except (TimeoutError, BlockingIOError):
             return
@@ -114,6 +121,10 @@ class SocketTransport(ITransport):
     def read(self, size: int | None = None) -> bytes:
         """Reads bytes from the RX buffer.
 
+        Only pulls from the socket when the buffer cannot satisfy the request,
+        so the common worker pattern (in_waiting -> read(available)) costs a
+        single recv burst per poll instead of two.
+
         Args:
             size: Max bytes to return, or None for all available.
 
@@ -122,7 +133,8 @@ class SocketTransport(ITransport):
         """
         if not self.is_open:
             return b""
-        self._fill()
+        if size is None or size > len(self._rx_buffer):
+            self._fill()
         if not self._rx_buffer:
             return b""
         if size is None or size >= len(self._rx_buffer):

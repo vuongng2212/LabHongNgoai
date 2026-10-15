@@ -51,6 +51,28 @@ class QtSignalLogHandler(logging.Handler):
             self.handleError(record)
 
 
+def _add_file_handler(logger: logging.Logger, log_dir: Path) -> None:
+    """Attaches (once) a rotating file handler for the given directory."""
+    from logging.handlers import RotatingFileHandler as _RFH
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    target = (log_dir / "app.log").resolve()
+    for h in logger.handlers:
+        base = getattr(h, "baseFilename", "")
+        try:
+            if base and Path(base).resolve() == target:
+                return
+        except Exception:
+            continue
+    formatter = logging.Formatter(
+        fmt="[%(asctime)s] [%(levelname)-7s] [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    fh = _RFH(target, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8")
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+
 def setup_logger(
     log_dir: Path | None = None,
     log_level: int = logging.INFO,
