@@ -235,8 +235,8 @@ document.addEventListener('click', (e) => {
   const btn = e.target.closest('button');
   if (!btn) return;
 
-  // Global feedback layer (modal / toasts) owns its buttons — never hijack them.
-  if (btn.closest('#modal-overlay, #toast-container')) return;
+  // Global feedback layer (modal / toasts / settings) owns its buttons — never hijack them.
+  if (btn.closest('#modal-overlay, #toast-container, #settings-overlay')) return;
 
   // Window Controls (Traffic Lights)
   if (btn.classList.contains('traffic-dot')) {

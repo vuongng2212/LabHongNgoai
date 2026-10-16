@@ -70,6 +70,7 @@ class BackendBridge(QObject):
     )  # (time_str, frame_id, carrier, type_str, payload_preview, checksum_status, latency_ms)
     portsChanged: ClassVar[Signal] = Signal(str)  # JSON list of ports
     chatTruncated: ClassVar[Signal] = Signal(str, int)  # (reason, original_bytes)
+    settingsChanged: ClassVar[Signal] = Signal(str)  # JSON transfer settings
 
     def __init__(
         self,
@@ -604,6 +605,95 @@ class BackendBridge(QObject):
             candidate.exists(),
         )
         return str(target)
+
+    @Slot(result=str)
+    def getSettings(self) -> str:
+        """Returns current transfer settings as JSON string.
+
+        Returns:
+            JSON object with max_file_size_bytes, max_file_size_mb, transfers_dir.
+        """
+        try:
+            config = self._file_service.get_config()
+        except Exception as exc:
+            logger.exception(
+                "%s getSettings FAILED (%s: %s)",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+            )
+            return json.dumps({"ok": False, "error": str(exc)})
+        return json.dumps(config)
+
+    @Slot(str, result=str)
+    def saveSettings(self, settings_json: str) -> str:
+        """Validates and persists transfer settings from the Web UI.
+
+        Args:
+            settings_json: JSON string with optional max_file_size_mb (or
+                max_file_size_bytes) and transfers_dir fields.
+
+        Returns:
+            JSON string with ok flag plus applied config or error message.
+        """
+        try:
+            data = json.loads(settings_json or "{}")
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning(
+                "%s saveSettings rejected: invalid JSON (%s)",
+                LogTag.IPC_BRIDGE,
+                exc,
+            )
+            return json.dumps({"ok": False, "error": f"Invalid settings JSON: {exc}"})
+        if not isinstance(data, dict):
+            return json.dumps({"ok": False, "error": "Settings must be a JSON object"})
+        try:
+            max_bytes: int | None = None
+            if data.get("max_file_size_bytes") is not None:
+                max_bytes = int(float(str(data["max_file_size_bytes"])))
+            elif data.get("max_file_size_mb") is not None:
+                max_bytes = int(float(str(data["max_file_size_mb"])) * 1024 * 1024)
+            raw_dir = data.get("transfers_dir")
+            transfers_dir: str | None = str(raw_dir) if raw_dir is not None else None
+            if max_bytes is None and (transfers_dir is None or not transfers_dir.strip()):
+                return json.dumps({"ok": False, "error": "No settings to update"})
+            config = self._file_service.update_config(
+                max_file_size_bytes=max_bytes,
+                transfers_dir=transfers_dir,
+            )
+            payload = json.dumps(config)
+            self.settingsChanged.emit(payload)
+            logger.info("%s Settings saved via UI: %s", LogTag.IPC_BRIDGE, payload)
+            return json.dumps({"ok": True, **config})
+        except (ValueError, TypeError, OSError) as exc:
+            logger.warning(
+                "%s saveSettings rejected (%s: %s) input=%r",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+                (settings_json or "")[:200],
+            )
+            return json.dumps({"ok": False, "error": str(exc)})
+
+    @Slot(result=str)
+    def browseTransfersDir(self) -> str:
+        """Opens a native directory chooser for the receive folder.
+
+        Returns:
+            Selected directory path string or empty string on cancellation.
+        """
+        try:
+            current = str(self._file_service.transfers_dir_path)
+            chosen = QFileDialog.getExistingDirectory(
+                self._dialog_parent(),
+                "Select Default Transfers Directory",
+                current,
+            )
+            return chosen or ""
+        except Exception as exc:
+            logger.exception("%s browseTransfersDir failed: %s", LogTag.IPC_BRIDGE, exc)
+            self.errorOccurred.emit(f"Browse directory failed: {exc}")
+            return ""
 
     @Slot(result=str)
     def getChatHistory(self) -> str:

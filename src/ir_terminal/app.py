@@ -87,6 +87,10 @@ def create_app(instance: str | None = None) -> tuple[QApplication, WebMainWindow
     )
     telemetry_service = TelemetryService(storage_service=storage_service)
 
+    # Restore persisted transfer settings (max size / receive dir); defaults
+    # apply on first run when no settings.json keys exist yet.
+    file_service.load_settings()
+
     bridge = BackendBridge(
         serial_manager=serial_manager,
         chat_service=chat_service,

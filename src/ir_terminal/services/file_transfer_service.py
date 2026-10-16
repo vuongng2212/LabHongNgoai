@@ -40,6 +40,14 @@ from ir_terminal.utils.path_helpers import get_transfers_dir
 
 logger = logging.getLogger(__name__)
 
+# Persistent settings keys for dynamic transfer configuration (via StorageService).
+SETTING_MAX_FILE_SIZE_BYTES = "max_file_size_bytes"
+SETTING_TRANSFERS_DIR = "transfers_dir"
+
+# User-configurable bounds for max file size (1MB..100MB, default 10MB).
+MIN_FILE_SIZE_BYTES: int = 1 * 1024 * 1024
+MAX_CONFIGURABLE_FILE_SIZE_BYTES: int = 100 * 1024 * 1024
+
 
 class TransferState(Enum):
     """File transfer state machine states."""
@@ -78,6 +86,7 @@ class FileTransferService(QObject):
         self._chunk_size = chunk_size
         self._storage = storage_service or StorageService()
         self._transfers_dir = transfers_dir or get_transfers_dir()
+        self._max_file_size_bytes = MAX_FILE_SIZE_BYTES
 
         self._state = TransferState.IDLE
 
@@ -122,6 +131,133 @@ class FileTransferService(QObject):
 
         # Connect packet reception
         self._serial_manager.packet_received.connect(self._handle_packet)
+
+        # Persisted user settings override injected defaults when present;
+        # explicit transfers_dir acts as the fallback default (tests/dual-mock
+        # use fresh storage, so injected paths are preserved there).
+        self.load_settings()
+
+    @property
+    def max_file_size_bytes(self) -> int:
+        """Returns the configured maximum accepted file size in bytes."""
+        return self._max_file_size_bytes
+
+    @property
+    def transfers_dir_path(self) -> Path:
+        """Returns the directory where received optical files are stored."""
+        return self._transfers_dir
+
+    def get_config(self) -> dict[str, str | int | float]:
+        """Returns the current transfer configuration as JSON-serializable dict.
+
+        Returns:
+            Dict with max_file_size_bytes, max_file_size_mb, transfers_dir.
+        """
+        return {
+            "max_file_size_bytes": self._max_file_size_bytes,
+            "max_file_size_mb": round(self._max_file_size_bytes / (1024 * 1024), 2),
+            "transfers_dir": str(self._transfers_dir),
+        }
+
+    def load_settings(self) -> dict[str, str | int | float]:
+        """Loads persisted transfer settings from StorageService into memory.
+
+        Falls back to defaults when keys are missing or invalid. An explicit
+        transfers_dir that does not exist is created; invalid values are
+        ignored without raising.
+
+        Returns:
+            Current configuration dict (same shape as get_config).
+        """
+        try:
+            raw_limit = self._storage.get_setting(
+                SETTING_MAX_FILE_SIZE_BYTES, str(MAX_FILE_SIZE_BYTES)
+            )
+            parsed = int(float(raw_limit))
+            if MIN_FILE_SIZE_BYTES <= parsed <= MAX_CONFIGURABLE_FILE_SIZE_BYTES:
+                self._max_file_size_bytes = parsed
+        except (TypeError, ValueError):
+            pass
+        try:
+            raw_dir = self._storage.get_setting(SETTING_TRANSFERS_DIR, "")
+            if raw_dir.strip():
+                candidate = Path(raw_dir).expanduser()
+                candidate.mkdir(parents=True, exist_ok=True)
+                if candidate.is_dir():
+                    self._transfers_dir = candidate
+        except (OSError, ValueError):
+            pass
+        logger.info(
+            "%s Transfer config loaded: max=%dB dir=%s",
+            LogTag.FILE_SVC,
+            self._max_file_size_bytes,
+            self._transfers_dir,
+        )
+        return self.get_config()
+
+    def set_max_file_size_bytes(self, size_bytes: int) -> int:
+        """Updates and persists the maximum accepted file size.
+
+        Args:
+            size_bytes: New limit in bytes (clamped to 1MB..100MB).
+
+        Returns:
+            Effective limit in bytes after clamping.
+
+        Raises:
+            ValueError: If size_bytes is not a positive integer.
+        """
+        size = int(size_bytes)
+        if size <= 0:
+            raise ValueError(f"Invalid max file size: {size_bytes}")
+        clamped = max(MIN_FILE_SIZE_BYTES, min(size, MAX_CONFIGURABLE_FILE_SIZE_BYTES))
+        self._max_file_size_bytes = clamped
+        self._storage.save_setting(SETTING_MAX_FILE_SIZE_BYTES, str(clamped))
+        logger.info("%s Transfer max file size set: %dB", LogTag.FILE_SVC, clamped)
+        return clamped
+
+    def set_transfers_dir(self, dir_path: str | Path) -> Path:
+        """Updates and persists the default receive directory.
+
+        Args:
+            dir_path: Target directory path (created when missing).
+
+        Returns:
+            Resolved directory path.
+
+        Raises:
+            ValueError: If the path is empty or cannot be created.
+        """
+        candidate = Path(dir_path).expanduser() if isinstance(dir_path, str) else dir_path
+        if not str(candidate).strip():
+            raise ValueError("Transfers directory path is empty")
+        candidate.mkdir(parents=True, exist_ok=True)
+        if not candidate.is_dir():
+            raise ValueError(f"Not a directory: {candidate}")
+        self._transfers_dir = candidate
+        self._storage.save_setting(SETTING_TRANSFERS_DIR, str(candidate))
+        logger.info("%s Transfer receive dir set: %s", LogTag.FILE_SVC, candidate)
+        return candidate
+
+    def update_config(
+        self,
+        max_file_size_bytes: int | None = None,
+        transfers_dir: str | Path | None = None,
+    ) -> dict[str, str | int | float]:
+        """Applies a partial configuration update and persists valid fields.
+
+        Args:
+            max_file_size_bytes: Optional new size limit in bytes.
+            transfers_dir: Optional new receive directory.
+
+        Returns:
+            Current configuration dict after update.
+        """
+        if max_file_size_bytes is not None:
+            self.set_max_file_size_bytes(int(max_file_size_bytes))
+        if transfers_dir is not None and str(transfers_dir).strip():
+            self.set_transfers_dir(transfers_dir)
+        return self.get_config()
 
     @property
     def state(self) -> TransferState:
@@ -175,16 +311,16 @@ class FileTransferService(QObject):
             return
 
         oversize = file_path.stat().st_size
-        if oversize > MAX_FILE_SIZE_BYTES:
+        if oversize > self._max_file_size_bytes:
             err_msg = (
-                f"File exceeds {MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit: "
+                f"File exceeds {self._max_file_size_bytes // (1024 * 1024)}MB limit: "
                 f"{file_path.name} ({oversize} bytes)"
             )
             logger.error(
                 "%s TX start FAILED: %s (limit=%dB)",
                 LogTag.FILE_SVC,
                 err_msg,
-                MAX_FILE_SIZE_BYTES,
+                self._max_file_size_bytes,
             )
             self.transfer_failed.emit(err_msg)
             return
@@ -539,9 +675,9 @@ class FileTransferService(QObject):
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
 
-        if start_payload.file_size > MAX_FILE_SIZE_BYTES:
+        if start_payload.file_size > self._max_file_size_bytes:
             err_msg = (
-                f"Incoming file exceeds {MAX_FILE_SIZE_BYTES // (1024 * 1024)}MB limit: "
+                f"Incoming file exceeds {self._max_file_size_bytes // (1024 * 1024)}MB limit: "
                 f"{start_payload.filename} ({start_payload.file_size} bytes)"
             )
             logger.error(

@@ -58,7 +58,7 @@ function initTelemetryController() {
     if (!btn) return;
 
     // Global feedback layer (confirm modal / toasts) owns its buttons.
-    if (btn.closest('#modal-overlay, #toast-container')) return;
+    if (btn.closest('#modal-overlay, #toast-container, #settings-overlay')) return;
 
     if (btn.innerText.includes('Export CSV')) {
       if (!window.bridge) {

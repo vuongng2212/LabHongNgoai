@@ -54,7 +54,14 @@ def sanitize(text: str) -> str:
     res = re.sub(r"[\x80-\x9F]", "", res)
 
     # Ensure all select dropdowns have appearance-none for clean custom caret
-    res = res.replace('<select class="', '<select class="appearance-none ')
+    # (idempotent: skip selects that already carry the class).
+    def _add_appearance(match: re.Match[str]) -> str:
+        classes = match.group(1)
+        if "appearance-none" in classes:
+            return match.group(0)
+        return f'<select class="appearance-none {classes}"'
+
+    res = re.sub(r'<select class="([^"]*)"', _add_appearance, res)
     return res
 
 
@@ -88,6 +95,23 @@ def build_modular_components() -> None:
     v2 = load_component("view_file.html", "ui_templates/apple_style/2_2_file_transfer.html")
     v3 = load_component("view_chat.html", "ui_templates/apple_style/3_3_realtime_chat.html")
     v4 = load_component("view_telemetry.html", "ui_templates/apple_style/4_4_lab_telemetry.html")
+
+    settings_path = f"{comp_dir}/settings_modal.html"
+    if os.path.exists(settings_path):
+        with open(settings_path, encoding="utf-8") as f:
+            settings_modal = sanitize(f.read())
+    else:
+        settings_modal = ""
+
+    feedback_path = f"{comp_dir}/ui_feedback.html"
+    if os.path.exists(feedback_path):
+        with open(feedback_path, encoding="utf-8") as f:
+            raw_feedback = f.read()
+        # Keep only the mounts (toast stack + modal overlay); drop the header comment.
+        body_start = raw_feedback.find("<div")
+        feedback_mounts = sanitize(raw_feedback[body_start:] if body_start >= 0 else raw_feedback)
+    else:
+        feedback_mounts = ""
 
     header_path = f"{comp_dir}/chrome_header.html"
     if os.path.exists(header_path):
@@ -130,7 +154,7 @@ def build_modular_components() -> None:
     <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Refresh Telemetry">
       <span class="material-symbols-outlined text-[16px]">refresh</span>
     </button>
-    <button class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Device Settings">
+    <button id="btn-top-settings" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Transfer Settings">
       <span class="material-symbols-outlined text-[16px]">settings</span>
     </button>
   </div>
@@ -344,6 +368,42 @@ def build_modular_components() -> None:
     .view-panel.active {{
       display: flex;
     }}
+    /* Reusable UI Feedback System: button spinner + toast/modal motion */
+    @keyframes ui-spin {{
+      to {{ transform: rotate(360deg); }}
+    }}
+    .ui-spinner {{
+      width: 14px;
+      height: 14px;
+      border-radius: 9999px;
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      border-top-color: #ffffff;
+      animation: ui-spin 0.7s linear infinite;
+      display: inline-block;
+      flex-shrink: 0;
+    }}
+    @keyframes toast-slide-in {{
+      from {{ opacity: 0; transform: translateX(16px); }}
+      to {{ opacity: 1; transform: translateX(0); }}
+    }}
+    .toast-item {{
+      animation: toast-slide-in 0.18s ease-out;
+    }}
+    .toast-leaving {{
+      opacity: 0;
+      transform: translateX(16px);
+      transition: opacity 0.18s ease, transform 0.18s ease;
+    }}
+    @keyframes modal-pop-in {{
+      from {{ opacity: 0; transform: scale(0.96) translateY(6px); }}
+      to {{ opacity: 1; transform: scale(1) translateY(0); }}
+    }}
+    #modal-overlay.flex #modal-card {{
+      animation: modal-pop-in 0.16s ease-out;
+    }}
+    #settings-overlay.flex #settings-card {{
+      animation: modal-pop-in 0.16s ease-out;
+    }}
   </style>
   <script src="qwebchannel.js"></script>
 </head>
@@ -381,6 +441,11 @@ def build_modular_components() -> None:
     </div>
   </div>
 
+  {settings_modal}
+
+  <!-- Reusable UI Feedback mounts (see components/ui_feedback.html) -->
+  {feedback_mounts}
+
   <!-- Scripts -->
   <script src="js/ui_feedback.js"></script>
   <script src="js/shared/utils.js"></script>
@@ -392,6 +457,7 @@ def build_modular_components() -> None:
   <script src="js/file_controller.js"></script>
   <script src="js/telemetry_charts.js"></script>
   <script src="js/telemetry_controller.js"></script>
+  <script src="js/settings_controller.js"></script>
 </body>
 </html>
 """

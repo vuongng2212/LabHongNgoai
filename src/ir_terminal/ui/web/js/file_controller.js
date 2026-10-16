@@ -42,7 +42,7 @@ function initFileController() {
 
     // Global feedback layer (confirm modal / toasts) owns its buttons —
     // ignore them here so modal actions like Cancel/Abort can't retrigger.
-    if (btn.closest('#modal-overlay, #toast-container')) return;
+    if (btn.closest('#modal-overlay, #toast-container, #settings-overlay')) return;
 
     // Row-level icon actions (e.g. open storage location) carry data-action.
     const actionBtn = btn.closest('[data-action]');

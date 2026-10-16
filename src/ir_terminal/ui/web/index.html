@@ -166,6 +166,9 @@
     #modal-overlay.flex #modal-card {
       animation: modal-pop-in 0.16s ease-out;
     }
+    #settings-overlay.flex #settings-card {
+      animation: modal-pop-in 0.16s ease-out;
+    }
   </style>
   <script src="qwebchannel.js"></script>
 </head>
@@ -177,13 +180,13 @@
   <!-- Traffic Lights & Ribbon Badge -->
   <div class="flex items-center gap-space-md">
     <div class="flex items-center gap-2 pr-2">
-      <button aria-label="Close" class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none">
+      <button aria-label="Close" class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">×</span>
       </button>
-      <button aria-label="Minimize" class="traffic-dot w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] flex items-center justify-center group focus:outline-none">
+      <button aria-label="Minimize" class="traffic-dot w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">-</span>
       </button>
-      <button aria-label="Zoom" class="traffic-dot w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] flex items-center justify-center group focus:outline-none">
+      <button aria-label="Zoom" class="traffic-dot w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[7px] text-black font-bold opacity-0 transition-opacity">+</span>
       </button>
     </div>
@@ -207,6 +210,9 @@
     </div>
     <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Refresh Port List">
       <span class="material-symbols-outlined text-[16px]">refresh</span>
+    </button>
+    <button id="btn-top-settings" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Transfer Settings">
+      <span class="material-symbols-outlined text-[16px]">settings</span>
     </button>
   </div>
 </header>
@@ -258,15 +264,14 @@
   <div class="bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.06] shadow-sm space-y-2">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-1.5">
-        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-secondary"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">READY</span>
+        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-outline">OFFLINE</span>
       </div>
-      <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">NIR</span>
+      <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">880nm</span>
     </div>
-    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2">
-      <div><span class="text-outline">PHY:</span> 880nm TFDU4101</div>
-      <div><span class="text-outline">ENC:</span> MCP2122 IrDA</div>
-      <div><span class="text-outline">MCU:</span> STM32F407 CDC</div>
+    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2 flex items-center justify-between">
+      <span class="text-outline">Physical Link:</span>
+      <span id="footer-port-label" class="font-semibold text-on-surface">Disconnected</span>
     </div>
     <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors cursor-pointer">
       <span class="material-symbols-outlined text-[14px]">wifi_tethering</span>
@@ -280,14 +285,13 @@
       <div class="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7]">
         <!-- View 1: Hardware Setup -->
         <div id="view-hardware" class="view-panel active flex-1 overflow-y-auto p-space-lg flex-col gap-space-lg bg-[#F5F5F7]">
-          
-<!-- Viewport Header -->
+          <!-- Viewport Header -->
 <header class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-xs border-b border-black/[0.05]">
 <div>
 <div class="flex items-center gap-space-sm">
-<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Transceiver & Link Configuration</h1>
-<span class="bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> LINK LOCKED
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Transceiver &amp; Link Configuration</h1>
+<span id="hw-header-link-badge" class="bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-mono-caption text-mono-caption font-semibold flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> DISCONNECTED
               </span>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
@@ -300,7 +304,7 @@
               880nm NIR Direct LOS
             </span>
 <span class="bg-primary/10 text-primary border border-primary/20 px-2.5 py-1 rounded-md text-mono-caption font-mono-caption font-semibold shadow-sm">
-              BER < 10<sup>-9</sup>
+              BER &lt; 10<sup>-9</sup>
             </span>
 </div>
 </header>
@@ -320,9 +324,9 @@
 <span class="font-mono-caption text-mono-caption text-on-surface-variant">UART PHYSICAL BRIDGE INTERFACE</span>
 </div>
 </div>
-<div class="flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  Port Ready
+<div id="hw-port-ready-badge" class="flex items-center gap-1 bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                  Port Standby
                 </div>
 </div>
 <!-- Interface Port Selector -->
@@ -398,13 +402,13 @@
 <span class="material-symbols-outlined text-[20px]" data-icon="radar">radar</span>
 </div>
 <div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Optical Link & Diagnostics</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">ROUND-TRIP ECHO & CARRIER HEALTH</span>
+<h2 class="font-headline-md text-headline-md text-on-surface">Optical Link &amp; Diagnostics</h2>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">ROUND-TRIP ECHO &amp; CARRIER HEALTH</span>
 </div>
 </div>
-<div class="flex items-center gap-1 bg-secondary/10 text-secondary border border-secondary/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
-<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                  Link Ready
+<div id="hw-link-ready-badge" class="flex items-center gap-1 bg-outline/10 text-outline border border-outline/20 px-2 py-0.5 rounded-full font-label-sm text-label-sm">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                  Link Standby
                 </div>
 </div>
 <!-- Real Stats Grid -->
@@ -463,7 +467,7 @@
 <span class="material-symbols-outlined text-[20px]" data-icon="developer_board">developer_board</span>
 </div>
 <div>
-<h3 class="font-headline-md text-headline-md text-on-surface">Protocol Layer Verification & Architecture Health</h3>
+<h3 class="font-headline-md text-headline-md text-on-surface">Protocol Layer Verification &amp; Architecture Health</h3>
 <span class="font-mono-caption text-mono-caption text-on-surface-variant">REALTIME EMBEDDED PROTOCOL STACK VERIFICATION</span>
 </div>
 </div>
@@ -518,8 +522,7 @@
 
         <!-- View 2: File Transfer -->
         <div id="view-file" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-xl flex-col gap-space-lg">
-          
-<!-- Header Strip: Title, Description, and Live Optical Badges -->
+          <!-- Header Strip: Title, Description, and Live Optical Badges -->
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md bg-surface-container-lowest p-space-lg rounded-xl border border-outline-variant/30 shadow-sm">
 <div class="flex flex-col gap-0.5">
 <div class="flex items-center gap-2">
@@ -549,14 +552,14 @@
 <div class="w-14 h-14 rounded-2xl bg-surface-container flex items-center justify-center text-primary group-hover:scale-105 group-hover:bg-primary-container group-hover:text-on-primary-container transition-all duration-200 mb-space-md shadow-sm">
 <span class="material-symbols-outlined text-[28px]" data-icon="upload_file">upload_file</span>
 </div>
-<h3 class="text-headline-md font-headline-md text-on-surface mb-1">
+<h3 id="file-limit-hint" class="text-headline-md font-headline-md text-on-surface mb-1">
               Drop file to transmit across infrared beam (Max 10MB)
             </h3>
 <p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
               Supports PDF, images, firmware binaries, and raw packet captures
             </p>
 <div class="flex flex-col sm:flex-row items-center gap-space-sm">
-<button class="h-[30px] px-space-lg rounded-lg bg-primary-container text-on-primary-container text-label-md font-label-md hover:bg-primary transition-colors flex items-center gap-1.5 shadow-sm active:scale-[0.98]">
+<button class="h-[30px] px-space-lg rounded-lg bg-primary-container text-on-primary-container text-label-md font-label-md hover:bg-primary transition-colors flex items-center gap-1.5 shadow-sm active:scale-[0.98] cursor-pointer">
 <span class="material-symbols-outlined text-[16px]" data-icon="folder_open">folder_open</span>
 <span>Browse Files</span>
 </button>
@@ -565,7 +568,7 @@
 <!-- Optical Transfer Guard Note -->
 <div class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="verified_user">verified_user</span>
-<span>Payload automatically framed into 512-byte optical frames with CRC32</span>
+<span>Payload automatically framed into 240-byte optical chunks with CRC-32</span>
 </div>
 </div>
 <!-- Column 2: Active Transmission Card -->
@@ -705,8 +708,7 @@
 
         <!-- View 3: Realtime Chat -->
         <div id="view-chat" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-md">
-          
-<!-- Header Banner inside main panel -->
+          <!-- Header Banner inside main panel -->
 <section class="px-space-lg py-space-md bg-surface-container-lowest border-b border-outline-variant flex flex-wrap items-center justify-between gap-space-sm shadow-xs shrink-0">
 <div>
 <div class="flex items-center gap-2">
@@ -754,13 +756,8 @@
 <input class="flex-1 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline" placeholder="Enter payload string or message to transmit..." type="text" value=""/>
 <!-- Action Controls Cluster -->
 <div class="flex items-center gap-1.5 shrink-0">
-<!-- Ping Action Button -->
-<button class="flex items-center gap-1 px-2.5 h-[30px] rounded-lg bg-surface-container border border-outline-variant text-on-surface text-label-sm font-label-sm hover:bg-surface-container-high transition-colors active:scale-[0.98]">
-<span class="material-symbols-outlined text-[14px] text-secondary" data-icon="radar">radar</span>
-<span>38ms Ping</span>
-</button>
 <!-- Primary Send Payload Button in vibrant Cobalt Blue -->
-<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-[#1D4ED8] transition-colors shadow-sm active:scale-[0.98]">
+<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-[#1D4ED8] transition-colors shadow-sm active:scale-[0.98] cursor-pointer">
 <span>Send Payload</span>
 <span class="material-symbols-outlined text-[14px]" data-icon="send">send</span>
 </button>
@@ -772,13 +769,6 @@
 <span class="material-symbols-outlined text-[12px] text-secondary" data-icon="info">info</span>
 <span>Half-duplex link: Transmitter pauses RX carrier during modulated burst. Maximum packet length: 512 bytes.</span>
 </div>
-<!-- Buffer Readout -->
-<div class="flex items-center gap-2 shrink-0">
-<div class="w-16 h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
-<div class="w-[9.3%] h-full bg-primary rounded-full"></div>
-</div>
-<span>Buffer: <strong class="text-on-surface">48 / 512 B</strong></span>
-</div>
 </div>
 </div>
 </footer>
@@ -787,8 +777,7 @@
 
         <!-- View 4: Lab Diagnostics -->
         <div id="view-telemetry" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg">
-          
-<!-- Viewport Header Section -->
+          <!-- Viewport Header Section -->
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pb-space-xs">
 <div>
 <div class="flex items-center gap-space-sm">
@@ -810,11 +799,11 @@
 </span>
 <span class="font-medium">Live Capture Active</span>
 </div>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors">
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors cursor-pointer">
 <span class="material-symbols-outlined text-[15px]">file_download</span>
 <span>Export CSV Telemetry</span>
 </button>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors">
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors cursor-pointer">
 <span class="material-symbols-outlined text-[15px]">refresh</span>
 <span>Reset Counters</span>
 </button>
@@ -1028,20 +1017,77 @@
     </div>
   </div>
 
-  <!-- Reusable UI Feedback mounts (see components/ui_feedback.html) -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none" aria-live="polite"></div>
-  <div id="modal-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
-    <div id="modal-backdrop" class="absolute inset-0 bg-on-surface/30 backdrop-blur-[2px]"></div>
-    <div id="modal-card" role="dialog" aria-modal="true" class="relative w-full max-w-sm bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2">
-      <div id="modal-icon-wrap" class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm">
-        <span id="modal-icon" class="material-symbols-outlined text-[26px]">check_circle</span>
+  <!-- Transfer Settings Modal: source of truth. Mirrored into index.html by build.
+     Theme: Apple Modern Precision Light — surface-container-lowest, rounded-2xl,
+     border-black/[0.06], material-symbols-outlined, Plus Jakarta Sans / Inter tokens. -->
+<div id="settings-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
+  <div id="settings-backdrop" class="absolute inset-0 bg-on-surface/30 backdrop-blur-[2px]"></div>
+  <div id="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title"
+    class="relative w-full max-w-md bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col gap-space-md">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-space-sm">
+        <div class="w-10 h-10 rounded-xl bg-surface-container text-primary flex items-center justify-center shadow-sm">
+          <span class="material-symbols-outlined text-[22px]">settings</span>
+        </div>
+        <div>
+          <h3 id="settings-title" class="font-headline-md text-headline-md text-on-surface">Transfer Settings</h3>
+          <p class="font-mono-caption text-mono-caption text-on-surface-variant">OPTICAL LINK • PERSISTED LOCALLY</p>
+        </div>
       </div>
-      <h3 id="modal-title" class="font-headline-md text-headline-md text-on-surface">Done</h3>
-      <p id="modal-message" class="font-body-md text-body-md text-on-surface-variant leading-relaxed"></p>
-      <p id="modal-details" class="hidden font-mono-data text-mono-data text-outline bg-surface-container-low border border-black/[0.04] rounded-lg px-2.5 py-1.5 max-w-full break-all"></p>
-      <div id="modal-actions" class="flex items-center justify-center gap-2 mt-2 w-full"></div>
+      <button id="settings-close" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Close settings">
+        <span class="material-symbols-outlined text-[18px]">close</span>
+      </button>
+    </div>
+    <div class="space-y-space-md">
+      <div class="space-y-1.5">
+        <label for="settings-max-mb" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Max file transfer limit (MB)</label>
+        <input id="settings-max-mb" type="number" min="1" max="100" step="1" value="10"
+          class="w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+        <p class="font-mono-caption text-mono-caption text-outline">Allowed range: 1 – 100 MB. Default: 10 MB.</p>
+      </div>
+      <div class="space-y-1.5">
+        <label for="settings-dir" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Default receive directory</label>
+        <div class="flex items-center gap-2">
+          <input id="settings-dir" type="text" placeholder="Transfers directory path" readonly
+            class="flex-1 bg-surface-container-low border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
+          <button id="settings-browse" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
+            <span class="material-symbols-outlined text-[16px]">folder_open</span>
+            <span>Browse</span>
+          </button>
+        </div>
+      </div>
+      <p id="settings-error" class="hidden font-body-md text-body-md text-error"></p>
+    </div>
+    <div class="flex items-center justify-end gap-space-sm pt-space-xs border-t border-black/[0.04]">
+      <button id="settings-cancel" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium active:scale-[0.98] transition-all cursor-pointer">
+        Cancel
+      </button>
+      <button id="settings-save" class="h-[32px] px-space-md bg-primary-container hover:bg-primary text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm active:scale-[0.98] transition-all cursor-pointer">
+        Save
+      </button>
     </div>
   </div>
+</div>
+
+
+  <!-- Reusable UI Feedback mounts (see components/ui_feedback.html) -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none" aria-live="polite"></div>
+
+<!-- Modal overlay: centered dialog for success / error / confirm -->
+<div id="modal-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
+  <div id="modal-backdrop" class="absolute inset-0 bg-on-surface/30 backdrop-blur-[2px]"></div>
+  <div id="modal-card" role="dialog" aria-modal="true"
+    class="relative w-full max-w-sm bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2">
+    <div id="modal-icon-wrap" class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm">
+      <span id="modal-icon" class="material-symbols-outlined text-[26px]">check_circle</span>
+    </div>
+    <h3 id="modal-title" class="font-headline-md text-headline-md text-on-surface">Done</h3>
+    <p id="modal-message" class="font-body-md text-body-md text-on-surface-variant leading-relaxed"></p>
+    <p id="modal-details" class="hidden font-mono-data text-mono-data text-outline bg-surface-container-low border border-black/[0.04] rounded-lg px-2.5 py-1.5 max-w-full break-all"></p>
+    <div id="modal-actions" class="flex items-center justify-center gap-2 mt-2 w-full"></div>
+  </div>
+</div>
+
 
   <!-- Scripts -->
   <script src="js/ui_feedback.js"></script>
@@ -1054,5 +1100,6 @@
   <script src="js/file_controller.js"></script>
   <script src="js/telemetry_charts.js"></script>
   <script src="js/telemetry_controller.js"></script>
+  <script src="js/settings_controller.js"></script>
 </body>
 </html>
