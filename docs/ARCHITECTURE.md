@@ -99,7 +99,7 @@ header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 ```text
 LabHongNgoai/
 ├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
-├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 200 passed)
+├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 204 passed)
 ├── docs/                         # 4 file duy nhất, không thêm file planning rời
 │   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
 │   ├── PROTOCOL.md               # Wire format chốt + code C STM32
@@ -132,7 +132,15 @@ LabHongNgoai/
 │       │
 │       ├── services/              # [TẦNG DỊCH VỤ] Nghiệp vụ ứng dụng
 │       │   ├── __init__.py
-│       │   ├── file_transfer_service.py # Stop-and-Wait ARQ streaming (250ms/5 retry→FAILED, CRC-32, cancel 2 chiều)
+│       │   ├── file_transfer_service.py # Qt compatibility façade, settings, signals, wiring
+│       │   ├── file_transfer/           # Transfer handlers + protocol/integrity/file primitives
+│       │   │   ├── tx_manager.py        # TX Stop-and-Wait handling
+│       │   │   ├── rx_manager.py        # RX validation, ordering, ACK/NACK, publish flow
+│       │   │   ├── protocol_adapter.py  # Legacy/large payload encode/decode
+│       │   │   ├── chunk_buffer.py      # Bounded chunk reads + RX staging/publish
+│       │   │   ├── integrity_verifier.py # Streaming CRC-32 comparisons
+│       │   │   ├── state_coordinator.py # Transfer state owner
+│       │   │   └── file_transfer_types.py # Shared TransferState
 │       │   ├── chat_service.py    # Gửi/nhận DATA_TEXT UTF-8 + lưu file JSON
 │       │   ├── storage_service.py # File JSON chat/file/telemetry + export CSV
 │       │   └── telemetry_service.py # Throughput/RTT/loss/sniffer (BER hiển thị, chưa đo thực)
@@ -149,7 +157,7 @@ LabHongNgoai/
 │           └── path_helpers.py    # Resolve asset + data/ (dev, frozen, IR_DATA_DIR, instance A/B)
 │
 ├── data/                          # Runtime (tự tạo): JSON stores, transfers/, logs/, instances/<A|B>/
-├── tests/                         # pytest (hiện tại 200 passed)
+├── tests/                         # pytest (hiện tại 204 passed)
 │   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge
 │   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager
 │
@@ -169,13 +177,19 @@ LabHongNgoai/
 - `file_transfer_service` **khóa thư mục đích cho từng phiên nhận**: `_rx_dest_dir` được chụp tại `TRANSFER_START`, dùng chung cho file tạm `.ir_rx_*.part` và lần publish cuối (`.part` → file thật), nên đổi setting giữa phiên không gây `EXDEV`. Khi `load_settings` gặp đường dẫn đã lưu không dùng được, ghi **warning** rõ ràng và giữ mặc định (không fallback im lặng).
 - Chỉ đường dẫn nhận file đổi được từ UI; JSON/`logs/` luôn nằm trong `data/` (chỉ đổi qua `IR_DATA_DIR`).
 
+### 3.2. Cấu trúc nội bộ file transfer
+
+`FileTransferService` giữ import path, constructor, public properties/methods và Qt signal contract để tương thích UI/callers. TX/RX handlers được tách trong `services/file_transfer/tx_manager.py` và `rx_manager.py`; các primitive protocol, CRC, staging file và state nằm ở `protocol_adapter.py`, `integrity_verifier.py`, `chunk_buffer.py`, `state_coordinator.py` và `file_transfer_types.py`.
+
+Đây là bước tách module theo hành vi; TX/RX handlers hiện vẫn dùng session fields chung trên façade để giữ tương thích. Disk I/O và CRC scan vẫn đồng bộ theo semantics cũ. Chuyển chúng sang worker thread cần async command/result flow và ACK-after-write contract riêng; không được xem việc SerialWorker có QThread là bằng chứng rằng file I/O đã chạy nền.
+
 ---
 
 ## 4. NGUYÊN TẮC LUỒNG THREADING & NON-BLOCKING HARDWARE I/O
 
 ### Quy tắc bất biến (Inviolable Rules):
 1. **Không bao giờ block Main Thread (UI Thread):**
-   - Mọi thao tác I/O (`serial.read()`, `serial.write()`) và chờ timeout **phải chạy trên Worker Thread**. `FileTransferService` đã streaming: CRC-32 đọc theo buffer `1 MiB`, TX đọc từng chunk từ file handle, RX ghi thẳng `.part` + `flush()` mỗi chunk — RAM không tăng theo kích thước file.
+   - Mọi thao tác I/O phần cứng (`serial.read()`, `serial.write()`) và chờ timeout phải chạy trên Worker Thread. Serial transport đáp ứng quy tắc này qua `SerialWorker`; file transfer vẫn stream với RAM giới hạn theo chunk, nhưng CRC scan và RX disk writes hiện chạy đồng bộ trong thread affinity của service (thường là UI thread). Đây là giới hạn đã biết, xem §3.2.
 2. **Worker-Object Pattern với `moveToThread(QThread)`:**
    - Không bao giờ kế thừa trực tiếp từ `QThread` để override `run()` chứa business logic.
    - Luôn tạo class `SerialWorker(QObject)`, chuyển sang thread riêng bằng `worker.moveToThread(thread)` và điều khiển qua Qt Signals/Slots.
@@ -204,7 +218,7 @@ LabHongNgoai/
 
 Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
 1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Hiện tại `200 passed` (2026-10-19).
+2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Sau refactor ngày 2026-10-20: `204 passed`.
 
 ---
 
