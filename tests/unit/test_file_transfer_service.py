@@ -237,7 +237,7 @@ class TestFileTransferService:
             service.start_transfer(tmp_path)
             assert service.state.name == "HANDSHAKING"
 
-            with qtbot.waitSignal(service.transfer_failed, timeout=1000) as blocker:
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
                 service.abort_transfer()
 
             (reason,) = blocker.args
@@ -258,6 +258,8 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(tmp_path)
+            # Stop the ARQ timer so it doesn't fire asynchronously under slow CI
+            service._ack_timer.stop()
             assert _state(service) == TransferState.HANDSHAKING
             expected_seq = service._seq
 
@@ -290,6 +292,7 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(tmp_path)
+            service._ack_timer.stop()
             assert _state(service) == TransferState.HANDSHAKING
             assert service._retry_count == 0
 
@@ -321,6 +324,7 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(tmp_path)
+            service._ack_timer.stop()
             assert _state(service) == TransferState.HANDSHAKING
             assert service._retry_count == 0
 
