@@ -35,7 +35,7 @@ from ir_terminal.protocol.constants import (
 )
 from ir_terminal.protocol.file_payloads import FileStartPayload, FileStartPayloadLarge
 from ir_terminal.protocol.packet import Packet
-from ir_terminal.services.file_transfer.file_transfer_types import TransferState
+from ir_terminal.services.file_transfer.file_transfer_types import TransferState as TransferState
 from ir_terminal.services.file_transfer.integrity_verifier import IntegrityVerifier
 from ir_terminal.services.file_transfer.rx_manager import RxManager
 from ir_terminal.services.file_transfer.state_coordinator import StateCoordinator

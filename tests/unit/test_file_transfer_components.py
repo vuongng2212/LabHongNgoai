@@ -22,20 +22,39 @@ from ir_terminal.services.file_transfer.protocol_adapter import ProtocolAdapter
 
 def test_protocol_adapter_encodes_both_transfer_generations() -> None:
     """Legacy and large encodings remain byte-identical to payload serializers."""
-    start_values = {
-        "file_size": 1234,
-        "chunk_size": 240,
-        "total_chunks": 6,
-        "file_crc32": 0x12345678,
-        "filename": "sample.bin",
-    }
     assert (
-        ProtocolAdapter.start_payload(extended=False, **start_values)
-        == FileStartPayload(**start_values).pack()
+        ProtocolAdapter.start_payload(
+            extended=False,
+            file_size=1234,
+            chunk_size=240,
+            total_chunks=6,
+            file_crc32=0x12345678,
+            filename="sample.bin",
+        )
+        == FileStartPayload(
+            file_size=1234,
+            chunk_size=240,
+            total_chunks=6,
+            file_crc32=0x12345678,
+            filename="sample.bin",
+        ).pack()
     )
     assert (
-        ProtocolAdapter.start_payload(extended=True, **start_values)
-        == FileStartPayloadLarge(**start_values).pack()
+        ProtocolAdapter.start_payload(
+            extended=True,
+            file_size=1234,
+            chunk_size=240,
+            total_chunks=6,
+            file_crc32=0x12345678,
+            filename="sample.bin",
+        )
+        == FileStartPayloadLarge(
+            file_size=1234,
+            chunk_size=240,
+            total_chunks=6,
+            file_crc32=0x12345678,
+            filename="sample.bin",
+        ).pack()
     )
     assert ProtocolAdapter.chunk_payload(extended=False, chunk_id=4, data=b"abc") == (
         FileChunkPayload(4, b"abc").pack()
