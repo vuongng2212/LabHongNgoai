@@ -12,7 +12,7 @@ if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webCha
       window.bridge = bridge;
       console.log('QWebChannel Bridge Connected Successfully!');
       initBridgeListeners();
-      refreshPortList();
+      applyLaunchConfig();
     });
   } catch (err) {
     console.warn('QWebChannel setup failed, running without backend bridge:', err);
@@ -206,7 +206,26 @@ function initBridgeListeners() {
   });
 }
 
-function refreshPortList(triggerBtn) {
+function applyLaunchConfig() {
+  if (!bridge || typeof bridge.getLaunchConfig !== 'function') {
+    refreshPortList();
+    return;
+  }
+  bridge.getLaunchConfig((configJson) => {
+    let cfg = {};
+    try { cfg = JSON.parse(configJson); } catch (e) { cfg = {}; }
+    window.launchConfig = cfg;
+    if (cfg.window_title) document.title = cfg.window_title;
+    const ribbon = document.getElementById('ribbon-text');
+    if (ribbon && cfg.display_name) {
+      const role = cfg.role ? ' • ' + cfg.role : '';
+      ribbon.innerText = cfg.display_name + role + ' • Waiting for link';
+    }
+    refreshPortList(null, cfg.preferred_port || null);
+  });
+}
+
+function refreshPortList(triggerBtn, preselect) {
   if (!bridge) return;
   if (triggerBtn && window.UIFeedback) window.UIFeedback.setButtonLoading(triggerBtn, true, 'Scanning...');
   bridge.scanPorts((portsJson) => {
@@ -214,6 +233,7 @@ function refreshPortList(triggerBtn) {
     try { ports = JSON.parse(portsJson); } catch (e) { ports = []; }
     const select = document.querySelector('#view-hardware select');
     if (select) {
+      const previous = preselect || select.value;
       select.innerHTML = '';
       ports.forEach(p => {
         const opt = document.createElement('option');
@@ -221,6 +241,11 @@ function refreshPortList(triggerBtn) {
         opt.innerText = p.includes('MOCK') ? p + ' (Virtual Loopback)' : p + ' - STM32F407 CDC';
         select.appendChild(opt);
       });
+      if (previous && ports.includes(previous)) {
+        select.value = previous;
+      } else if (ports.length > 0) {
+        select.value = ports[0];
+      }
     }
     if (triggerBtn && window.UIFeedback) window.UIFeedback.setButtonLoading(triggerBtn, false);
     if (triggerBtn) {

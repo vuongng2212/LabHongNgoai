@@ -171,6 +171,34 @@ def _add_file_handler(logger: logging.Logger, log_dir: Path) -> None:
     logger.addHandler(fh)
 
 
+def _retarget_file_handler(logger: logging.Logger, log_dir: Path) -> None:
+    """Moves the rotating file handler to ``log_dir`` if it points elsewhere.
+
+    Used when a logger was already configured (for example by an earlier call
+    in the same process) but the instance-specific log directory is only known
+    afterwards. Removes any stale rotating handler first so two processes never
+    share one ``app.log`` handle.
+    """
+    log_dir.mkdir(parents=True, exist_ok=True)
+    target = (log_dir / "app.log").resolve()
+    for h in list(logger.handlers):
+        if not isinstance(h, RotatingFileHandler):
+            continue
+        base = getattr(h, "baseFilename", "")
+        try:
+            if base and Path(base).resolve() == target:
+                return
+        except Exception:
+            pass
+        logger.removeHandler(h)
+        try:
+            h.close()
+        except Exception:
+            pass
+    _add_file_handler(logger, log_dir)
+
+
+
 def setup_logger(
     log_dir: Path | None = None,
     log_level: int = logging.INFO,
@@ -192,6 +220,10 @@ def setup_logger(
     logger.propagate = False
 
     if logger.handlers:
+        # Already configured (e.g. an earlier call in this process). Make sure
+        # the rotating file handler targets the requested instance log dir.
+        if log_dir is not None:
+            _retarget_file_handler(logger, log_dir)
         return logger, _qt_log_emitter
 
     formatter = logging.Formatter(fmt=_LOG_FORMAT, datefmt=_LOG_DATEFMT)

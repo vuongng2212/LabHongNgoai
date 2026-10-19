@@ -23,15 +23,17 @@ Tài liệu trong `docs/`: `README.md` (index này) → `PROTOCOL.md` (wire + fi
 
 ## 2. Kiến trúc code thực tế (đã implement)
 
-* `src/ir_terminal/app.py`: DI container `Storage → SerialManager → Chat/File/Telemetry → BackendBridge → WebMainWindow`.
-* `core/pyserial_transport.py` (8N1, `timeout 0.05 / write 0.2`) + `core/serial_worker.py` poll `10ms` HW / `2ms` mock trên `QThread` (Worker-Object, không block UI). `core/serial_manager.py` điều phối thread. `MOCK_*` dùng `MockSerialPort` cho dev/test; `LINK_A/B` dùng `SocketTransport`.
+* `src/ir_terminal/app.py`: DI container `Storage → SerialManager → Chat/File/Telemetry → BackendBridge → WebMainWindow`; đồng thời xử lý CLI (`--instance/--link-role/--port/--auto-connect/--window-pos`), single-instance lock và khởi động broker in-app cho node host.
+* `src/ir_terminal/config.py`: `LaunchConfig` + `InstanceContext` — nguồn chuẩn cho cờ CLI/env và layout `data/instances/<A|B>/` (JSON, transfers, logs, `webengine/`, `app.lock`).
+* `core/pyserial_transport.py` (8N1, `timeout 0.05 / write 0.2`) + `core/serial_worker.py` poll `10ms` HW / `2ms` mock trên `QThread` (Worker-Object, không block UI). `core/serial_manager.py` điều phối thread. `MOCK_*` dùng `MockSerialPort` cho dev/test; `LINK_A/B` dùng `SocketTransport` nối broker `core/link_broker.py` (host chạy in-process, không cần driver ảo).
 * `protocol/framer.py:pack_frame/parse_frames_from_buffer`: quét SOF, bỏ nhiễu, check `LEN≤512`, check EOF, check CRC — frame lỗi bị bỏ qua, chờ frame tiếp theo.
 * `services/file_transfer_service.py` + `services/file_transfer/`: **streaming hai chiều**. `FileTransferService` là Qt compatibility façade; TX/RX handling, protocol adapter, CRC verifier, chunk/file staging và state coordinator được tách thành modules con. TX tính CRC-32 bằng pass đọc `1 MiB` và đọc từng chunk từ file handle đang mở (RAM `O(chunk_size)`, không `read_bytes()` toàn file). RX ghi trực tiếp chunk theo thứ tự vào `.ir_rx_*.part`, flush mỗi chunk, verify incremental CRC-32 + kích thước rồi atomic `os.replace`. Duplicate START/END được re-ACK idempotent; duplicate chunk không ghi lặp, chunk sai thứ tự bị NACK; hủy đối xứng bằng `TRANSFER_PAUSE/ABORT`. Disk/CRC operations hiện vẫn đồng bộ; xem `ARCHITECTURE.md` §3.2 trước khi kết luận file I/O chạy nền.
 * `services/chat_service.py`: gửi/nhận `DATA_TEXT` UTF-8, lưu file JSON, phát `frame_inspected` (hex/metadata).
 * `services/storage_service.py`: file JSON `chat / file_transfers / telemetry_samples` + export CSV.
 * `services/telemetry_service.py`: throughput cửa sổ trượt `3s`, `RTT` từ PONG, `loss = lost/(sent+lost)` (loss chỉ tăng khi `transfer_failed`), sniffer `200 records`, carrier hiển thị cố định `880nm NIR`, `CRC32 Valid`.
 * `ui/main_window_web.py + backend_bridge.py + ui/web/`: `QWebEngineView + QWebChannel bridge` (SPA Tailwind). Slots: `scanPorts/connectPort/sendPing/sendChat/startFileTransfer/exportTelemetryCsv/...`.
-* `utils/path_helpers.py`: mọi dữ liệu ghi (`chat_history.json`, `file_transfers.json`, `telemetry_samples.json`, `settings.json`, `transfers/`, `logs/`) nằm dưới `<app root>/data/` — dev là repo root, bản frozen là thư mục chứa `.exe`; `IR_DATA_DIR` ghi đè, dual-mock tách `data/instances/<A|B>/`.
+* `utils/path_helpers.py`: mọi dữ liệu ghi (`chat_history.json`, `file_transfers.json`, `telemetry_samples.json`, `settings.json`, `transfers/`, `logs/`) nằm dưới `<app root>/data/` — dev là repo root, bản frozen là thư mục chứa `.exe`; `IR_DATA_DIR` ghi đè, dual-node tách `data/instances/<A|B>/` (kèm `webengine/` riêng để 2 process không hỏng cache/cookie). `utils/instance_lock.py` chặn mở trùng cùng một instance.
+* Chạy 2 node trên 1 PC không cần driver: `IR_OWC_Lab_Terminal.exe --instance A --link-role host --auto-connect --window-pos left` và `... --instance B --link-role join --auto-connect --window-pos right`; trên Windows double-click `Start_Dual_Demo.cmd`. Đường COM ảo (VSPD/VSPE) chỉ dùng cho nghiệm thu HW: `Start_Com_Pair.cmd COM11 COM12`.
 * ⚠️ Chưa có trong MVP: `hotplug watchdog/auto-reconnect` (mới chỉ `connect/disconnect` tay), `priority queue Control>Text>File` dùng chung (mới chỉ test concurrent mock), `chống trùng toàn phiên nâng cao` (hiện đã idempotent START/END/chunk theo `seq`/`chunk_id`), `SHA-256 end-to-end`, `auto-resume sau chắn tia`, `BER đo thực`.
 
 ## 3. Đối chiếu báo giá MVP (19 dòng — `LAB_BaoGia.xlsx` sheet `Báo giá MVP`)
@@ -46,7 +48,7 @@ Tài liệu trong `docs/`: `README.md` (index này) → `PROTOCOL.md` (wire + fi
 | 9–12 | File meta/chunk/ACK/timeout/RX/progress | `protocol/file_payloads.py`, `file_transfer_service.py`, `test_two_nodes_e2e_file_transfer.py` | Đã có, `240B/250ms/5 lần→FAILED`, CRC-32 |
 | 13 | Lưu trữ file | `storage_service.py`, `test_storage_service.py` | Đã có |
 | 14 | Sniffer/CSV | `telemetry_service.py`, `backend_bridge.py`, `test_telemetry_service.py` | UI/CSV có; `loss/BER` chưa phải số đo thực nghiệm (BER là text hiển thị `BER < 1e-9` trong HTML) |
-| 15–16 | Test unit + 2-node mock + dual-link | `tests/unit/`, `tests/integration/` | Code có; **đã chạy 2026-10-20 sau refactor: 204 passed** |
+| 15–16 | Test unit + 2-node mock + dual-link | `tests/unit/`, `tests/integration/` | Code có; **đã chạy 2026-10-20 sau refactor + dual-node: 234 passed** |
 | 17–18 | Build + docs | `scripts/build_standalone.py`, `ir_terminal.spec`, `README.md`, `docs/` | Script/doc có; build chưa xác minh trên máy sạch; wire spec đã thống nhất (§1) |
 | 19 | Nghiệm thu 2 controller thật | cần board/firmware, chưa có log HW trong repo | **PENDING — phần còn lại của MVP (1.3 ngày / 1.950.000)** |
 

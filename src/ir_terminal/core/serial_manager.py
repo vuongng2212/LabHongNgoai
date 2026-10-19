@@ -8,7 +8,11 @@ from typing import ClassVar
 from PySide6.QtCore import QObject, QThread, Signal
 
 from ir_terminal.core.serial_worker import SerialWorker, scan_available_ports
-from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, SHUTDOWN_WAIT_MS
+from ir_terminal.protocol.constants import (
+    DEFAULT_BAUDRATE,
+    SHUTDOWN_WAIT_MS,
+    SOCKET_CONNECT_TIMEOUT_SEC,
+)
 from ir_terminal.protocol.framer import pack_frame
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.utils.logger import (
@@ -17,6 +21,7 @@ from ir_terminal.utils.logger import (
     format_hex_preview,
     opcode_name,
 )
+from ir_terminal.utils.path_helpers import is_dual_mock_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +45,37 @@ class SerialManager(QObject):
     _sig_send: ClassVar[Signal] = Signal(bytes)
     _sig_inject: ClassVar[Signal] = Signal(bytes)
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        link_endpoints: dict[str, tuple[str, int]] | None = None,
+        *,
+        include_link: bool | None = None,
+        link_connect_retries: int = 0,
+        link_retry_interval_sec: float = 0.25,
+        link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
+        link_token: str | None = None,
+    ) -> None:
+        """Initializes the manager and its background worker thread.
+
+        Args:
+            link_endpoints: Optional LINK_* -> (host, port) map for dual mode.
+            include_link: Whether LINK_A/B appear in the port list (None = env).
+            link_connect_retries: Extra LINK connect attempts on open.
+            link_retry_interval_sec: Delay between LINK connect attempts.
+            link_connect_timeout_sec: Per-attempt LINK connect timeout.
+            link_token: Optional broker handshake token.
+        """
         super().__init__()
+        self._include_link = is_dual_mock_enabled() if include_link is None else include_link
         self._thread = QThread()
-        self._worker = SerialWorker()
+        self._worker = SerialWorker(
+            link_endpoints=link_endpoints,
+            include_link=self._include_link,
+            link_connect_retries=link_connect_retries,
+            link_retry_interval_sec=link_retry_interval_sec,
+            link_connect_timeout_sec=link_connect_timeout_sec,
+            link_token=link_token,
+        )
         self._worker.moveToThread(self._thread)
 
         # Connect internal dispatch signals
@@ -173,10 +205,9 @@ class SerialManager(QObject):
             )
         self.send_raw(frame)
 
-    @staticmethod
-    def get_port_list() -> list[str]:
+    def get_port_list(self) -> list[str]:
         """Scans for available serial ports on the host system."""
-        return scan_available_ports()
+        return scan_available_ports(self._include_link)
 
     def shutdown(self) -> None:
         """Cleanly halts background thread and worker."""

@@ -61,13 +61,41 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (200/200 tests passed)
+# 3. Chạy bộ kiểm thử tự động (234/234 tests passed)
 QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn
 uv run ruff check .
 uv run mypy src/ tests/
 ```
+
+---
+
+## 🧪 Chạy 2 Node trên cùng 1 PC (demo E2E, không cần driver)
+
+Bản build duy nhất hỗ trợ 2 node độc lập qua TCP loopback; Node A chạy broker
+in-app nên **không cần cài driver COM ảo** và không cần quyền admin:
+
+```bash
+# Dev: Node A (host, tự mở broker 6001/6002) + Node B (client)
+./scripts/run_dual_mock.sh
+
+# Hoặc chạy tay:
+uv run python -m ir_terminal --instance A --link-role host --auto-connect --window-pos left
+uv run python -m ir_terminal --instance B --link-role join --auto-connect --window-pos right
+```
+
+Trên Windows bản `.exe`, double-click **`Start_Dual_Demo.cmd`** (được copy cạnh
+`IR_OWC_Lab_Terminal.exe`): cửa sổ Node A `[Node A - Host]` và Node B
+`[Node B - Client]` tự kết nối, chia trái/phải màn hình.
+
+Đường COM ảo (VSPD/VSPE) chỉ dùng cho nghiệm thu HW: `Start_Com_Pair.cmd COM11 COM12`.
+
+Các cờ chính: `--instance A|B`, `--link-role off|host|join|auto`, `--link-base-port`,
+`--port`, `--baud`, `--auto-connect`, `--window-pos left|right|normal`,
+`--allow-multiple` (bỏ lock), `--broker-only`, `--loss/--latency-ms/--los`.
+Mỗi instance có `data/instances/<ID>/` riêng (JSON, transfers, logs, WebEngine cache)
+và `app.lock` chống mở trùng.
 
 ---
 
@@ -81,6 +109,7 @@ uv run python scripts/build_standalone.py
 
 # File thực thi nằm tại:
 # dist/IR_OWC_Lab_Terminal/IR_OWC_Lab_Terminal
+# Kèm Start_Dual_Demo.cmd và Start_Com_Pair.cmd ở cùng thư mục.
 ```
 
 ### Dữ liệu Runtime (`data/`)
@@ -95,7 +124,10 @@ Toàn bộ dữ liệu ghi được đặt cạnh ứng dụng, **không** dùng
 ├── settings.json
 ├── transfers/                    # file nhận qua quang (file tạm .ir_rx_*.part khi đang nhận)
 ├── logs/                         # log xoay vòng + CSV export
-└── instances/<A|B>/              # chỉ khi chạy dual-mock, tách biệt hoàn toàn
+└── instances/<A|B>/              # chỉ khi chạy dual-node, tách biệt hoàn toàn
+    ├── chat_history.json / file_transfers.json / settings.json ...
+    ├── transfers/  logs/  app.lock
+    └── webengine/{cache,storage} # QWebEngineProfile riêng từng node
 ```
 
 Thư mục được tạo tự động khi khởi động. Biến môi trường `IR_DATA_DIR` có thể ghi đè gốc

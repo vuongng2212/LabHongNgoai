@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import socket
+import time
+from collections.abc import Callable
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.protocol.constants import (
@@ -27,18 +29,38 @@ LINK_PORT_MAP: dict[str, tuple[str, int]] = {
     "LINK_B": ("127.0.0.1", 6002),
 }
 
+# Optional handshake prefix shared with LinkBroker when a token is configured.
+_HELLO_PREFIX = "IRLINK 1 "
 
-def resolve_link_endpoint(port_name: str) -> tuple[str, int] | None:
-    """Returns (host, port) for a LINK_* virtual port, else None."""
+
+def resolve_link_endpoint(
+    port_name: str,
+    endpoints: dict[str, tuple[str, int]] | None = None,
+) -> tuple[str, int] | None:
+    """Returns (host, port) for a LINK_* virtual port, else None.
+
+    Args:
+        port_name: Virtual port identifier (case-insensitive).
+        endpoints: Optional override map; defaults to LINK_PORT_MAP.
+    """
     key = port_name.strip().upper()
-    return LINK_PORT_MAP.get(key)
+    table = endpoints if endpoints is not None else LINK_PORT_MAP
+    return table.get(key)
 
 
 class SocketTransport(ITransport):
     """TCP client transport conforming to ITransport for dual-mock mode."""
 
     def __init__(
-        self, port_name: str = "LINK_A", host: str = "127.0.0.1", port: int = 6001
+        self,
+        port_name: str = "LINK_A",
+        host: str = "127.0.0.1",
+        port: int = 6001,
+        *,
+        connect_retries: int = 0,
+        retry_interval_sec: float = 0.25,
+        connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
+        token: str | None = None,
     ) -> None:
         """Initializes TCP transport.
 
@@ -46,51 +68,114 @@ class SocketTransport(ITransport):
             port_name: Virtual identifier (LINK_A or LINK_B).
             host: Broker host address.
             port: Broker TCP port.
+            connect_retries: Extra connect attempts when the broker is not up
+                yet (lets either dual node launch first).
+            retry_interval_sec: Delay between connect attempts.
+            connect_timeout_sec: Per-attempt TCP connect timeout.
+            token: Optional shared secret sent as a handshake line.
         """
         self._port_name = port_name
         self._host = host
         self._port = port
+        self._connect_retries = max(0, int(connect_retries))
+        self._retry_interval_sec = max(0.0, float(retry_interval_sec))
+        self._connect_timeout_sec = float(connect_timeout_sec)
+        self._token = token
         self._sock: socket.socket | None = None
         self._rx_buffer = bytearray()
         self._is_open = False
+        self._lost_notified = False
+        # Invoked (from the worker thread) when the broker/peer drops the link.
+        self.on_link_lost: Callable[[], None] | None = None
 
     def open(self) -> None:
         """Opens TCP connection to the virtual optical link broker."""
+        attempts = self._connect_retries + 1
         logger.info(
-            "%s Socket open: %s -> %s:%d (connect_timeout=%.1fs, read_timeout=%.3fs)",
+            "%s Socket open: %s -> %s:%d (attempts=%d, connect_timeout=%.1fs, read_timeout=%.3fs)",
             LogTag.HW_SERIAL,
             self._port_name,
             self._host,
             self._port,
-            SOCKET_CONNECT_TIMEOUT_SEC,
+            attempts,
+            self._connect_timeout_sec,
             SOCKET_READ_TIMEOUT_SEC,
         )
         self.close()
-        try:
-            sock = socket.create_connection(
-                (self._host, self._port), timeout=SOCKET_CONNECT_TIMEOUT_SEC
-            )
-        except Exception:
-            logger.exception(
-                "%s Socket open FAILED: %s -> %s:%d (is broker scripts/virtual_optical_link.py running?)",
+        last_exc: OSError | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                sock = socket.create_connection(
+                    (self._host, self._port), timeout=self._connect_timeout_sec
+                )
+            except OSError as exc:
+                last_exc = exc
+                if attempt < attempts:
+                    logger.warning(
+                        "%s Socket connect attempt %d/%d failed: %s -> %s:%d (%s: %s); "
+                        "retrying in %.2fs (is the link host running?)",
+                        LogTag.HW_SERIAL,
+                        attempt,
+                        attempts,
+                        self._port_name,
+                        self._host,
+                        self._port,
+                        type(exc).__name__,
+                        exc,
+                        self._retry_interval_sec,
+                    )
+                    time.sleep(self._retry_interval_sec)
+                    continue
+                logger.exception(
+                    "%s Socket open FAILED after %d attempt(s): %s -> %s:%d",
+                    LogTag.HW_SERIAL,
+                    attempts,
+                    self._port_name,
+                    self._host,
+                    self._port,
+                )
+                raise
+            # Short timeout so worker poll stays non-blocking (mirrors PySerial 0.05s).
+            sock.settimeout(SOCKET_READ_TIMEOUT_SEC)
+            self._sock = sock
+            self._rx_buffer = bytearray()
+            self._lost_notified = False
+            if self._token:
+                self._send_handshake()
+            self._is_open = True
+            logger.info(
+                "%s SocketTransport %s connected to %s:%d (attempt %d/%d)",
                 LogTag.HW_SERIAL,
                 self._port_name,
                 self._host,
                 self._port,
+                attempt,
+                attempts,
             )
-            raise
-        # Short timeout so worker poll stays non-blocking (mirrors PySerial 0.05s).
-        sock.settimeout(SOCKET_READ_TIMEOUT_SEC)
-        self._sock = sock
-        self._rx_buffer = bytearray()
-        self._is_open = True
-        logger.info(
-            "%s SocketTransport %s connected to %s:%d",
-            LogTag.HW_SERIAL,
-            self._port_name,
-            self._host,
-            self._port,
-        )
+            return
+        # Defensive: the loop either returned on success or raised on failure.
+        raise last_exc if last_exc is not None else RuntimeError("SocketTransport open failed")
+
+    def _send_handshake(self) -> None:
+        """Sends the optional shared-token handshake line to the broker."""
+        sock = self._sock
+        if sock is None:
+            raise RuntimeError("SocketTransport not open for handshake")
+        sock.sendall(f"{_HELLO_PREFIX}{self._token}\n".encode())
+
+    def _notify_lost(self) -> None:
+        """Fires the on_link_lost callback at most once per open connection."""
+        if self._lost_notified:
+            return
+        self._lost_notified = True
+        callback = self.on_link_lost
+        if callback is None:
+            return
+        try:
+            callback()
+        except Exception:
+            logger.exception("%s on_link_lost callback failed (%s)", LogTag.HW_SERIAL, self._port_name)
+
 
     def close(self) -> None:
         """Closes TCP connection."""
@@ -145,6 +230,7 @@ class SocketTransport(ITransport):
             self._sock.sendall(data)
         except Exception:
             self._is_open = False
+            self._notify_lost()
             logger.exception(
                 "%s Socket write FAILED: %s -> %s:%d len=%dB hex=%s",
                 LogTag.HW_SERIAL,
@@ -183,6 +269,7 @@ class SocketTransport(ITransport):
                         self._host,
                         self._port,
                     )
+                    self._notify_lost()
                     break
                 self._rx_buffer.extend(chunk)
                 if logger.isEnabledFor(logging.DEBUG):
@@ -200,6 +287,7 @@ class SocketTransport(ITransport):
             return
         except OSError as exc:
             self._is_open = False
+            self._notify_lost()
             logger.warning(
                 "%s Socket recv error, marking closed: %s %s:%d: %s",
                 LogTag.HW_SERIAL,

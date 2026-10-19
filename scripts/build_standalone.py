@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+# Windows launchers copied next to the .exe so clients can double-click them.
+LAUNCHER_SCRIPTS: tuple[str, ...] = ("Start_Dual_Demo.cmd", "Start_Com_Pair.cmd")
 
 
 def build() -> int:
@@ -51,11 +55,23 @@ def build() -> int:
         print(f"Error: Output directory {dist_dir} was not created!", file=sys.stderr)
         return 1
 
+    copied_launchers: list[Path] = []
+    for name in LAUNCHER_SCRIPTS:
+        source = root_dir / "scripts" / name
+        if not source.exists():
+            print(f"Warning: launcher not found: {source}", file=sys.stderr)
+            continue
+        destination = dist_dir / name
+        shutil.copy2(source, destination)
+        copied_launchers.append(destination)
+
     print("=" * 70)
     print("Build completed successfully!")
     print(f"Distribution directory: {dist_dir}")
     if executable_path.exists():
         print(f"Executable binary:      {executable_path}")
+    for launcher in copied_launchers:
+        print(f"Launcher copied:        {launcher}")
     print("=" * 70)
     return 0
 

@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QUrl
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWebChannel import QWebChannel
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
+from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QWidget
 
+from ir_terminal.config import InstanceContext
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.ui.backend_bridge import BackendBridge
 from ir_terminal.utils.logger import LogTag
@@ -52,15 +54,20 @@ class WebMainWindow(QMainWindow):
         self,
         serial_manager: SerialManager,
         bridge: BackendBridge | None = None,
+        instance_context: InstanceContext | None = None,
     ) -> None:
         """Initializes main web application window.
 
         Args:
             serial_manager: Serial manager instance managing background I/O.
             bridge: Optional injected BackendBridge instance.
+            instance_context: Optional per-instance layout/identity. When set,
+                a dedicated QWebEngineProfile isolates Chromium cache/cookies.
         """
         super().__init__()
         self._serial_manager = serial_manager
+        self._instance_context = instance_context
+        self._profile: QWebEngineProfile | None = None
         if bridge is None:
             logger.warning(
                 "%s WebMainWindow without injected bridge; creating default "
@@ -74,9 +81,10 @@ class WebMainWindow(QMainWindow):
         self._init_window()
         self._init_webengine()
         logger.info(
-            "%s WebMainWindow ready: 1380x880 bridge=%s",
+            "%s WebMainWindow ready: 1380x880 bridge=%s node=%s",
             LogTag.IPC_BRIDGE,
             type(self._bridge).__name__,
+            instance_context.display_name if instance_context else "single",
         )
 
     def closeEvent(self, event: object) -> None:
@@ -104,9 +112,36 @@ class WebMainWindow(QMainWindow):
 
     def _init_window(self) -> None:
         """Configures window properties, minimum bounds, and title."""
-        self.setWindowTitle("SpectraLink IR-OWC Workstation")
+        title = (
+            self._instance_context.window_title
+            if self._instance_context is not None
+            else "SpectraLink IR-OWC Workstation"
+        )
+        self.setWindowTitle(title)
         self.resize(1380, 880)
         self.setMinimumSize(1100, 700)
+
+    def _create_page(self) -> WebAppPage:
+        """Creates the WebEngine page, isolating the profile per instance."""
+        ctx = self._instance_context
+        if ctx is None:
+            return WebAppPage(self._view)
+        profile = QWebEngineProfile(ctx.profile_key, self)
+        profile.setPersistentStoragePath(str(ctx.webengine_storage_dir))
+        profile.setCachePath(str(ctx.webengine_cache_dir))
+        profile.setHttpCacheType(QWebEngineProfile.HttpCacheType.DiskHttpCache)
+        profile.setPersistentCookiesPolicy(
+            QWebEngineProfile.PersistentCookiesPolicy.ForcePersistentCookies
+        )
+        self._profile = profile
+        logger.info(
+            "%s Per-instance WebEngine profile: name=%s cache=%s storage=%s",
+            LogTag.IPC_BRIDGE,
+            ctx.profile_key,
+            ctx.webengine_cache_dir,
+            ctx.webengine_storage_dir,
+        )
+        return WebAppPage(profile, self._view)
 
     def _init_webengine(self) -> None:
         """Instantiates WebEngine view, registers WebChannel bridge, and loads index.html."""
@@ -116,7 +151,7 @@ class WebMainWindow(QMainWindow):
         layout.setSpacing(0)
 
         self._view = QWebEngineView(self)
-        self._page = WebAppPage(self._view)
+        self._page = self._create_page()
         self._view.setPage(self._page)
 
         # Enable local storage and JS (least privilege: file URLs only).
@@ -151,6 +186,29 @@ class WebMainWindow(QMainWindow):
             self.showNormal()
         else:
             self.showMaximized()
+
+    def apply_window_position(self, position: str) -> None:
+        """Places the window on the left/right half of the primary screen.
+
+        Used by the dual-node launcher so Node A and Node B sit side by side.
+
+        Args:
+            position: ``left``, ``right``, or anything else (no-op).
+        """
+        if position not in ("left", "right"):
+            return
+        screen = QGuiApplication.primaryScreen()
+        geo = screen.availableGeometry()
+        half_w = max(720, geo.width() // 2)
+        self.setMinimumSize(min(self.minimumWidth(), half_w), 700)
+        self.resize(half_w, geo.height())
+        x = geo.x() if position == "left" else geo.x() + geo.width() - half_w
+        self.move(x, geo.y())
+
+    @property
+    def instance_context(self) -> InstanceContext | None:
+        """Returns the per-instance context, or None in single/default mode."""
+        return self._instance_context
 
     @property
     def bridge(self) -> BackendBridge:

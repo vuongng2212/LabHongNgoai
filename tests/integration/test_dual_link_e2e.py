@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import socket
 import tempfile
 import threading
 import time
@@ -11,10 +12,32 @@ from pathlib import Path
 from pytestqt.qtbot import QtBot
 
 from ir_terminal.core import socket_transport as socket_transport_module
+from ir_terminal.core.link_broker import LinkBroker
 from ir_terminal.core.serial_manager import SerialManager
+from ir_terminal.protocol.constants import Opcode
+from ir_terminal.services.chat_service import ChatService
 from ir_terminal.services.file_transfer_service import FileTransferService, TransferState
 from ir_terminal.services.storage_service import StorageService
 from scripts.virtual_optical_link import VirtualOpticalLink
+
+
+def _free_ports(count: int) -> list[int]:
+    """Reserves and returns ``count`` distinct loopback TCP ports."""
+    ports: list[int] = []
+    holders: list[socket.socket] = []
+    try:
+        while len(ports) < count:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.bind(("127.0.0.1", 0))
+            port = int(sock.getsockname()[1])
+            if port not in ports:
+                ports.append(port)
+                holders.append(sock)
+    finally:
+        for sock in holders:
+            sock.close()
+    return ports
+
 
 
 def test_dual_link_file_transfer_via_broker(qtbot: QtBot, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -69,3 +92,40 @@ def test_dual_link_file_transfer_via_broker(qtbot: QtBot, monkeypatch) -> None: 
     finally:
         mgr_a.shutdown()
         mgr_b.shutdown()
+
+
+def test_configured_link_endpoints_relay_chat(qtbot: QtBot, tmp_path: Path) -> None:
+    """SerialManager honors per-launch LINK endpoints and relays chat packets."""
+    port_a, port_b = _free_ports(2)
+    broker = LinkBroker(port_a=port_a, port_b=port_b, latency_ms=0.0)
+    broker.start()
+    endpoints = {
+        "LINK_A": ("127.0.0.1", port_a),
+        "LINK_B": ("127.0.0.1", port_b),
+    }
+    mgr_a = SerialManager(
+        link_endpoints=endpoints, include_link=True, link_connect_retries=5
+    )
+    mgr_b = SerialManager(
+        link_endpoints=endpoints, include_link=True, link_connect_retries=5
+    )
+    try:
+        assert "LINK_A" in mgr_a.get_port_list()
+        assert "LINK_B" in mgr_b.get_port_list()
+
+        with qtbot.waitSignal(mgr_a.connected, timeout=5000):
+            mgr_a.connect_port("LINK_A", 115200)
+        with qtbot.waitSignal(mgr_b.connected, timeout=5000):
+            mgr_b.connect_port("LINK_B", 115200)
+
+        chat_b = ChatService(mgr_b, StorageService(data_dir=tmp_path / "b"))
+        with qtbot.waitSignal(chat_b.message_received, timeout=5000) as blocker:
+            mgr_a.send_packet(seq=7, opcode=Opcode.DATA_TEXT, payload=b"configured-link")
+
+        text, _timestamp, is_outgoing = blocker.args
+        assert text == "configured-link"
+        assert is_outgoing is False
+    finally:
+        mgr_a.shutdown()
+        mgr_b.shutdown()
+        broker.stop()

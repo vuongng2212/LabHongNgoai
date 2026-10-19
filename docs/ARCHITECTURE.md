@@ -99,7 +99,7 @@ header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 ```text
 LabHongNgoai/
 ├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
-├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 204 passed)
+├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 234 passed)
 ├── docs/                         # 4 file duy nhất, không thêm file planning rời
 │   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
 │   ├── PROTOCOL.md               # Wire format chốt + code C STM32
@@ -110,7 +110,8 @@ LabHongNgoai/
 │   └── ir_terminal/
 │       ├── __init__.py
 │       ├── __main__.py            # Entry point chạy app: `uv run python -m ir_terminal`
-│       ├── app.py                 # QApplication lifecycle & dependency injection container
+│       ├── app.py                 # QApplication lifecycle, CLI/lock/broker, DI container
+│       ├── config.py              # LaunchConfig + InstanceContext (CLI flags, A/B isolation)
 │       │
 │       ├── core/                  # [TẦNG CORE] Quản lý I/O & Threading
 │       │   ├── __init__.py
@@ -118,7 +119,8 @@ LabHongNgoai/
 │       │   ├── serial_worker.py   # QObject Worker trên QThread + poll timer (10ms HW / 2ms mock)
 │       │   ├── serial_manager.py  # Quản lý vòng đời COM (Connect, Disconnect, Scan)
 │       │   ├── pyserial_transport.py # PySerial 8N1 (timeout 0.05 / write 0.2)
-│       │   ├── socket_transport.py   # TCP transport cho dual-mock LINK_A/LINK_B
+│       │   ├── socket_transport.py   # TCP transport LINK_A/LINK_B (retry + token + link-lost)
+│       │   ├── link_broker.py     # Broker TCP in-app (host node), relay A<->B, LOS/loss/latency
 │       │   ├── transport_factory.py  # Chọn PySerial / Socket / Mock theo tên cổng
 │       │   ├── ring_buffer.py     # Bộ đệm vòng byte stream chống tràn
 │       │   └── mock_serial.py     # Giả lập Serial (drop rate, latency, LOS blockage)
@@ -153,13 +155,14 @@ LabHongNgoai/
 │       │
 │       └── utils/                 # [TIỆN ÍCH]
 │           ├── __init__.py
-│           ├── logger.py          # Rotating file logger + LogTag
+│           ├── logger.py          # Rotating file logger + LogTag (retarget theo instance)
+│           ├── instance_lock.py   # QLockFile chống mở trùng 1 instance (--allow-multiple)
 │           └── path_helpers.py    # Resolve asset + data/ (dev, frozen, IR_DATA_DIR, instance A/B)
 │
-├── data/                          # Runtime (tự tạo): JSON stores, transfers/, logs/, instances/<A|B>/
-├── tests/                         # pytest (hiện tại 204 passed)
-│   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge
-│   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager
+├── data/                          # Runtime (tự tạo): JSON stores, transfers/, logs/, instances/<A|B>/ + webengine/<cache|storage>
+├── tests/                         # pytest (hiện tại 234 passed)
+│   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge, config, broker, lock
+│   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager, dual-link
 │
 ├── scripts/
 │   └── build_standalone.py        # Đóng gói PyInstaller
@@ -176,6 +179,29 @@ LabHongNgoai/
 - Thư mục nhận file (`transfers_dir`) cấu hình được từ UI (*Settings → Default receive directory (Files only)*), lưu vào `settings.json` dưới dạng **tuyệt đối** (`Path(dir).expanduser().resolve()`) và được **validate** khi Save (tạo nếu thiếu, từ chối nếu trỏ vào file/thư mục không truy cập được → trả lỗi ra UI). `default_transfers_dir` (mặc định `data/transfers/`) luôn được expose để nút **Reset to default** quay lại.
 - `file_transfer_service` **khóa thư mục đích cho từng phiên nhận**: `_rx_dest_dir` được chụp tại `TRANSFER_START`, dùng chung cho file tạm `.ir_rx_*.part` và lần publish cuối (`.part` → file thật), nên đổi setting giữa phiên không gây `EXDEV`. Khi `load_settings` gặp đường dẫn đã lưu không dùng được, ghi **warning** rõ ràng và giữ mặc định (không fallback im lặng).
 - Chỉ đường dẫn nhận file đổi được từ UI; JSON/`logs/` luôn nằm trong `data/` (chỉ đổi qua `IR_DATA_DIR`).
+
+### 3.1.1. Chế độ hai node trên một PC (zero-driver)
+
+Một bản build duy nhất chạy được 2 node độc lập bằng cờ CLI (không cần driver ảo):
+
+| Cờ | Ý nghĩa |
+|----|---------|
+| `--instance A\|B` | Tách `data/instances/<ID>/` (JSON, transfers, logs, WebEngine, lock) |
+| `--link-role off\|host\|join\|auto` | `host` = Node A + broker in-app; `join` = Node B; `auto` suy ra từ instance |
+| `--link-base-port 6001` | `LINK_A` = base, `LINK_B` = base+1 |
+| `--port COM11\|LINK_A\|MOCK_COM_LOOPBACK` | Ép cổng, bỏ qua suy luận theo role |
+| `--baud 115200` | Baud rate |
+| `--auto-connect` | Tự kết nối cổng ưu tiên sau khi UI sẵn sàng |
+| `--window-pos left\|right\|normal` | Chia đôi màn hình cho demo 2 node |
+| `--allow-multiple` | Bỏ qua lock (debug) |
+| `--broker-only` | Chỉ chạy broker headless (dev) |
+| `--loss/--latency-ms/--los` | Mô phỏng suy hao/trễ/chắn tia của broker |
+
+- `config.py:LaunchConfig` là nguồn chuẩn cho CLI/env; `InstanceContext` tạo sẵn mọi thư mục và identity (title, station names, profile key).
+- `utils/instance_lock.py` dùng `QLockFile` tại `data/instances/<ID>/app.lock`; hai node A/B dùng lock khác nhau nên chạy song song được, mở trùng cùng node sẽ bị chặn.
+- `core/link_broker.py` được host khởi động **trong process** (không cần `scripts/`), bind `127.0.0.1`, dùng `SO_EXCLUSIVEADDRUSE` trên Windows, hỗ trợ retry khi node join khởi động trước.
+- `QWebEngineProfile` riêng cho từng instance (`data/instances/<ID>/webengine/{cache,storage}`) để tránh hỏng cache/cookie SQLite khi 2 process chạy đồng thời.
+- Windows: `Start_Dual_Demo.cmd` (link mode) và `Start_Com_Pair.cmd` (virtual COM) được copy cạnh `.exe` sau build.
 
 ### 3.2. Cấu trúc nội bộ file transfer
 
@@ -218,7 +244,7 @@ LabHongNgoai/
 
 Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
 1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Sau refactor ngày 2026-10-20: `204 passed`.
+2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Sau refactor + dual-node ngày 2026-10-20: `234 passed`.
 
 ---
 

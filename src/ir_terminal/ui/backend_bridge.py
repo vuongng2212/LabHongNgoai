@@ -12,6 +12,13 @@ from PySide6.QtCore import QObject, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog, QWidget
 
+from ir_terminal.config import (
+    DEFAULT_BAUD,
+    DEFAULT_LINK_BASE_PORT,
+    DEFAULT_LINK_HOST,
+    InstanceContext,
+    LaunchConfig,
+)
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import DEFAULT_HEALTH_CHECK_SEC, Opcode
 from ir_terminal.protocol.packet import Packet
@@ -79,6 +86,8 @@ class BackendBridge(QObject):
         file_service: FileTransferService | None = None,
         telemetry_service: TelemetryService | None = None,
         storage_service: StorageService | None = None,
+        launch_config: LaunchConfig | None = None,
+        instance_context: InstanceContext | None = None,
     ) -> None:
         """Initializes backend bridge connecting injected services to Web UI.
 
@@ -88,9 +97,13 @@ class BackendBridge(QObject):
             file_service: Optional injected FileTransferService instance.
             telemetry_service: Optional injected TelemetryService instance.
             storage_service: Optional injected StorageService instance.
+            launch_config: Optional parsed launch options (exposed to the UI).
+            instance_context: Optional per-instance layout/identity.
         """
         super().__init__()
         self._serial_manager = serial_manager
+        self._launch_config = launch_config
+        self._instance_context = instance_context
         self._storage = storage_service or StorageService()
         self._chat_service = chat_service or ChatService(self._serial_manager, self._storage)
         self._file_service = file_service or FileTransferService(
@@ -347,6 +360,38 @@ class BackendBridge(QObject):
         """Returns JSON list of available COM ports."""
         ports = self._serial_manager.get_port_list()
         return json.dumps(ports)
+
+    @Slot(result=str)
+    def getLaunchConfig(self) -> str:
+        """Returns launch/identity config as JSON for UI preselect + branding.
+
+        Returns:
+            JSON object with instance id, display name, role, preferred port,
+            baud, link settings and data directory.
+        """
+        ctx = self._instance_context
+        cfg = self._launch_config
+        payload: dict[str, object] = {
+            "instance": ctx.instance_id if ctx else None,
+            "display_name": ctx.display_name if ctx else "Single Node",
+            "role": ctx.role_label if ctx else "",
+            "window_title": ctx.window_title if ctx else "SpectraLink IR-OWC Workstation",
+            "data_dir": str(ctx.data_dir) if ctx else "",
+            "preferred_port": cfg.preferred_port if cfg else None,
+            "baud": cfg.baud if cfg else DEFAULT_BAUD,
+            "transport": cfg.transport if cfg else "auto",
+            "link_role": cfg.effective_link_role if cfg else "off",
+            "link_host": cfg.link_host if cfg else DEFAULT_LINK_HOST,
+            "link_base_port": cfg.link_base_port if cfg else DEFAULT_LINK_BASE_PORT,
+            "auto_connect": cfg.auto_connect if cfg else False,
+        }
+        return json.dumps(payload)
+
+    def _default_export_dir(self) -> str:
+        """Returns the per-instance logs dir (or the shared one) for exports."""
+        if self._instance_context is not None:
+            return str(self._instance_context.logs_dir)
+        return str(get_logs_dir())
 
     @Slot(str, int)
     def connectPort(self, port_name: str, baudrate: int) -> None:
@@ -745,7 +790,7 @@ class BackendBridge(QObject):
             Destination file path string on success, or empty string on cancellation.
         """
         try:
-            default_dir = str(get_logs_dir())
+            default_dir = self._default_export_dir()
             dest_path, _ = QFileDialog.getSaveFileName(
                 self._dialog_parent(),
                 "Export Telemetry CSV",
@@ -781,7 +826,7 @@ class BackendBridge(QObject):
             Destination file path string on success, or empty string on cancellation.
         """
         try:
-            default_dir = str(get_logs_dir())
+            default_dir = self._default_export_dir()
             dest_path, _ = QFileDialog.getSaveFileName(
                 self._dialog_parent(),
                 "Export File Transfers CSV",

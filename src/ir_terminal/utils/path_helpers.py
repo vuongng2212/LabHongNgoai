@@ -14,11 +14,48 @@ portable deployments).
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
 # Environment override for the writable data root (absolute or relative).
 DATA_DIR_ENV = "IR_DATA_DIR"
+
+# Safe filesystem label for a dual-mock instance (kept short and portable).
+INSTANCE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,16}$"
+_INSTANCE_ID_RE = re.compile(INSTANCE_ID_PATTERN)
+
+
+class InvalidInstanceIdError(ValueError):
+    """Raised when a dual-mock instance id is not a safe filesystem label."""
+
+
+def normalize_instance_id(value: str | None) -> str | None:
+    """Validates and upper-cases a dual-mock instance id.
+
+    The id becomes a directory name under ``data/instances/<ID>`` so it must be
+    a portable filesystem label (no ``.``, ``/``, ``\\`` or ``..`` traversal).
+
+    Args:
+        value: Raw instance id from the CLI/env, or None.
+
+    Returns:
+        Upper-cased instance id, or None when empty.
+
+    Raises:
+        InvalidInstanceIdError: If the value contains unsafe characters.
+    """
+    if value is None:
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    if not _INSTANCE_ID_RE.match(candidate):
+        raise InvalidInstanceIdError(
+            f"Invalid instance id {value!r}: expected 1-16 chars matching "
+            f"{INSTANCE_ID_PATTERN}"
+        )
+    return candidate.upper()
 
 
 def get_instance_name(explicit: str | None = None) -> str | None:
@@ -115,7 +152,8 @@ def get_app_data_dir(instance: str | None = None) -> Path:
     else:
         base_dir = get_app_root() / "data"
 
-    inst = get_instance_name(instance)
+    raw_instance = instance if instance is not None else os.environ.get("IR_INSTANCE")
+    inst = normalize_instance_id(raw_instance)
     if inst:
         base_dir = base_dir / "instances" / inst
     base_dir.mkdir(parents=True, exist_ok=True)
@@ -139,6 +177,27 @@ def get_logs_dir(instance: str | None = None) -> Path:
     logs_dir = get_app_data_dir(instance) / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir
+
+
+def get_webengine_dirs(instance: str | None = None) -> tuple[Path, Path]:
+    """Returns per-instance (cache_dir, storage_dir) for QWebEngineProfile.
+
+    Two app processes sharing the default Chromium profile corrupt the cache
+    and cookie SQLite databases. Each instance (and each data root) therefore
+    gets its own profile directory under ``<app data>/webengine/``.
+
+    Args:
+        instance: Optional dual-mock instance name (A/B).
+
+    Returns:
+        Tuple of (http_cache_dir, persistent_storage_dir) that both exist.
+    """
+    base = get_app_data_dir(instance) / "webengine"
+    cache_dir = base / "cache"
+    storage_dir = base / "storage"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir, storage_dir
 
 
 def is_dual_mock_enabled() -> bool:

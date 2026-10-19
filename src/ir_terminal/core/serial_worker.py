@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
+import re
 from typing import ClassVar
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from serial.tools import list_ports
 
 from ir_terminal.core.interfaces import ITransport
+from ir_terminal.core.socket_transport import SocketTransport
 from ir_terminal.core.transport_factory import create_transport
 from ir_terminal.protocol.constants import (
     DEFAULT_BAUDRATE,
@@ -16,6 +19,7 @@ from ir_terminal.protocol.constants import (
     MOCK_POLL_MS,
     RING_BUFFER_CAPACITY,
     RX_COMPACT_THRESHOLD,
+    SOCKET_CONNECT_TIMEOUT_SEC,
 )
 from ir_terminal.protocol.framer import FramerStats, parse_frames_with_stats
 from ir_terminal.protocol.packet import Packet
@@ -23,6 +27,46 @@ from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_pr
 from ir_terminal.utils.path_helpers import is_dual_mock_enabled
 
 logger = logging.getLogger(__name__)
+
+
+def _natural_port_key(name: str) -> str:
+    """Sort key placing COM2 before COM10 (natural numeric ordering)."""
+    return "".join(
+        f"{int(part):08d}" if part.isdigit() else part.lower()
+        for part in re.split(r"(\d+)", name)
+    )
+
+
+def _windows_registry_ports() -> list[str]:
+    """Returns COM names from the Windows registry (virtual-COM fallback).
+
+    Some virtual COM drivers (older com0com, some USB-serial stacks) do not
+    appear in ``serial.tools.list_ports`` but are registered under
+    ``HARDWARE\\DEVICEMAP\\SERIALCOMM``. Non-Windows hosts return an empty list.
+    """
+    try:
+        winreg = importlib.import_module("winreg")
+    except ImportError:
+        # winreg does not exist on non-Windows hosts.
+        return []
+    ports: list[str] = []
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DEVICEMAP\SERIALCOMM"
+        ) as key:
+            index = 0
+            while True:
+                try:
+                    _name, value, _kind = winreg.EnumValue(key, index)
+                except OSError:
+                    break
+                if value:
+                    ports.append(str(value))
+                index += 1
+    except OSError:
+        return []
+    return ports
+
 
 
 class SerialWorker(QObject):
@@ -38,8 +82,27 @@ class SerialWorker(QObject):
     ports_changed: ClassVar[Signal] = Signal(list)  # ([port names])
     framer_error: ClassVar[Signal] = Signal(str, int)  # (kind, count delta)
 
-    def __init__(self) -> None:
-        """Initializes non-blocking serial worker instance."""
+    def __init__(
+        self,
+        link_endpoints: dict[str, tuple[str, int]] | None = None,
+        *,
+        include_link: bool | None = None,
+        link_connect_retries: int = 0,
+        link_retry_interval_sec: float = 0.25,
+        link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
+        link_token: str | None = None,
+    ) -> None:
+        """Initializes non-blocking serial worker instance.
+
+        Args:
+            link_endpoints: Optional LINK_* -> (host, port) map for dual mode.
+            include_link: Whether LINK_A/B are offered in the port list
+                (defaults to the IR_ENABLE_DUAL_MOCK env gate).
+            link_connect_retries: Extra LINK connect attempts on open.
+            link_retry_interval_sec: Delay between LINK connect attempts.
+            link_connect_timeout_sec: Per-attempt LINK connect timeout.
+            link_token: Optional broker handshake token.
+        """
         super().__init__()
         self._transport: ITransport | None = None
         self._rx_accumulation = bytearray()
@@ -49,6 +112,18 @@ class SerialWorker(QObject):
         self._last_ports: list[str] = []
         self._port_poll_timer: QTimer | None = None
         self._poll_timer: QTimer | None = None
+        self._link_endpoints = link_endpoints
+        self._include_link = is_dual_mock_enabled() if include_link is None else include_link
+        self._link_connect_retries = link_connect_retries
+        self._link_retry_interval_sec = link_retry_interval_sec
+        self._link_connect_timeout_sec = link_connect_timeout_sec
+        self._link_token = link_token
+        self._link_lost_pending = False
+
+    def _on_link_lost(self) -> None:
+        """Records that the socket transport dropped (handled on next poll)."""
+        self._link_lost_pending = True
+
 
     @Slot(str, int)
     def open_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
@@ -68,8 +143,19 @@ class SerialWorker(QObject):
                 "worker",
             )
 
-            self._transport = create_transport(port_name=port_name, baudrate=baudrate)
+            self._transport = create_transport(
+                port_name=port_name,
+                baudrate=baudrate,
+                link_endpoints=self._link_endpoints,
+                link_connect_retries=self._link_connect_retries,
+                link_retry_interval_sec=self._link_retry_interval_sec,
+                link_connect_timeout_sec=self._link_connect_timeout_sec,
+                link_token=self._link_token,
+            )
             transport_kind = type(self._transport).__name__
+            if isinstance(self._transport, SocketTransport):
+                self._transport.on_link_lost = self._on_link_lost
+            self._link_lost_pending = False
             logger.info(
                 "%s Transport created: %s for port=%s baud=%d",
                 LogTag.HW_SERIAL,
@@ -130,7 +216,7 @@ class SerialWorker(QObject):
             self._poll_timer = None
         self._stop_port_watcher()
 
-        if self._transport and self._transport.is_open:
+        if self._transport is not None:
             try:
                 self._transport.close()
             except Exception as exc:
@@ -145,6 +231,7 @@ class SerialWorker(QObject):
         self._transport = None
         self._rx_accumulation = bytearray()
         self._rx_consumed = 0
+        self._link_lost_pending = False
         # Only emit on a real connected->disconnected transition. open_port()
         # calls close_port() as cleanup, and emitting here would fake a
         # disconnect that wipes pending-connect UI state before the real
@@ -287,7 +374,22 @@ class SerialWorker(QObject):
     @Slot()
     def _poll_serial(self) -> None:
         """Periodically polls for incoming serial bytes."""
-        if not self._transport or not self._transport.is_open:
+        if self._transport is None:
+            return
+        if self._link_lost_pending:
+            self._link_lost_pending = False
+            logger.error(
+                "%s Link LOST: peer/broker disconnected (port=%s); port closed",
+                LogTag.HW_SERIAL,
+                type(self._transport).__name__,
+            )
+            self.error_occurred.emit("Link lost: peer or broker disconnected")
+            self.close_port()
+            # close_port() sees is_open already False and stays silent, so the
+            # UI disconnect transition is emitted explicitly here.
+            self.disconnected.emit()
+            return
+        if not self._transport.is_open:
             return
 
         try:
@@ -343,7 +445,7 @@ class SerialWorker(QObject):
 
     def _start_port_watcher(self) -> None:
         """Starts hotplug polling (emits ports_changed only on change)."""
-        self._last_ports = scan_available_ports()
+        self._last_ports = scan_available_ports(self._include_link)
         logger.debug(
             "%s Hotplug watcher started: initial_ports=%s",
             LogTag.HW_SERIAL,
@@ -365,7 +467,7 @@ class SerialWorker(QObject):
     def _poll_ports(self) -> None:
         """Emits ports_changed when the OS port list differs."""
         try:
-            current = scan_available_ports()
+            current = scan_available_ports(self._include_link)
             if current != self._last_ports:
                 logger.info(
                     "%s Hotplug ports changed: %s -> %s",
@@ -394,17 +496,26 @@ class SerialWorker(QObject):
         return self._framer_stats.snapshot()
 
 
-def scan_available_ports() -> list[str]:
+def scan_available_ports(include_link: bool | None = None) -> list[str]:
     """Scans and returns available system COM ports plus MOCK options.
 
-    LINK_A/B dual-mock ports are listed ONLY when IR_ENABLE_DUAL_MOCK=1 so
-    production users with real hardware never see or pick them by mistake.
+    Merges ``pyserial`` enumeration with the Windows registry so virtual COM
+    drivers that pyserial misses still show up, then appends
+    ``MOCK_COM_LOOPBACK`` and (when enabled) ``LINK_A``/``LINK_B``.
+
+    Args:
+        include_link: Whether to list the LINK_A/B virtual ports. None falls
+            back to the IR_ENABLE_DUAL_MOCK env gate (back-compat).
 
     Returns:
-        List of available COM port identifiers.
+        Naturally sorted, de-duplicated list of port identifiers.
     """
     ports = [p.device for p in list_ports.comports()]
+    for extra in _windows_registry_ports():
+        if extra not in ports:
+            ports.append(extra)
     ports.append("MOCK_COM_LOOPBACK")
-    if is_dual_mock_enabled():
+    link_enabled = is_dual_mock_enabled() if include_link is None else include_link
+    if link_enabled:
         ports.extend(["LINK_A", "LINK_B"])
-    return ports
+    return sorted(set(ports), key=_natural_port_key)
