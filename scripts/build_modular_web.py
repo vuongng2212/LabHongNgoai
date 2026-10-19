@@ -1,7 +1,11 @@
 """Component-based modular Web UI builder with Pixel-Perfect Design Matching for IR-OWC Lab Terminal."""
 
-import os
 import re
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+WEB_DIR = PROJECT_ROOT / "src" / "ir_terminal" / "ui" / "web"
+COMPONENTS_DIR = WEB_DIR / "components"
 
 EXPLICIT_REPLACEMENTS = [
     # Corrupted BER formulas
@@ -65,46 +69,31 @@ def sanitize(text: str) -> str:
     return res
 
 
-def extract_section(filepath: str, pattern: str) -> str:
-    with open(filepath, encoding="utf-8") as f:
-        content = f.read()
-    match = re.search(pattern, content, re.DOTALL)
-    if not match:
-        return ""
-    return sanitize(match.group(1))
-
-
 def build_modular_components() -> None:
-    comp_dir = "src/ir_terminal/ui/web/components"
-    js_dir = "src/ir_terminal/ui/web/js"
-    os.makedirs(comp_dir, exist_ok=True)
-    os.makedirs(js_dir, exist_ok=True)
+    COMPONENTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Helper to load existing component or extract from template
-    def load_component(filename: str, template_path: str) -> str:
-        dest_path = f"{comp_dir}/{filename}"
-        if os.path.exists(dest_path):
-            with open(dest_path, encoding="utf-8") as f:
-                return sanitize(f.read())
-        extracted = extract_section(template_path, r"<main[^>]*>(.*?)</main>")
-        with open(dest_path, "w", encoding="utf-8") as f:
-            f.write(extracted)
-        return extracted
+    # Load required view components directly from the project component directory.
+    def load_component(filename: str) -> str:
+        dest_path = COMPONENTS_DIR / filename
+        if not dest_path.exists():
+            raise FileNotFoundError(f"Required UI component not found: {dest_path}")
+        with open(dest_path, encoding="utf-8") as f:
+            return sanitize(f.read())
 
-    v1 = load_component("view_hardware.html", "ui_templates/apple_style/1_1_hardware_setup.html")
-    v2 = load_component("view_file.html", "ui_templates/apple_style/2_2_file_transfer.html")
-    v3 = load_component("view_chat.html", "ui_templates/apple_style/3_3_realtime_chat.html")
-    v4 = load_component("view_telemetry.html", "ui_templates/apple_style/4_4_lab_telemetry.html")
+    v1 = load_component("view_hardware.html")
+    v2 = load_component("view_file.html")
+    v3 = load_component("view_chat.html")
+    v4 = load_component("view_telemetry.html")
 
-    settings_path = f"{comp_dir}/settings_modal.html"
-    if os.path.exists(settings_path):
+    settings_path = COMPONENTS_DIR / "settings_modal.html"
+    if settings_path.exists():
         with open(settings_path, encoding="utf-8") as f:
             settings_modal = sanitize(f.read())
     else:
         settings_modal = ""
 
-    feedback_path = f"{comp_dir}/ui_feedback.html"
-    if os.path.exists(feedback_path):
+    feedback_path = COMPONENTS_DIR / "ui_feedback.html"
+    if feedback_path.exists():
         with open(feedback_path, encoding="utf-8") as f:
             raw_feedback = f.read()
         # Keep only the mounts (toast stack + modal overlay); drop the header comment.
@@ -113,8 +102,8 @@ def build_modular_components() -> None:
     else:
         feedback_mounts = ""
 
-    header_path = f"{comp_dir}/chrome_header.html"
-    if os.path.exists(header_path):
+    header_path = COMPONENTS_DIR / "chrome_header.html"
+    if header_path.exists():
         with open(header_path, encoding="utf-8") as f:
             chrome_header = f.read()
     else:
@@ -160,11 +149,10 @@ def build_modular_components() -> None:
   </div>
 </header>
 """
-        with open(header_path, "w", encoding="utf-8") as f:
-            f.write(chrome_header)
+        header_path.write_text(chrome_header, encoding="utf-8")
 
-    sidebar_path = f"{comp_dir}/sidebar_nav.html"
-    if os.path.exists(sidebar_path):
+    sidebar_path = COMPONENTS_DIR / "sidebar_nav.html"
+    if sidebar_path.exists():
         with open(sidebar_path, encoding="utf-8") as f:
             sidebar_nav = f.read()
     else:
@@ -229,8 +217,7 @@ def build_modular_components() -> None:
   </div>
 </aside>
 """
-        with open(sidebar_path, "w", encoding="utf-8") as f:
-            f.write(sidebar_nav)
+        sidebar_path.write_text(sidebar_nav, encoding="utf-8")
 
     # 5. Assemble index.html
     full_index = f"""<!DOCTYPE html>
@@ -462,7 +449,7 @@ def build_modular_components() -> None:
 </html>
 """
 
-    with open("src/ir_terminal/ui/web/index.html", "w", encoding="utf-8") as f:
+    with open(WEB_DIR / "index.html", "w", encoding="utf-8") as f:
         f.write(full_index)
 
     print("Modular component architecture successfully built at src/ir_terminal/ui/web/")
