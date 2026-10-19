@@ -1,6 +1,6 @@
 [project]
 name = "ir-terminal"
-version = "0.3.4"
+version = "0.3.5"
 description = "Desktop Application for IR Optical Wireless Communication (IR-OWC) Lab Terminal"
 readme = "README.md"
 requires-python = ">=3.11"

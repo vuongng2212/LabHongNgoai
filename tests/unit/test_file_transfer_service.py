@@ -278,6 +278,7 @@ class TestFileTransferService:
             # Must remain at chunk 0 because the ACK was stale (not advanced)
             assert service._current_chunk_idx == 0
         finally:
+            service.abort_transfer()
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
@@ -308,6 +309,7 @@ class TestFileTransferService:
             service._handle_packet(pkt)
             assert service._retry_count == 1
         finally:
+            service.abort_transfer()
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
@@ -338,6 +340,7 @@ class TestFileTransferService:
             service._handle_packet(pkt)
             assert service._retry_count == 1
         finally:
+            service.abort_transfer()
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
