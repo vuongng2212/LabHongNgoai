@@ -156,6 +156,36 @@ class TestFileTransferService:
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
+    def test_too_many_chunks_rejected_before_read(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """A file needing >65535 chunks is rejected cleanly instead of struct.error."""
+        manager = SerialManager()
+        service = FileTransferService(manager, chunk_size=1)
+        source = tmp_path / "too_many_chunks.bin"
+        source.write_bytes(b"X" * 70_000)  # 70,000 chunks at 1B/chunk
+        try:
+            with qtbot.waitSignal(service.transfer_failed, timeout=1000) as blocker:
+                service.start_transfer(str(source))
+            (reason,) = blocker.args
+            assert "chunks" in reason.lower()
+            assert service.state == TransferState.IDLE
+        finally:
+            manager.shutdown()
+
+    def test_invalid_chunk_size_rejected(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """A chunk_size that cannot fit DATA_CHUNK (2B prefix) is rejected cleanly."""
+        manager = SerialManager()
+        service = FileTransferService(manager, chunk_size=MAX_PAYLOAD_SIZE)
+        source = tmp_path / "bad_chunk_size.bin"
+        source.write_bytes(b"test")
+        try:
+            with qtbot.waitSignal(service.transfer_failed, timeout=1000) as blocker:
+                service.start_transfer(str(source))
+            (reason,) = blocker.args
+            assert "chunk size" in reason.lower()
+            assert service.state == TransferState.IDLE
+        finally:
+            manager.shutdown()
+
     def test_file_transfer_non_existent_file_fails(self, qtbot: QtBot) -> None:
         """Verifies error signal when attempting to transfer a missing file."""
         manager = SerialManager()
@@ -513,6 +543,62 @@ class TestFileTransferService:
 
         manager.shutdown()
 
+    def test_file_receiver_size_mismatch_fails(self, qtbot: QtBot) -> None:
+        """Assembled length must match START file_size and END total_bytes_sent."""
+        manager = SerialManager()
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = FileTransferService(manager, transfers_dir=Path(tmp_dir))
+            short_content = b"12345678"  # START declares 10B, chunks carry only 8B
+            crc = zlib.crc32(short_content) & 0xFFFFFFFF
+            start_payload = FileStartPayload(
+                file_size=10,
+                chunk_size=5,
+                total_chunks=2,
+                file_crc32=crc,
+                filename="short.bin",
+            )
+            service._handle_packet(
+                Packet(
+                    header=Header(
+                        sof=SOF_MAGIC, seq=1, opcode=Opcode.TRANSFER_START, length=10
+                    ),
+                    payload=start_payload.pack(),
+                    crc32=123,
+                    eof=EOF_MAGIC,
+                )
+            )
+            for idx in range(2):
+                chunk = FileChunkPayload(chunk_id=idx, chunk_data=short_content[idx * 4 : (idx + 1) * 4])
+                service._handle_packet(
+                    Packet(
+                        header=Header(
+                            sof=SOF_MAGIC, seq=2 + idx, opcode=Opcode.DATA_CHUNK, length=6
+                        ),
+                        payload=chunk.pack(),
+                        crc32=123,
+                        eof=EOF_MAGIC,
+                    )
+                )
+
+            end_payload = FileEndPayload(file_crc32=crc, total_bytes_sent=len(short_content))
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service._handle_packet(
+                    Packet(
+                        header=Header(
+                            sof=SOF_MAGIC, seq=4, opcode=Opcode.TRANSFER_END, length=8
+                        ),
+                        payload=end_payload.pack(),
+                        crc32=123,
+                        eof=EOF_MAGIC,
+                    )
+                )
+
+            assert service.state == TransferState.FAILED
+            (err,) = blocker.args
+            assert "size mismatch" in err.lower()
+
+        manager.shutdown()
+
     def test_file_receiver_crc_mismatch_fails(self, qtbot: QtBot) -> None:
         """Verifies that received data with checksum mismatch is rejected."""
         manager = SerialManager()
@@ -676,6 +762,105 @@ class TestFileTransferReceiver:
             assert service.state == TransferState.IDLE
             qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
             assert Opcode.NACK in _nack_opcodes_in(raw_tx)
+        finally:
+            manager.shutdown()
+
+    def test_rx_duplicate_start_reacks_same_session(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """A retransmitted START (lost ACK) must be re-ACKed, not NACKed as busy."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(serial_manager=manager, transfers_dir=tmp_path / "rx")
+        raw_tx: list[bytes] = []
+        manager.raw_tx.connect(raw_tx.append)
+        try:
+            start = FileStartPayload(
+                file_size=10,
+                chunk_size=5,
+                total_chunks=2,
+                file_crc32=zlib.crc32(b"0123456789") & 0xFFFFFFFF,
+                filename="dup_start.bin",
+            )
+            pkt = _rx_packet(7, Opcode.TRANSFER_START, start.pack())
+            service._handle_packet(pkt)
+            qtbot.waitUntil(lambda: len(raw_tx) >= 1, timeout=2000)
+
+            raw_tx.clear()
+            service._handle_packet(pkt)  # identical retransmission
+            qtbot.waitUntil(lambda: len(raw_tx) >= 1, timeout=2000)
+
+            opcodes = _nack_opcodes_in(raw_tx)
+            assert Opcode.ACK in opcodes
+            assert Opcode.NACK not in opcodes
+            assert service.state == TransferState.RECEIVING
+        finally:
+            manager.shutdown()
+
+    def test_rx_duplicate_end_reacks_after_completion(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """A retransmitted END (lost final ACK) must be re-ACKed without re-saving."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(serial_manager=manager, transfers_dir=tmp_path / "rx")
+        raw_tx: list[bytes] = []
+        manager.raw_tx.connect(raw_tx.append)
+        completed: list[tuple[str, int, float, str]] = []
+        service.transfer_completed.connect(lambda *args: completed.append(args))
+        try:
+            content = b"0123456789"
+            crc = zlib.crc32(content) & 0xFFFFFFFF
+            start = FileStartPayload(10, 5, 2, crc, "dup_end.bin")
+            service._handle_packet(_rx_packet(10, Opcode.TRANSFER_START, start.pack()))
+            service._handle_packet(
+                _rx_packet(11, Opcode.DATA_CHUNK, FileChunkPayload(0, content[:5]).pack())
+            )
+            service._handle_packet(
+                _rx_packet(12, Opcode.DATA_CHUNK, FileChunkPayload(1, content[5:]).pack())
+            )
+            end = FileEndPayload(crc, len(content)).pack()
+            service._handle_packet(_rx_packet(13, Opcode.TRANSFER_END, end))
+
+            def ack_count() -> int:
+                count = 0
+                for blob in raw_tx:
+                    packets, _ = parse_frames_from_buffer(blob)
+                    for pkt in packets:
+                        if pkt.opcode != Opcode.ACK:
+                            continue
+                        ack_info = AckPayload.unpack(pkt.payload)
+                        if ack_info.acked_seq == 13:
+                            count += 1
+                return count
+
+            qtbot.waitUntil(lambda: ack_count() >= 1, timeout=2000)
+            assert service.state == TransferState.COMPLETED
+            assert len(completed) == 1
+
+            service._handle_packet(_rx_packet(13, Opcode.TRANSFER_END, end))
+            qtbot.waitUntil(lambda: ack_count() >= 2, timeout=2000)
+            assert service.state == TransferState.COMPLETED
+            assert len(completed) == 1
+            assert Opcode.NACK not in _nack_opcodes_in(raw_tx)
+        finally:
+            manager.shutdown()
+
+    def test_stale_nack_does_not_consume_retry_budget(self, tmp_path: Path) -> None:
+        """A NACK carrying an old acked_seq must not retransmit the current frame."""
+        manager = SerialManager()
+        service = FileTransferService(manager)
+        tmp_file = tmp_path / "stale_nack.bin"
+        tmp_file.write_bytes(b"stale nack test")
+        try:
+            service.start_transfer(str(tmp_file))
+            service._ack_timer.stop()
+            assert service.state == TransferState.HANDSHAKING
+
+            stale_seq = (service._seq + 1) % 256
+            nack_payload = AckPayload(acked_seq=stale_seq, status=AckStatus.CRC_ERROR).pack()
+            service._handle_packet(_rx_packet(stale_seq, Opcode.NACK, nack_payload))
+
+            assert service._retry_count == 0
+            assert service.state == TransferState.HANDSHAKING
         finally:
             manager.shutdown()
 

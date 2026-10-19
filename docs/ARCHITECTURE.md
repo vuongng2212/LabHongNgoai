@@ -99,7 +99,7 @@ header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 ```text
 LabHongNgoai/
 ├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
-├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 115 passed)
+├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 173 passed)
 ├── docs/                         # 4 file duy nhất, không thêm file planning rời
 │   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
 │   ├── PROTOCOL.md               # Wire format chốt + code C STM32
@@ -115,8 +115,11 @@ LabHongNgoai/
 │       ├── core/                  # [TẦNG CORE] Quản lý I/O & Threading
 │       │   ├── __init__.py
 │       │   ├── interfaces.py      # Abstract Base Classes (ITransport)
-│       │   ├── serial_worker.py   # PySerialTransport + QObject Worker trên QThread (poll 10ms)
+│       │   ├── serial_worker.py   # QObject Worker trên QThread + poll timer (10ms HW / 2ms mock)
 │       │   ├── serial_manager.py  # Quản lý vòng đời COM (Connect, Disconnect, Scan)
+│       │   ├── pyserial_transport.py # PySerial 8N1 (timeout 0.05 / write 0.2)
+│       │   ├── socket_transport.py   # TCP transport cho dual-mock LINK_A/LINK_B
+│       │   ├── transport_factory.py  # Chọn PySerial / Socket / Mock theo tên cổng
 │       │   ├── ring_buffer.py     # Bộ đệm vòng byte stream chống tràn
 │       │   └── mock_serial.py     # Giả lập Serial (drop rate, latency, LOS blockage)
 │       │
@@ -145,7 +148,7 @@ LabHongNgoai/
 │           ├── logger.py          # Rotating file logger + LogTag
 │           └── path_helpers.py    # Resolve asset an toàn cho PyInstaller
 │
-├── tests/                         # pytest (hiện tại 115 passed)
+├── tests/                         # pytest (hiện tại 173 passed)
 │   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge
 │   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager
 │
@@ -190,7 +193,7 @@ LabHongNgoai/
 
 Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
 1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế. Hiện tại `115 passed` (2026-10-12).
+2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế. Hiện tại `173 passed` (2026-10-19).
 
 ---
 
@@ -198,7 +201,7 @@ Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm vi�
 
 * **Đồng bộ môi trường:** `uv sync`
 * **Chạy ứng dụng:** `uv run python -m ir_terminal`
-* **Chạy kiểm thử:** `uv run pytest tests/ -v`
+* **Chạy kiểm thử:** `QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v` (headless/CI; bỏ biến môi trường nếu có desktop)
 * **Kiểm tra Lint & Format:** `uv run ruff check . && uv run ruff format .`
 * **Kiểm tra Type:** `uv run mypy src/ tests/`
 * **Đóng gói file thực thi `.exe`:**

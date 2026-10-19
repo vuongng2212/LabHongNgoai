@@ -35,6 +35,7 @@ Mọi trường số nguyên từ 2 bytes trở lên **bắt buộc tuân thủ 
 5. **PAYLOAD (N bytes):** Dữ liệu ứng dụng (Chat text hoặc File chunk).
 6. **CRC32 (Checksum - 4 bytes Little-Endian):** Tính toán từ trường `SEQ` qua hết `PAYLOAD` (không bao gồm SOF). Đa thức chuẩn IEEE 802.3: `0xEDB88320`.
 7. **EOF (End of Frame - 2 bytes):** Cố định `0x55AA` (Truyền trên dây UART: `0xAA`, sau đó `0x55`).
+8. **Giới hạn phiên file:** `total_chunks` là `uint16` nên tối đa **65.535 chunk/phiên**. Với chunk mặc định `240B`, một phiên tối đa $\approx 15.7\text{ MB}$; file lớn hơn phải tăng `chunk_size` (tối đa `510B` dữ liệu, vì payload frame tối đa `512B` đã gồm 2B `chunk_id`) hoặc chia nhỏ. App reject sớm với lỗi rõ ràng nếu vượt giới hạn.
 
 ---
 
@@ -74,8 +75,11 @@ Mọi trường số nguyên từ 2 bytes trở lên **bắt buộc tuân thủ 
 
 ### Quy tắc Timeout & Xử lý lỗi:
 - Phía PC gửi 1 chunk $\to$ Chờ `ACK` trong vòng **250ms**.
-- Nếu sau 250ms không nhận được `ACK` $\to$ Retransmit lại đúng chunk đó (tối đa 5 lần).
+- Nếu sau 250ms không nhận được `ACK` $\to$ Retransmit lại đúng chunk đó (tối đa 5 lần), **giữ nguyên SEQ** (`new_seq=False`).
 - STM32 khi nhận frame sai CRC $\to$ Phản hồi `NACK` ngay lập tức để PC gửi lại mà không cần đợi hết 250ms.
+- Nếu `ACK` bị mất, bên gửi sẽ retransmit `START`/`END` với **cùng SEQ**. Bên nhận phải nhận diện đây là duplicate của phiên hiện tại và **gửi lại ACK (idempotent)**, không NACK và không ghi file/lưu bản ghi lần hai.
+- `DATA_CHUNK` trùng (`cùng chunk_id`) được **ACK lại** và ghi đè idempotent, không cộng dồn `bytes_received`.
+- Trên PC, frame sai CRC/EOF bị `framer` loại bỏ và đếm vào `crc_errors/eof_errors`; bên gửi retry theo timeout 250ms. `NACK CRC` tức thời là hành vi phía STM32 khi STM32 là bên nhận.
 
 ---
 
@@ -95,13 +99,13 @@ typedef struct {
     uint16_t total_chunks;  // 2 bytes: Tổng số lượng chunk
     uint32_t file_crc32;    // 4 bytes: Mã băm CRC-32 của toàn bộ file
     uint8_t  fname_len;     // 1 byte: Độ dài tên file (N bytes)
-    char     filename[0];   // N bytes: Chuỗi UTF-8 tên file (không gồm null-terminator)
+    char     filename[];    // N bytes: Chuỗi UTF-8 tên file (không gồm null-terminator)
 } FileStartPayload_t;
 
 // Payload Opcode 0x01: DATA_CHUNK
 typedef struct {
     uint16_t chunk_id;      // 2 bytes: Thứ tự chunk bắt đầu từ 0 (Little-Endian)
-    uint8_t  chunk_data[0]; // M bytes: Dữ liệu nhị phân của khối (tối đa 240B)
+    uint8_t  chunk_data[];  // M bytes: Dữ liệu nhị phân của khối (tối đa 240B)
 } FileChunkPayload_t;
 
 // Payload Opcode 0x31: TRANSFER_END
@@ -137,7 +141,7 @@ uint32_t CRC32_Calculate(const uint8_t *data, size_t length) {
 }
 ```
 
-### 5.2. Hàm Đóng Gói và Gửi ACK từ STM32
+### 5.3. Hàm Đóng Gói và Gửi ACK từ STM32
 ```c
 #include <string.h>
 
@@ -178,5 +182,5 @@ void IR_Send_ACK(UART_HandleTypeDef *huart, uint8_t acked_seq) {
 
 ## 7. RÀNG BUỘC MVP ↔ POST-MVP (KHỚP `LAB_BaoGia.xlsx`)
 
-* MVP đã chốt: `chunk mặc định 240B` (tối đa 512B), `ACK timeout 250ms`, `retry tối đa 5 → FAILED + gửi lại tay`, toàn vẹn `CRC-32`, `TRANSFER_PAUSE` mang payload `ABORT` khi user hủy, `TRANSFER_RESUME (0x33)` mới chỉ định nghĩa chưa dùng.
+* MVP đã chốt: `chunk mặc định 240B` (tối đa `510B` dữ liệu, do payload frame tối đa `512B` đã gồm 2B `chunk_id`), `ACK timeout 250ms`, `retry tối đa 5 → FAILED + gửi lại tay`, toàn vẹn `CRC-32`, `TRANSFER_PAUSE` mang payload `ABORT` khi user hủy, `TRANSFER_RESUME (0x33)` mới chỉ định nghĩa chưa dùng.
 * Post-MVP (báo riêng, chưa implement): `0x33 resume` + ping định kỳ để tự phục hồi sau chắn tia; `SHA-256` song song CRC-32; `BER` chỉ bật khi firmware cung cấp counter; streaming chống tràn RAM; hotplug/auto-reconnect; priority queue `Control > Text > File`.

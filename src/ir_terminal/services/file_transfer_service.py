@@ -15,6 +15,8 @@ from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
     DEFAULT_ACK_TIMEOUT_SEC,
     DEFAULT_CHUNK_SIZE,
+    MAX_CHUNK_COUNT,
+    MAX_CHUNK_DATA_SIZE,
     MAX_FILE_SIZE_BYTES,
     MAX_PAYLOAD_SIZE,
     MAX_RETRY_COUNT,
@@ -114,6 +116,12 @@ class FileTransferService(QObject):
         self._rx_start_time: float = 0.0
         self._rx_bytes_received: int = 0
         self._rx_received_count: int = 0
+        # Last accepted RX session IDs: lets a retransmitted START/END (sent
+        # because the peer lost our ACK) be re-acknowledged instead of being
+        # rejected as a new/busy session.
+        self._rx_start_seq: int = -1
+        self._rx_end_seq: int = -1
+        self._rx_end_status: int = AckStatus.OK
 
         # TX retransmit caches (refactor: identical bytes reused, no repack).
         # Invalidated on every new start_transfer/abort.
@@ -325,6 +333,28 @@ class FileTransferService(QObject):
             self.transfer_failed.emit(err_msg)
             return
 
+        if not (1 <= self._chunk_size <= MAX_CHUNK_DATA_SIZE):
+            err_msg = (
+                f"Invalid chunk size {self._chunk_size}B; protocol allows "
+                f"1..{MAX_CHUNK_DATA_SIZE}B (payload max {MAX_PAYLOAD_SIZE}B incl. chunk_id)"
+            )
+            logger.error("%s TX start FAILED: %s", LogTag.FILE_SVC, err_msg)
+            self.transfer_failed.emit(err_msg)
+            return
+
+        planned_chunks = (
+            (oversize + self._chunk_size - 1) // self._chunk_size if oversize > 0 else 1
+        )
+        if planned_chunks > MAX_CHUNK_COUNT:
+            err_msg = (
+                f"File requires {planned_chunks} chunks; protocol max is {MAX_CHUNK_COUNT} "
+                f"(file={oversize}B, chunk_size={self._chunk_size}B). Use a larger chunk size "
+                "or split the file."
+            )
+            logger.error("%s TX start FAILED: %s", LogTag.FILE_SVC, err_msg)
+            self.transfer_failed.emit(err_msg)
+            return
+
         try:
             self._file_data = file_path.read_bytes()
         except Exception as e:
@@ -398,6 +428,9 @@ class FileTransferService(QObject):
             self._rx_received_chunks.clear()
             self._rx_received_count = 0
             self._rx_bytes_received = 0
+            self._rx_start_seq = -1
+            self._rx_end_seq = -1
+            self._rx_end_status = AckStatus.OK
             self.transfer_failed.emit("Incoming transfer aborted by user")
             logger.info(
                 "%s RX aborted by user: file='%s' had=%d/%d chunks (%dB)",
@@ -638,6 +671,18 @@ class FileTransferService(QObject):
             rx_had[2],
         )
 
+    def _is_duplicate_start(self, pkt: Packet, start_payload: FileStartPayload) -> bool:
+        """Returns True when a START retransmits the currently accepted RX session."""
+        return (
+            self._state == TransferState.RECEIVING
+            and pkt.seq == self._rx_start_seq
+            and start_payload.file_size == self._rx_file_size
+            and start_payload.chunk_size == self._rx_chunk_size
+            and start_payload.total_chunks == self._rx_total_chunks
+            and start_payload.file_crc32 == self._rx_file_crc32
+            and start_payload.filename == self._rx_filename
+        )
+
     def _on_transfer_start_received(self, pkt: Packet) -> None:
         """Handles incoming TRANSFER_START frame by preparing receiver buffer and acknowledging."""
         try:
@@ -653,6 +698,21 @@ class FileTransferService(QObject):
             )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            return
+
+        # A retransmitted START means our previous ACK was lost. Re-ACK the
+        # already-active session instead of NACKing it as "busy"; otherwise the
+        # sender burns all 5 retries and fails even though the link is healthy.
+        if self._is_duplicate_start(pkt, start_payload):
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
+            logger.info(
+                "%s RX START duplicate re-ACK %s file='%s' size=%dB",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                self._rx_filename,
+                self._rx_file_size,
+            )
             return
 
         # Half-duplex guard: never clobber an ongoing outgoing session. NACK tells
@@ -693,8 +753,11 @@ class FileTransferService(QObject):
             self.transfer_failed.emit(err_msg)
             return
 
-        if start_payload.chunk_size == 0 or start_payload.chunk_size > MAX_PAYLOAD_SIZE:
-            err_msg = f"Incoming transfer has invalid chunk size: {start_payload.chunk_size}"
+        if start_payload.chunk_size == 0 or start_payload.chunk_size > MAX_CHUNK_DATA_SIZE:
+            err_msg = (
+                f"Incoming transfer has invalid chunk size: {start_payload.chunk_size} "
+                f"(max {MAX_CHUNK_DATA_SIZE}B data inside {MAX_PAYLOAD_SIZE}B payload)"
+            )
             logger.error(
                 "%s RX START rejected: %s | %s payload_hex=%s",
                 LogTag.FILE_SVC,
@@ -733,6 +796,9 @@ class FileTransferService(QObject):
         self._rx_start_time = time.time()
         self._rx_bytes_received = 0
         self._rx_received_count = 0
+        self._rx_start_seq = pkt.seq
+        self._rx_end_seq = -1
+        self._rx_end_status = AckStatus.OK
 
         self._set_state(TransferState.RECEIVING)
         logger.info(
@@ -830,6 +896,32 @@ class FileTransferService(QObject):
 
     def _on_transfer_end_received(self, pkt: Packet) -> None:
         """Handles incoming TRANSFER_END frame by verifying integrity, saving file, and acknowledging."""
+        # If our final ACK was lost, the sender retransmits the identical END
+        # with the same sequence number. Re-ACK the completed session (without
+        # writing the file or emitting transfer_completed again), or re-NACK a
+        # previously failed verify, so the sender does not exhaust its retries.
+        if pkt.seq == self._rx_end_seq and self._state in (
+            TransferState.COMPLETED,
+            TransferState.FAILED,
+        ):
+            status = (
+                AckStatus.OK
+                if self._state == TransferState.COMPLETED
+                else self._rx_end_status
+            )
+            opcode = Opcode.ACK if status == AckStatus.OK else Opcode.NACK
+            ack = AckPayload(acked_seq=pkt.seq, status=status)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=opcode, payload=ack.pack())
+            logger.info(
+                "%s RX END duplicate re-%s %s status=%s(%d)",
+                LogTag.ARQ_ENGINE,
+                "ACK" if opcode == Opcode.ACK else "NACK",
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+                ack_status_name(status),
+                status,
+            )
+            return
+
         if self._state != TransferState.RECEIVING:
             logger.debug(
                 "%s Ignored TRANSFER_END in %s: %s",
@@ -852,6 +944,8 @@ class FileTransferService(QObject):
             )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._rx_end_seq = pkt.seq
+            self._rx_end_status = AckStatus.CRC_ERROR
             self._set_state(TransferState.FAILED)
             self._persist_failure("Corrupted TRANSFER_END payload")
             self.transfer_failed.emit("Corrupted TRANSFER_END payload")
@@ -885,11 +979,43 @@ class FileTransferService(QObject):
                 self._serial_manager.send_packet(
                     seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack()
                 )
+                self._rx_end_seq = pkt.seq
+                self._rx_end_status = AckStatus.OUT_OF_ORDER
                 self._set_state(TransferState.FAILED)
                 self._persist_failure(f"Missing chunk {idx} upon completion")
                 self.transfer_failed.emit(f"Missing chunk {idx} upon completion")
                 return
             assembled_data.extend(self._rx_received_chunks[idx])
+
+        # Verify both declared byte counts (START file_size and END total_bytes)
+        # before trusting the checksum: CRC cannot catch a sender that sent a
+        # short file and then declared/checksummed the short length consistently.
+        if (
+            len(assembled_data) != end_payload.total_bytes_sent
+            or len(assembled_data) != self._rx_file_size
+        ):
+            logger.error(
+                "%s RX END size mismatch: assembled=%dB end_total=%dB start_file_size=%dB | %s",
+                LogTag.FILE_SVC,
+                len(assembled_data),
+                end_payload.total_bytes_sent,
+                self._rx_file_size,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
+            ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
+            self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._rx_end_seq = pkt.seq
+            self._rx_end_status = AckStatus.CRC_ERROR
+            self._set_state(TransferState.FAILED)
+            self._persist_failure(
+                f"Size mismatch: assembled {len(assembled_data)}B, "
+                f"END {end_payload.total_bytes_sent}B, START {self._rx_file_size}B"
+            )
+            self.transfer_failed.emit(
+                f"Size mismatch: assembled {len(assembled_data)}B, "
+                f"END {end_payload.total_bytes_sent}B"
+            )
+            return
 
         # CRC-32 verification
         calculated_crc = zlib.crc32(assembled_data) & 0xFFFFFFFF
@@ -907,6 +1033,8 @@ class FileTransferService(QObject):
             )
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.CRC_ERROR)
             self._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
+            self._rx_end_seq = pkt.seq
+            self._rx_end_status = AckStatus.CRC_ERROR
             self._set_state(TransferState.FAILED)
             self._persist_failure(
                 f"Checksum mismatch: 0x{calculated_crc:08X} != 0x{end_payload.file_crc32:08X}"
@@ -953,6 +1081,8 @@ class FileTransferService(QObject):
             status="SUCCESS",
         )
 
+        self._rx_end_seq = pkt.seq
+        self._rx_end_status = AckStatus.OK
         self._set_state(TransferState.COMPLETED)
         self.progress_updated.emit(
             100, speed_kbps, 0.0, self._rx_total_chunks, self._rx_total_chunks
@@ -1142,7 +1272,24 @@ class FileTransferService(QObject):
             nack_info = AckPayload.unpack(pkt.payload)
             nack_detail = f"acked_seq={nack_info.acked_seq} status={ack_status_name(nack_info.status)}({nack_info.status})"
         except Exception:
-            nack_detail = f"raw_hex={format_hex_preview(pkt.payload)}"
+            logger.warning(
+                "%s NACK payload undecodable %s — ignored pending timeout",
+                LogTag.ARQ_ENGINE,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
+            return
+        # A late NACK for an older frame must not retransmit the current one or
+        # consume its retry budget.
+        if nack_info.acked_seq != self._seq:
+            logger.warning(
+                "%s Stale NACK ignored: expected seq=%d got acked_seq=%d state=%s frame=%s",
+                LogTag.ARQ_ENGINE,
+                self._seq,
+                nack_info.acked_seq,
+                self._state.name,
+                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
+            )
+            return
         logger.warning(
             "%s NACK %s state=%s retry=%d/5 seq=%d %s payload_hex=%s",
             LogTag.ARQ_ENGINE,

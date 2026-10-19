@@ -27,6 +27,12 @@ TOTAL_OVERHEAD: int = HEADER_SIZE + FOOTER_SIZE
 # Maximum payload size per chunk (bytes) to prevent MCU internal ring buffer overflow
 MAX_PAYLOAD_SIZE: int = 512
 
+# DATA_CHUNK carries a 2-byte chunk_id prefix inside the frame payload.
+MAX_CHUNK_DATA_SIZE: int = MAX_PAYLOAD_SIZE - 2
+
+# TRANSFER_START encodes total_chunks as uint16, so one session is capped at 65535 chunks.
+MAX_CHUNK_COUNT: int = 0xFFFF
+
 # Default chunk size for optical link stability at 115200 bps (MVP binding per PROTOCOL.md §7)
 DEFAULT_CHUNK_SIZE: int = 240
 
