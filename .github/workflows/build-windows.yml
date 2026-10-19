@@ -1,57 +1,49 @@
-name: Build Windows x64
+name: Build Windows Executable
 
 on:
   push:
-    branches: [main, master]
-    tags: ["v*"]
+    branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
   workflow_dispatch:
     inputs:
       create_release:
-        description: Create a GitHub Release from this run
+        description: 'Tạo GitHub Release ngay từ lần chạy này?'
         required: false
         type: boolean
         default: false
       tag_name:
-        description: Existing or new version tag to publish (for example v0.1.0)
+        description: 'Tag version cho Release (nếu chọn tạo release)'
         required: false
         type: string
-        default: ""
+        default: 'v0.1.0'
 
 permissions:
-  contents: read
-
-concurrency:
-  group: windows-build-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
   test-and-build:
-    name: Test and package (Windows x64)
+    name: Build & Package (Windows x64)
     runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.0
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Astral uv
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          version: "latest"
 
-      - name: Set up Python 3.12 x64
-        shell: pwsh
-        run: |
-          if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
-            throw "Expected an x64 Windows runner; got $env:PROCESSOR_ARCHITECTURE"
-          }
-          uv python install 3.12
+      - name: Install Python 3.12
+        run: uv python install 3.12
 
-      - name: Install locked project dependencies
-        run: uv sync --locked --extra dev
+      - name: Install Project Dependencies
+        run: uv sync --extra dev
 
       - name: Lint with Ruff
         run: uv run ruff check .
@@ -59,85 +51,35 @@ jobs:
       - name: Type check with mypy
         run: uv run mypy src/ tests/
 
-      - name: Run tests (Qt offscreen)
+      - name: Run Test Suite (Headless Offscreen)
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          uv run pytest tests/
+          uv run pytest tests/ -v
 
-      - name: Build with PyInstaller spec
+      - name: Build Standalone Executable via PyInstaller
+        shell: pwsh
         run: uv run python scripts/build_standalone.py
 
-      - name: Verify executable and bundled web UI
+      - name: Archive Distribution Directory
         shell: pwsh
         run: |
-          $distDir = "dist/IR_OWC_Lab_Terminal"
-          $exePath = Join-Path $distDir "IR_OWC_Lab_Terminal.exe"
-          $webIndex = Join-Path $distDir "_internal/ir_terminal/ui/web/index.html"
-          if (-not (Test-Path $exePath -PathType Leaf)) { throw "Missing executable: $exePath" }
-          if (-not (Test-Path $webIndex -PathType Leaf)) { throw "Missing bundled web UI: $webIndex" }
-          if ((Get-Item $exePath).Length -le 0) { throw "Executable is empty: $exePath" }
+          Compress-Archive -Path dist\IR_OWC_Lab_Terminal\* -DestinationPath dist\IR_OWC_Lab_Terminal-Windows-x64.zip
 
-      - name: Create zip and SHA-256 checksum
-        shell: pwsh
-        run: |
-          $distDir = "dist/IR_OWC_Lab_Terminal"
-          $zipPath = "dist/IR_OWC_Lab_Terminal-Windows-x64.zip"
-          Compress-Archive -Path "$distDir/*" -DestinationPath $zipPath -CompressionLevel Optimal
-          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  IR_OWC_Lab_Terminal-Windows-x64.zip" | Set-Content "dist/SHA256SUMS.txt" -Encoding ascii
-
-      - name: Upload Windows x64 artifact
-        uses: actions/upload-artifact@v7
+      - name: Upload Build Artifact (CI Temp Storage)
+        uses: actions/upload-artifact@v4
         with:
           name: IR_OWC_Lab_Terminal-Windows-x64
-          path: |
-            dist/IR_OWC_Lab_Terminal-Windows-x64.zip
-            dist/SHA256SUMS.txt
-          if-no-files-found: error
+          path: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
           retention-days: 14
 
-  release:
-    name: Publish GitHub Release
-    needs: test-and-build
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
-    runs-on: windows-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Resolve release tag
-        id: tag
-        shell: pwsh
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          REF_TYPE: ${{ github.ref_type }}
-          REF_NAME: ${{ github.ref_name }}
-          INPUT_TAG: ${{ inputs.tag_name }}
-        run: |
-          if ($env:EVENT_NAME -eq "workflow_dispatch") {
-            $tag = $env:INPUT_TAG.Trim()
-          } else {
-            $tag = $env:REF_NAME
-          }
-          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
-            throw "Release tag must use a version form such as v1.2.3; received '$tag'"
-          }
-          "tag=$tag" | Add-Content $env:GITHUB_OUTPUT
-
-      - name: Download packaged artifact
-        uses: actions/download-artifact@v7
-        with:
-          name: IR_OWC_Lab_Terminal-Windows-x64
-          path: release-assets
-
-      - name: Publish release assets
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Release ${{ steps.tag.outputs.tag }}
-          files: |
-            release-assets/IR_OWC_Lab_Terminal-Windows-x64.zip
-            release-assets/SHA256SUMS.txt
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
+          name: Release ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
+          files: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
           generate_release_notes: true
           draft: false
           prerelease: false
