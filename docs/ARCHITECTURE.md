@@ -99,12 +99,12 @@ header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
 ```text
 LabHongNgoai/
 ├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
-├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 173 passed)
+├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 200 passed)
 ├── docs/                         # 4 file duy nhất, không thêm file planning rời
 │   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
 │   ├── PROTOCOL.md               # Wire format chốt + code C STM32
 │   ├── ARCHITECTURE.md           # Kiến trúc code + quy chuẩn dev (file này)
-│   ├── ACCEPTANCE.md             # Nghiệm thu HW 3 bước + demo 5 bước
+│   ├── ACCEPTANCE.md             # Nghiệm thu HW 3 bước + demo 6 bước
 │   └── screenshots/              # Ảnh 4 màn hình dùng cho README + demo
 ├── src/
 │   └── ir_terminal/
@@ -125,14 +125,14 @@ LabHongNgoai/
 │       │
 │       ├── protocol/              # [TẦNG GIAO THỨC] Định nghĩa & Đóng gói Frame
 │       │   ├── __init__.py
-│       │   ├── constants.py       # SOF, EOF, OPCODES, TIMEOUTS (chunk mặc định 240B, CRC-32)
+│       │   ├── constants.py       # SOF, EOF, OPCODES, TIMEOUTS (chunk mặc định 240B, CRC-32, legacy + large limits)
 │       │   ├── framer.py          # pack_frame / parse_frames_from_buffer + CRC-32
 │       │   ├── packet.py          # Immutable Dataclasses (Packet, Header)
-│       │   └── file_payloads.py   # FileStart / FileChunk / FileEnd / Ack payloads
+│       │   └── file_payloads.py   # FileStart/Chunk/End (legacy u16 + large u32/u64) + Ack payloads
 │       │
 │       ├── services/              # [TẦNG DỊCH VỤ] Nghiệp vụ ứng dụng
 │       │   ├── __init__.py
-│       │   ├── file_transfer_service.py # Stop-and-Wait ARQ (250ms/5 retry→FAILED, CRC-32)
+│       │   ├── file_transfer_service.py # Stop-and-Wait ARQ streaming (250ms/5 retry→FAILED, CRC-32, cancel 2 chiều)
 │       │   ├── chat_service.py    # Gửi/nhận DATA_TEXT UTF-8 + lưu file JSON
 │       │   ├── storage_service.py # File JSON chat/file/telemetry + export CSV
 │       │   └── telemetry_service.py # Throughput/RTT/loss/sniffer (BER hiển thị, chưa đo thực)
@@ -146,9 +146,10 @@ LabHongNgoai/
 │       └── utils/                 # [TIỆN ÍCH]
 │           ├── __init__.py
 │           ├── logger.py          # Rotating file logger + LogTag
-│           └── path_helpers.py    # Resolve asset an toàn cho PyInstaller
+│           └── path_helpers.py    # Resolve asset + data/ (dev, frozen, IR_DATA_DIR, instance A/B)
 │
-├── tests/                         # pytest (hiện tại 173 passed)
+├── data/                          # Runtime (tự tạo): JSON stores, transfers/, logs/, instances/<A|B>/
+├── tests/                         # pytest (hiện tại 200 passed)
 │   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge
 │   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager
 │
@@ -158,13 +159,23 @@ LabHongNgoai/
 └── ir_terminal.spec               # PyInstaller spec
 ```
 
+### 3.1. Quy tắc đường dẫn dữ liệu runtime
+
+- `get_app_root()` trả về thư mục chứa executable khi `sys.frozen` (PyInstaller one-file/one-folder), ngược lại là repo root.
+- `get_app_data_dir()` tạo và trả về `<app root>/data/`; `get_data_dir()`, `get_transfers_dir()`, `get_logs_dir()` đều suy ra từ đây.
+- `IR_DATA_DIR` ghi đè hoàn toàn gốc `data/` (test/portable). `IR_INSTANCE=A|B` (hoặc `--instance`) tách sang `data/instances/<A|B>/` để hai app dual-mock không chia sẻ JSON/file/log.
+- Không hard-code `~/.ir_terminal` hoặc đường dẫn tuyệt đối của máy dev trong code; mọi thư mục phải được tạo bằng `mkdir(parents=True, exist_ok=True)`.
+- Thư mục nhận file (`transfers_dir`) cấu hình được từ UI (*Settings → Default receive directory (Files only)*), lưu vào `settings.json` dưới dạng **tuyệt đối** (`Path(dir).expanduser().resolve()`) và được **validate** khi Save (tạo nếu thiếu, từ chối nếu trỏ vào file/thư mục không truy cập được → trả lỗi ra UI). `default_transfers_dir` (mặc định `data/transfers/`) luôn được expose để nút **Reset to default** quay lại.
+- `file_transfer_service` **khóa thư mục đích cho từng phiên nhận**: `_rx_dest_dir` được chụp tại `TRANSFER_START`, dùng chung cho file tạm `.ir_rx_*.part` và lần publish cuối (`.part` → file thật), nên đổi setting giữa phiên không gây `EXDEV`. Khi `load_settings` gặp đường dẫn đã lưu không dùng được, ghi **warning** rõ ràng và giữ mặc định (không fallback im lặng).
+- Chỉ đường dẫn nhận file đổi được từ UI; JSON/`logs/` luôn nằm trong `data/` (chỉ đổi qua `IR_DATA_DIR`).
+
 ---
 
 ## 4. NGUYÊN TẮC LUỒNG THREADING & NON-BLOCKING HARDWARE I/O
 
 ### Quy tắc bất biến (Inviolable Rules):
 1. **Không bao giờ block Main Thread (UI Thread):**
-   - Mọi thao tác I/O (`serial.read()`, `serial.write()`) và chờ timeout **phải chạy trên Worker Thread**. Băm file lớn hiện vẫn đọc đồng bộ trong `FileTransferService.start_transfer` — streaming là Post-MVP.
+   - Mọi thao tác I/O (`serial.read()`, `serial.write()`) và chờ timeout **phải chạy trên Worker Thread**. `FileTransferService` đã streaming: CRC-32 đọc theo buffer `1 MiB`, TX đọc từng chunk từ file handle, RX ghi thẳng `.part` + `flush()` mỗi chunk — RAM không tăng theo kích thước file.
 2. **Worker-Object Pattern với `moveToThread(QThread)`:**
    - Không bao giờ kế thừa trực tiếp từ `QThread` để override `run()` chứa business logic.
    - Luôn tạo class `SerialWorker(QObject)`, chuyển sang thread riêng bằng `worker.moveToThread(thread)` và điều khiển qua Qt Signals/Slots.
@@ -193,7 +204,7 @@ LabHongNgoai/
 
 Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
 1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế. Hiện tại `173 passed` (2026-10-19).
+2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Hiện tại `200 passed` (2026-10-19).
 
 ---
 

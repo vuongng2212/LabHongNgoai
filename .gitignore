@@ -77,3 +77,12 @@ ehthumbs.db
 
 # Temporary preview images
 ui_preview_*.png
+
+# Runtime application data (JSON stores, received files, logs)
+data/
+
+#AI agent
+.codegraph/
+.codex/
+opencode.jsonc
+AGENTS.md

@@ -611,7 +611,9 @@ class BackendBridge(QObject):
         """Returns current transfer settings as JSON string.
 
         Returns:
-            JSON object with max_file_size_bytes, max_file_size_mb, transfers_dir.
+            JSON object with max_file_size_bytes (0 = unlimited),
+            max_file_size_mb, max_file_size_label, transfers_dir and
+            default_transfers_dir (used by the "Reset to default" action).
         """
         try:
             config = self._file_service.get_config()
@@ -630,8 +632,8 @@ class BackendBridge(QObject):
         """Validates and persists transfer settings from the Web UI.
 
         Args:
-            settings_json: JSON string with optional max_file_size_mb (or
-                max_file_size_bytes) and transfers_dir fields.
+            settings_json: JSON string with optional max_file_size_bytes
+                (0 = unlimited) and transfers_dir fields.
 
         Returns:
             JSON string with ok flag plus applied config or error message.

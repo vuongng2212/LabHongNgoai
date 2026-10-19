@@ -1,5 +1,5 @@
 # NGHIỆM THU & BÀN GIAO (ACCEPTANCE RUNBOOK)
-**Mục tiêu:** 3 bước tích hợp STM32 + 5 bước demo client + phạm vi MVP/Post-MVP khớp `LAB_BaoGia.xlsx`. Index: `docs/README.md`. Wire chốt: `docs/PROTOCOL.md`.
+**Mục tiêu:** 3 bước tích hợp STM32 + 6 bước demo client + phạm vi MVP/Post-MVP khớp `LAB_BaoGia.xlsx`. Index: `docs/README.md`. Wire chốt: `docs/PROTOCOL.md`.
 
 ---
 
@@ -65,15 +65,16 @@
 
 ---
 
-## 4. KỊCH BẢN DEMO 5 BƯỚC VỚI KHÁCH HÀNG
+## 4. KỊCH BẢN DEMO 6 BƯỚC VỚI KHÁCH HÀNG
 
 | STT | Kịch bản | Thao tác | Kỳ vọng trên App |
 |-----|----------|----------|------------------|
 | 1 | Khởi tạo link quang | Chọn `COM` (hoặc `MOCK_COM_LOOPBACK`), bấm Initialize Link | Header `Connected (115200)`, gauge quang, badge `CARRIER LOCKED`, RTT Ping/Pong |
 | 2 | Chat quang realtime | Tab Chat, nhập text, gửi | Bong bóng chat 2 chiều + khung Inspector hex/metadata; lịch sử nạp lại từ file JSON |
-| 3 | Truyền file | Chọn file, bấm Transmit | Tiến độ `0→100%`, `KB/s + ETA`, xong báo `SUCCESS + CRC-32` |
-| 4 | Chắn tia (MVP) | Chắn tia khi đang truyền | `retry → FAILED` rồi gửi lại tay thành công sau khi thông tia (auto-resume là Post-MVP) |
-| 5 | Xuất báo cáo | Tab Analytics, Export CSV | File `.csv` telemetry/transfers. Lưu ý: `BER` trên UI là text hiển thị, chưa phải phép đo; loss chỉ đếm khi transfer fail |
+| 3 | Truyền file | Chọn file (kể cả file lớn hơn 15.7 MB), bấm Transmit | Tiến độ `0→100%`, `KB/s + ETA`, xong báo `SUCCESS + CRC-32`; file lớn tự dùng extension `0x34/0x35/0x36` |
+| 4 | Hủy hai chiều | Bấm Cancel ở một trong hai máy khi đang truyền | Cả hai về `ABORTED`, không còn file `.part`, lịch sử ghi failure; bên kia nhận `TRANSFER_PAUSE`+`ABORT` và ACK |
+| 5 | Chắn tia (MVP) | Chắn tia khi đang truyền | `retry → FAILED` rồi gửi lại tay thành công sau khi thông tia (auto-resume là Post-MVP) |
+| 6 | Xuất báo cáo | Tab Analytics, Export CSV | File `.csv` telemetry/transfers. Lưu ý: `BER` trên UI là text hiển thị, chưa phải phép đo; loss chỉ đếm khi transfer fail |
 
 Ảnh demo: `docs/screenshots/1_hardware_setup.png … 4_lab_telemetry.png`.
 
@@ -81,5 +82,5 @@
 
 ## 5. PHẠM VI THANH TOÁN (TÓM TẮT TỪ `LAB_BaoGia.xlsx`)
 
-* MVP `7.500.000 / 5 ngày`: STT 1–18 (code/tài liệu/test mock, đã có — test hiện tại `173 passed` 2026-10-19) + STT 19 (cắm 2 controller thật, gửi/nhận 2 chiều — **PENDING**).
-* Post-MVP báo riêng: resume sau chắn tia `2.4tr`, SHA-256 `1.2tr`, telemetry thực `2.4tr`, streaming file lớn `900k`, hotplug/reconnect + hàng đợi `≈1.35tr`. Không cộng vào MVP.
+* MVP `7.500.000 / 5 ngày`: STT 1–18 (code/tài liệu/test mock, đã có — test hiện tại `200 passed` 2026-10-19) + STT 19 (cắm 2 controller thật, gửi/nhận 2 chiều — **PENDING**).
+* Post-MVP báo riêng: resume sau chắn tia `2.4tr`, SHA-256 `1.2tr`, telemetry thực `2.4tr`, hotplug/reconnect + hàng đợi `≈1.35tr`. Không cộng vào MVP. *(Streaming file lớn `900k` đã implement trong code — cần chốt lại phạm vi với khách hàng.)*

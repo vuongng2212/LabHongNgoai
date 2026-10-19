@@ -5,15 +5,18 @@ from __future__ import annotations
 import tempfile
 import zlib
 from pathlib import Path
+from typing import BinaryIO
 
+import pytest
 from pytestqt.qtbot import QtBot
 
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
     EOF_MAGIC,
-    MAX_FILE_SIZE_BYTES,
+    MAX_EXTENDED_CHUNK_DATA_SIZE,
     MAX_PAYLOAD_SIZE,
     MAX_RETRY_COUNT,
+    MAX_V1_CHUNK_COUNT,
     SOF_MAGIC,
     AckStatus,
     Opcode,
@@ -21,8 +24,11 @@ from ir_terminal.protocol.constants import (
 from ir_terminal.protocol.file_payloads import (
     AckPayload,
     FileChunkPayload,
+    FileChunkPayloadLarge,
     FileEndPayload,
+    FileEndPayloadLarge,
     FileStartPayload,
+    FileStartPayloadLarge,
 )
 from ir_terminal.protocol.framer import parse_frames_from_buffer
 from ir_terminal.protocol.packet import Header, Packet
@@ -48,27 +54,40 @@ def _nack_opcodes_in(raw_frames: list[bytes]) -> list[int]:
     return opcodes
 
 
+def _state(service: FileTransferService) -> TransferState:
+    """Reads a service's live state.
+
+    Goes through a function so mypy does not keep an earlier ``assert``'s enum
+    narrowing on the ``state`` property, which would flag later transitions
+    (e.g. HANDSHAKING -> ABORTED after a cancel) as impossible.
+    """
+    return service.state
+
+
+def _tx_file(service: FileTransferService) -> BinaryIO | None:
+    """Reads the TX file handle without leaking mypy optional narrowing."""
+    return service._tx_file
+
+
 class TestFileTransferService:
     """Test suite for optical file chunking and Stop-and-Wait ARQ engine."""
 
-    def test_oversize_file_rejected_before_transmission(self, qtbot: QtBot) -> None:
-        """Verifies files above MAX_FILE_SIZE_BYTES fail fast without entering ARQ."""
+    def test_file_above_legacy_10mb_limit_is_accepted(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """The former 10 MB product cap is gone; large files enter ARQ handshaking."""
         manager = SerialManager()
-        service = FileTransferService(serial_manager=manager)
-
-        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
-            tmp.write(b"\0" * (MAX_FILE_SIZE_BYTES + 1))
-            tmp_path = tmp.name
+        service = FileTransferService(serial_manager=manager, transfers_dir=tmp_path / "rx")
+        source = tmp_path / "above_legacy_limit.bin"
+        source.write_bytes(b"\0" * (10 * 1024 * 1024 + 1024))
 
         try:
-            with qtbot.waitSignal(service.transfer_failed, timeout=1000) as blocker:
-                service.start_transfer(tmp_path)
-
-            (reason,) = blocker.args
-            assert "exceeds" in reason
-            assert service.state == TransferState.IDLE
+            service.start_transfer(str(source))
+            assert _state(service) == TransferState.HANDSHAKING
+            assert service._file_size == source.stat().st_size
+            assert _tx_file(service) is not None
+            service.abort_transfer()
+            assert _state(service) == TransferState.ABORTED
+            assert service._tx_file is None
         finally:
-            Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
     def test_file_transfer_e2e_mock_loopback(self, qtbot: QtBot) -> None:
@@ -93,7 +112,7 @@ class TestFileTransferService:
             assert elapsed_sec >= 0.0
             expected_crc = f"0x{zlib.crc32(test_content) & 0xFFFFFFFF:08X}"
             assert crc_hex == expected_crc
-            assert service.state == TransferState.COMPLETED
+            assert _state(service) == TransferState.COMPLETED
         finally:
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
@@ -124,7 +143,7 @@ class TestFileTransferService:
             filename, bytes_sent, elapsed_sec, crc_hex = blocker.args
             assert filename == Path(tmp_path).name
             assert bytes_sent == len(test_content)
-            assert service.state == TransferState.COMPLETED
+            assert _state(service) == TransferState.COMPLETED
             assert len(progress_records) > 0
             last_pct, _, _, last_chunk, total_chunks = progress_records[-1]
             assert last_pct == 100
@@ -151,23 +170,28 @@ class TestFileTransferService:
             assert filename == Path(tmp_path).name
             assert bytes_sent == 0
             assert crc_hex == "0x00000000"
-            assert service.state == TransferState.COMPLETED
+            assert _state(service) == TransferState.COMPLETED
         finally:
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
-    def test_too_many_chunks_rejected_before_read(self, qtbot: QtBot, tmp_path: Path) -> None:
-        """A file needing >65535 chunks is rejected cleanly instead of struct.error."""
+    def test_too_many_chunks_switch_to_extended_protocol(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """A file needing >65535 legacy chunks uses the large-transfer payloads."""
         manager = SerialManager()
-        service = FileTransferService(manager, chunk_size=1)
-        source = tmp_path / "too_many_chunks.bin"
-        source.write_bytes(b"X" * 70_000)  # 70,000 chunks at 1B/chunk
+        service = FileTransferService(manager, chunk_size=1, transfers_dir=tmp_path / "rx")
+        source = tmp_path / "many_chunks.bin"
+        source.write_bytes(b"X" * (MAX_V1_CHUNK_COUNT + 1))
         try:
-            with qtbot.waitSignal(service.transfer_failed, timeout=1000) as blocker:
-                service.start_transfer(str(source))
-            (reason,) = blocker.args
-            assert "chunks" in reason.lower()
-            assert service.state == TransferState.IDLE
+            service.start_transfer(str(source))
+            assert _state(service) == TransferState.HANDSHAKING
+            assert service.uses_extended_protocol is True
+            assert service._total_chunks == MAX_V1_CHUNK_COUNT + 1
+            assert service._cached_start_payload is not None
+            assert len(service._cached_start_payload) == 19 + len(source.name)
+            service.abort_transfer()
+            assert _state(service) == TransferState.ABORTED
         finally:
             manager.shutdown()
 
@@ -182,7 +206,7 @@ class TestFileTransferService:
                 service.start_transfer(str(source))
             (reason,) = blocker.args
             assert "chunk size" in reason.lower()
-            assert service.state == TransferState.IDLE
+            assert _state(service) == TransferState.IDLE
         finally:
             manager.shutdown()
 
@@ -196,7 +220,7 @@ class TestFileTransferService:
 
         (reason,) = blocker.args
         assert "not found" in reason.lower()
-        assert service.state == TransferState.IDLE
+        assert _state(service) == TransferState.IDLE
         manager.shutdown()
 
     def test_file_transfer_abort_during_handshaking(self, qtbot: QtBot) -> None:
@@ -234,7 +258,7 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(tmp_path)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
             expected_seq = service._seq
 
             # Inject stale ACK with a mismatched sequence number
@@ -250,7 +274,7 @@ class TestFileTransferService:
 
             service._handle_packet(pkt)
             # Must remain in HANDSHAKING because the ACK was stale
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
         finally:
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
@@ -266,7 +290,7 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(tmp_path)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
             assert service._retry_count == 0
 
             # Inject ACK with matching sequence but CRC_ERROR status
@@ -280,7 +304,7 @@ class TestFileTransferService:
             pkt = Packet(header=header, payload=ack_payload, crc32=0, eof=EOF_MAGIC)
 
             service._handle_packet(pkt)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
             assert service._retry_count == 1
         finally:
             Path(tmp_path).unlink(missing_ok=True)
@@ -297,7 +321,7 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(tmp_path)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
             assert service._retry_count == 0
 
             # Send NACK
@@ -311,7 +335,7 @@ class TestFileTransferService:
             pkt = Packet(header=header, payload=nack_payload, crc32=0, eof=EOF_MAGIC)
 
             service._handle_packet(pkt)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
             assert service._retry_count == 1
         finally:
             Path(tmp_path).unlink(missing_ok=True)
@@ -395,14 +419,14 @@ class TestFileTransferService:
 
         try:
             service.start_transfer(path1)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
             assert service._current_file_path == Path(path1)
 
             # Attempt to start a second transfer while busy
             service.start_transfer(path2)
             # File path must remain file 1
             assert service._current_file_path == Path(path1)
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
         finally:
             Path(path1).unlink(missing_ok=True)
             Path(path2).unlink(missing_ok=True)
@@ -452,7 +476,8 @@ class TestFileTransferService:
                 eof=EOF_MAGIC,
             )
             service._handle_packet(pkt_chunk0)
-            assert len(service._rx_received_chunks) == 1
+            assert service._rx_received_count == 1
+            assert service._rx_expected_chunk == 1
 
             pkt_chunk1 = Packet(
                 header=Header(
@@ -463,7 +488,8 @@ class TestFileTransferService:
                 eof=EOF_MAGIC,
             )
             service._handle_packet(pkt_chunk1)
-            assert len(service._rx_received_chunks) == 2
+            assert service._rx_received_count == 2
+            assert service._rx_expected_chunk == 2
 
             # 3. Incoming TRANSFER_END
             end_payload = FileEndPayload(file_crc32=file_crc, total_bytes_sent=len(file_bytes))
@@ -477,7 +503,7 @@ class TestFileTransferService:
             with qtbot.waitSignal(service.transfer_completed, timeout=2000) as blocker:
                 service._handle_packet(pkt_end)
 
-            assert service.state == TransferState.COMPLETED
+            assert _state(service) == TransferState.COMPLETED
             completed_fname, total_b, _, crc_hex = blocker.args
             assert completed_fname == fname
             assert total_b == len(file_bytes)
@@ -537,19 +563,19 @@ class TestFileTransferService:
                     )
                 )
 
-            assert service.state == TransferState.FAILED
+            assert _state(service) == TransferState.FAILED
             (err,) = blocker.args
             assert "missing chunk 1" in err.lower()
 
         manager.shutdown()
 
     def test_file_receiver_size_mismatch_fails(self, qtbot: QtBot) -> None:
-        """Assembled length must match START file_size and END total_bytes_sent."""
+        """Streamed length must match START file_size and END total_bytes_sent."""
         manager = SerialManager()
         with tempfile.TemporaryDirectory() as tmp_dir:
             service = FileTransferService(manager, transfers_dir=Path(tmp_dir))
-            short_content = b"12345678"  # START declares 10B, chunks carry only 8B
-            crc = zlib.crc32(short_content) & 0xFFFFFFFF
+            content = b"1234567890"
+            crc = zlib.crc32(content) & 0xFFFFFFFF
             start_payload = FileStartPayload(
                 file_size=10,
                 chunk_size=5,
@@ -568,11 +594,13 @@ class TestFileTransferService:
                 )
             )
             for idx in range(2):
-                chunk = FileChunkPayload(chunk_id=idx, chunk_data=short_content[idx * 4 : (idx + 1) * 4])
+                chunk = FileChunkPayload(
+                    chunk_id=idx, chunk_data=content[idx * 5 : (idx + 1) * 5]
+                )
                 service._handle_packet(
                     Packet(
                         header=Header(
-                            sof=SOF_MAGIC, seq=2 + idx, opcode=Opcode.DATA_CHUNK, length=6
+                            sof=SOF_MAGIC, seq=2 + idx, opcode=Opcode.DATA_CHUNK, length=7
                         ),
                         payload=chunk.pack(),
                         crc32=123,
@@ -580,7 +608,8 @@ class TestFileTransferService:
                     )
                 )
 
-            end_payload = FileEndPayload(file_crc32=crc, total_bytes_sent=len(short_content))
+            # END claims fewer bytes than were streamed/declared in START.
+            end_payload = FileEndPayload(file_crc32=crc, total_bytes_sent=8)
             with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
                 service._handle_packet(
                     Packet(
@@ -593,9 +622,10 @@ class TestFileTransferService:
                     )
                 )
 
-            assert service.state == TransferState.FAILED
+            assert _state(service) == TransferState.FAILED
             (err,) = blocker.args
             assert "size mismatch" in err.lower()
+            assert service._rx_temp_path is None
 
         manager.shutdown()
 
@@ -644,7 +674,7 @@ class TestFileTransferService:
                     )
                 )
 
-            assert service.state == TransferState.FAILED
+            assert _state(service) == TransferState.FAILED
             (err,) = blocker.args
             assert "checksum mismatch" in err.lower()
 
@@ -674,7 +704,9 @@ class TestFileTransferService:
 
             service.abort_transfer()
             assert service.state.name == "ABORTED"
-            assert len(service._rx_received_chunks) == 0
+            assert service._rx_received_count == 0
+            assert service._rx_file_handle is None
+            assert service._rx_temp_path is None
 
         manager.shutdown()
 
@@ -698,34 +730,72 @@ class TestFileTransferReceiver:
             )
             service._handle_packet(_rx_packet(9, Opcode.TRANSFER_START, start.pack()))
 
-            assert service.state == TransferState.TRANSFERRING
+            assert _state(service) == TransferState.TRANSFERRING
             assert service._rx_filename == ""
             qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
             assert Opcode.NACK in _nack_opcodes_in(raw_tx)
         finally:
             manager.shutdown()
 
-    def test_rx_oversize_start_rejected(self, qtbot: QtBot) -> None:
-        """Verifies receiver refuses files above MAX_FILE_SIZE_BYTES."""
+    def test_rx_start_above_legacy_limit_is_accepted(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """The receiver no longer rejects files above the old 10 MB cap."""
         manager = SerialManager()
         manager.connect_port("MOCK_COM_LOOPBACK", 115200)
-        service = FileTransferService(serial_manager=manager)
+        service = FileTransferService(
+            serial_manager=manager, transfers_dir=tmp_path / "rx"
+        )
         try:
             failures: list[str] = []
             service.transfer_failed.connect(failures.append)
 
+            file_size = 10 * 1024 * 1024 + 1024
+            chunk_size = 240
+            total = (file_size + chunk_size - 1) // chunk_size
             start = FileStartPayload(
-                file_size=MAX_FILE_SIZE_BYTES + 1,
-                chunk_size=240,
-                total_chunks=999,
+                file_size=file_size,
+                chunk_size=chunk_size,
+                total_chunks=total,
                 file_crc32=1,
                 filename="huge.bin",
             )
             service._handle_packet(_rx_packet(3, Opcode.TRANSFER_START, start.pack()))
 
-            assert service.state == TransferState.FAILED
-            assert service._rx_received_chunks == {}
-            assert any("exceeds" in reason for reason in failures)
+            assert _state(service) == TransferState.RECEIVING
+            assert service._rx_file_size == file_size
+            assert failures == []
+            service.abort_transfer()
+            assert service._rx_temp_path is None
+        finally:
+            manager.shutdown()
+
+    def test_rx_large_opcode_accepts_u64_file_size(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """TRANSFER_START_LARGE accepts a file size above 4 GiB without RAM use."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(
+            serial_manager=manager, transfers_dir=tmp_path / "rx"
+        )
+        try:
+            file_size = 5 * 1024 * 1024 * 1024
+            chunk_size = MAX_EXTENDED_CHUNK_DATA_SIZE
+            total = (file_size + chunk_size - 1) // chunk_size
+            start = FileStartPayloadLarge(
+                file_size=file_size,
+                chunk_size=chunk_size,
+                total_chunks=total,
+                file_crc32=1,
+                filename="huge_large.bin",
+            )
+            service._handle_packet(
+                _rx_packet(3, Opcode.TRANSFER_START_LARGE, start.pack())
+            )
+
+            assert _state(service) == TransferState.RECEIVING
+            assert service._rx_extended is True
+            assert service._rx_file_size == file_size
+            service.abort_transfer()
         finally:
             manager.shutdown()
 
@@ -759,7 +829,7 @@ class TestFileTransferReceiver:
 
             service._handle_packet(_rx_packet(5, Opcode.TRANSFER_START, b"\x01\x02"))
 
-            assert service.state == TransferState.IDLE
+            assert _state(service) == TransferState.IDLE
             qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
             assert Opcode.NACK in _nack_opcodes_in(raw_tx)
         finally:
@@ -791,7 +861,7 @@ class TestFileTransferReceiver:
             opcodes = _nack_opcodes_in(raw_tx)
             assert Opcode.ACK in opcodes
             assert Opcode.NACK not in opcodes
-            assert service.state == TransferState.RECEIVING
+            assert _state(service) == TransferState.RECEIVING
         finally:
             manager.shutdown()
 
@@ -833,12 +903,12 @@ class TestFileTransferReceiver:
                 return count
 
             qtbot.waitUntil(lambda: ack_count() >= 1, timeout=2000)
-            assert service.state == TransferState.COMPLETED
+            assert _state(service) == TransferState.COMPLETED
             assert len(completed) == 1
 
             service._handle_packet(_rx_packet(13, Opcode.TRANSFER_END, end))
             qtbot.waitUntil(lambda: ack_count() >= 2, timeout=2000)
-            assert service.state == TransferState.COMPLETED
+            assert _state(service) == TransferState.COMPLETED
             assert len(completed) == 1
             assert Opcode.NACK not in _nack_opcodes_in(raw_tx)
         finally:
@@ -853,14 +923,14 @@ class TestFileTransferReceiver:
         try:
             service.start_transfer(str(tmp_file))
             service._ack_timer.stop()
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
 
             stale_seq = (service._seq + 1) % 256
             nack_payload = AckPayload(acked_seq=stale_seq, status=AckStatus.CRC_ERROR).pack()
             service._handle_packet(_rx_packet(stale_seq, Opcode.NACK, nack_payload))
 
             assert service._retry_count == 0
-            assert service.state == TransferState.HANDSHAKING
+            assert _state(service) == TransferState.HANDSHAKING
         finally:
             manager.shutdown()
 
@@ -923,5 +993,317 @@ class TestFileTransferReceiver:
                 assert records[0]["direction"] == "RX"
                 assert records[0]["file_path"] == str(saved)
                 assert records[0]["status"] == "SUCCESS"
+        finally:
+            manager.shutdown()
+
+
+class TestStreamingAndCancellation:
+    """Covers streaming I/O and symmetric sender/receiver cancellation."""
+
+    def test_tx_streams_without_read_bytes(
+        self, monkeypatch: pytest.MonkeyPatch, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """TX must not call Path.read_bytes; only the current chunk is held in RAM."""
+        manager = SerialManager()
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        source = tmp_path / "stream.bin"
+        source.write_bytes(b"streaming payload" * 1024)
+
+        def _forbidden_read_bytes(self: Path) -> bytes:
+            raise AssertionError("read_bytes() must not be used for TX streaming")
+
+        monkeypatch.setattr(Path, "read_bytes", _forbidden_read_bytes)
+        try:
+            service.start_transfer(str(source))
+            assert _state(service) == TransferState.HANDSHAKING
+            assert _tx_file(service) is not None
+            service.abort_transfer()
+            assert service._tx_file is None
+        finally:
+            manager.shutdown()
+
+    def test_rx_writes_chunks_to_part_file_incrementally(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """RX appends each chunk to a .part file instead of buffering in a dict."""
+        manager = SerialManager()
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        content = b"0123456789"
+        crc = zlib.crc32(content) & 0xFFFFFFFF
+        start = FileStartPayload(10, 5, 2, crc, "stream_rx.bin")
+        service._handle_packet(_rx_packet(1, Opcode.TRANSFER_START, start.pack()))
+
+        part_path = service._rx_temp_path
+        assert part_path is not None
+        service._handle_packet(
+            _rx_packet(2, Opcode.DATA_CHUNK, FileChunkPayload(0, content[:5]).pack())
+        )
+        assert part_path.exists()
+        assert part_path.stat().st_size == 5
+        assert service._rx_received_count == 1
+        assert service._rx_bytes_received == 5
+
+        service.abort_transfer()
+        assert not part_path.exists()
+        assert service._rx_temp_path is None
+        manager.shutdown()
+
+    def test_sender_abort_sends_cancel_and_releases_handle(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """Sender cancel emits TRANSFER_PAUSE/ABORT, closes file and resets state."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        source = tmp_path / "cancel_tx.bin"
+        source.write_bytes(b"cancel me" * 100)
+        raw_tx: list[bytes] = []
+        manager.raw_tx.connect(raw_tx.append)
+        try:
+            service.start_transfer(str(source))
+            assert _tx_file(service) is not None
+
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service.abort_transfer()
+
+            assert "cancelled by user" in blocker.args[0].lower()
+            assert _state(service) == TransferState.ABORTED
+            assert service._tx_file is None
+            assert service._current_file_path is None
+            qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
+            opcodes = _nack_opcodes_in(raw_tx)
+            assert Opcode.TRANSFER_PAUSE in opcodes
+        finally:
+            manager.shutdown()
+
+    def test_receiver_abort_sends_cancel_to_sender(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """Receiver-side cancel notifies the peer and removes partial data."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        raw_tx: list[bytes] = []
+        manager.raw_tx.connect(raw_tx.append)
+        try:
+            start = FileStartPayload(10, 5, 2, zlib.crc32(b"0123456789"), "rx_cancel.bin")
+            service._handle_packet(_rx_packet(7, Opcode.TRANSFER_START, start.pack()))
+            assert _state(service) == TransferState.RECEIVING
+            part_path = service._rx_temp_path
+            assert part_path is not None
+
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service.abort_transfer()
+
+            assert "aborted by user" in blocker.args[0].lower()
+            assert _state(service) == TransferState.ABORTED
+            assert service._rx_file_handle is None
+            assert service._rx_temp_path is None
+            assert not part_path.exists()
+            qtbot.waitUntil(lambda: len(raw_tx) > 0, timeout=2000)
+            assert Opcode.TRANSFER_PAUSE in _nack_opcodes_in(raw_tx)
+        finally:
+            manager.shutdown()
+
+    def test_remote_cancel_stops_active_sender(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """A TRANSFER_PAUSE/ABORT from the receiver tears down an active TX session."""
+        manager = SerialManager()
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        source = tmp_path / "remote_cancel_tx.bin"
+        source.write_bytes(b"remote cancel" * 100)
+        try:
+            service.start_transfer(str(source))
+            assert _state(service) == TransferState.HANDSHAKING
+            assert _tx_file(service) is not None
+
+            pause = b"ABORT"
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service._handle_packet(_rx_packet(99, Opcode.TRANSFER_PAUSE, pause))
+
+            assert "remote cancelled" in blocker.args[0].lower()
+            assert _state(service) == TransferState.ABORTED
+            assert service._tx_file is None
+            assert service._current_file_path is None
+        finally:
+            manager.shutdown()
+
+    def test_remote_cancel_stops_active_receiver_and_cleans_part(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """A TRANSFER_PAUSE/ABORT from the sender removes the RX .part file."""
+        manager = SerialManager()
+        manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        try:
+            start = FileStartPayload(10, 5, 2, zlib.crc32(b"0123456789"), "remote_rx.bin")
+            service._handle_packet(_rx_packet(1, Opcode.TRANSFER_START, start.pack()))
+            part_path = service._rx_temp_path
+            assert part_path is not None and part_path.exists()
+
+            with qtbot.waitSignal(service.transfer_failed, timeout=2000) as blocker:
+                service._handle_packet(_rx_packet(2, Opcode.TRANSFER_PAUSE, b"ABORT"))
+
+            assert "remote aborted" in blocker.args[0].lower()
+            assert _state(service) == TransferState.ABORTED
+            assert service._rx_temp_path is None
+            assert not part_path.exists()
+        finally:
+            manager.shutdown()
+
+    def test_rx_large_chunk_extension_roundtrip(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """RX accepts DATA_CHUNK_LARGE streams and verifies the published file."""
+        manager = SerialManager()
+        service = FileTransferService(manager, transfers_dir=tmp_path / "rx")
+        content = b"L" * 1200
+        chunk_size = MAX_EXTENDED_CHUNK_DATA_SIZE
+        total = (len(content) + chunk_size - 1) // chunk_size
+        crc = zlib.crc32(content) & 0xFFFFFFFF
+        try:
+            start = FileStartPayloadLarge(
+                file_size=len(content),
+                chunk_size=chunk_size,
+                total_chunks=total,
+                file_crc32=crc,
+                filename="large_mode.bin",
+            )
+            service._handle_packet(
+                _rx_packet(1, Opcode.TRANSFER_START_LARGE, start.pack())
+            )
+            for idx in range(total):
+                part = content[idx * chunk_size : (idx + 1) * chunk_size]
+                service._handle_packet(
+                    _rx_packet(
+                        2 + idx,
+                        Opcode.DATA_CHUNK_LARGE,
+                        FileChunkPayloadLarge(idx, part).pack(),
+                    )
+                )
+
+            completed: list[tuple[str, int, float, str]] = []
+            service.transfer_completed.connect(lambda *args: completed.append(args))
+            end = FileEndPayloadLarge(crc, len(content)).pack()
+            service._handle_packet(_rx_packet(50, Opcode.TRANSFER_END_LARGE, end))
+
+            assert _state(service) == TransferState.COMPLETED
+            assert completed and completed[0][1] == len(content)
+            assert (tmp_path / "rx" / "large_mode.bin").read_bytes() == content
+        finally:
+            manager.shutdown()
+
+
+class TestRxDestinationDirectory:
+    """Covers the configurable receive directory and its per-session lock."""
+
+    @staticmethod
+    def _feed_rx(service: FileTransferService, filename: str, content: bytes) -> None:
+        """Drives a complete RX session (START + chunks + END) into the service."""
+        chunk_size = 8
+        total = (len(content) + chunk_size - 1) // chunk_size if content else 1
+        crc = zlib.crc32(content) & 0xFFFFFFFF
+        service._handle_packet(
+            _rx_packet(
+                1,
+                Opcode.TRANSFER_START,
+                FileStartPayload(len(content), chunk_size, total, crc, filename).pack(),
+            )
+        )
+        for idx in range(total):
+            part = content[idx * chunk_size : (idx + 1) * chunk_size]
+            service._handle_packet(
+                _rx_packet(2 + idx, Opcode.DATA_CHUNK, FileChunkPayload(idx, part).pack())
+            )
+        service._handle_packet(
+            _rx_packet(9 + total, Opcode.TRANSFER_END, FileEndPayload(crc, len(content)).pack())
+        )
+
+    def test_rx_writes_to_configured_custom_dir(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """A receive dir saved through settings is where the produced file lands."""
+        manager = SerialManager()
+        storage = StorageService(data_dir=tmp_path / "data")
+        default_dir = tmp_path / "rx_default"
+        custom_dir = tmp_path / "custom" / "incoming"
+        service = FileTransferService(
+            manager, storage_service=storage, transfers_dir=default_dir
+        )
+        content = b"hello custom dir"  # 16 bytes -> 2 chunks
+        try:
+            resolved = service.set_transfers_dir(custom_dir)
+            assert storage.get_setting("transfers_dir") == str(resolved)
+
+            self._feed_rx(service, "custom.bin", content)
+
+            assert _state(service) == TransferState.COMPLETED
+            assert (custom_dir / "custom.bin").read_bytes() == content
+            assert not (default_dir / "custom.bin").exists()
+        finally:
+            manager.shutdown()
+
+    def test_rx_session_locks_destination_dir_across_settings_change(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        """Changing transfers_dir mid-RX must not relocate the target (no EXDEV)."""
+        manager = SerialManager()
+        dir_a = tmp_path / "dir_a"
+        dir_b = tmp_path / "dir_b"
+        service = FileTransferService(manager, transfers_dir=dir_a)
+        content = b"LOCK-CONTENT"  # 12 bytes
+        try:
+            service._handle_packet(
+                _rx_packet(
+                    1,
+                    Opcode.TRANSFER_START,
+                    FileStartPayload(
+                        len(content), 4, 3, zlib.crc32(content) & 0xFFFFFFFF, "locked.bin"
+                    ).pack(),
+                )
+            )
+            assert service._rx_dest_dir == dir_a
+            part_path = service._rx_temp_path
+            assert part_path is not None and part_path.parent == dir_a
+
+            # User changes the setting halfway through the transfer.
+            service.set_transfers_dir(dir_b)
+            assert service.transfers_dir_path == dir_b.resolve()
+
+            for idx in range(3):
+                part = content[idx * 4 : (idx + 1) * 4]
+                service._handle_packet(
+                    _rx_packet(2 + idx, Opcode.DATA_CHUNK, FileChunkPayload(idx, part).pack())
+                )
+            service._handle_packet(
+                _rx_packet(
+                    20,
+                    Opcode.TRANSFER_END,
+                    FileEndPayload(zlib.crc32(content) & 0xFFFFFFFF, len(content)).pack(),
+                )
+            )
+
+            assert _state(service) == TransferState.COMPLETED
+            # Session lock: file published in the dir captured at TRANSFER_START.
+            assert (dir_a / "locked.bin").read_bytes() == content
+            assert not (dir_b / "locked.bin").exists()
+            assert not list(dir_a.glob(".ir_rx_*.part"))
+            assert service._rx_dest_dir is None
+        finally:
+            manager.shutdown()
+
+    def test_default_transfers_dir_is_immutable(self, qtbot: QtBot, tmp_path: Path) -> None:
+        """The reset target stays at the constructed default after custom changes."""
+        manager = SerialManager()
+        default_dir = tmp_path / "rx_default"
+        service = FileTransferService(manager, transfers_dir=default_dir)
+        try:
+            assert service.default_transfers_dir_path.resolve() == default_dir.resolve()
+            service.set_transfers_dir(tmp_path / "rx_custom")
+            assert service.transfers_dir_path == (tmp_path / "rx_custom").resolve()
+            assert service.default_transfers_dir_path.resolve() == default_dir.resolve()
+
+            # "Reset to default" is just setting the receive dir back to it.
+            service.set_transfers_dir(service.default_transfers_dir_path)
+            assert service.transfers_dir_path == default_dir.resolve()
         finally:
             manager.shutdown()

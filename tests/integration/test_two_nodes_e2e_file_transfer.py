@@ -94,3 +94,54 @@ class TestTwoNodesE2EFileTransfer:
 
         mgr_a.shutdown()
         mgr_b.shutdown()
+
+    def test_two_nodes_receiver_cancel_mid_transfer(self, qtbot: QtBot) -> None:
+        """Node B cancels mid-transfer; both nodes tear down and no partial file remains."""
+        mgr_a = SerialManager()
+        mgr_a.connect_port("MOCK_NODE_A", 115200)
+        mgr_b = SerialManager()
+        mgr_b.connect_port("MOCK_NODE_B", 115200)
+        mgr_a.raw_tx.connect(mgr_b.inject_raw_rx)
+        mgr_b.raw_tx.connect(mgr_a.inject_raw_rx)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dir_path = Path(tmp_dir)
+            source_file = dir_path / "cancel_me.bin"
+            source_file.write_bytes(b"CANCEL_MID_TRANSFER_BLOCK_" * 200)  # ~5200B
+
+            downloads_b = dir_path / "node_b_downloads"
+            service_a = FileTransferService(serial_manager=mgr_a, chunk_size=240)
+            service_b = FileTransferService(
+                serial_manager=mgr_b, chunk_size=240, transfers_dir=downloads_b
+            )
+
+            cancelled = {"done": False}
+
+            def _cancel_on_first_chunk(
+                _pct: int, _kbps: float, _eta: float, received: int, _total: int
+            ) -> None:
+                # Cancel only once real chunk data has landed, proving partial cleanup.
+                if not cancelled["done"] and received >= 1:
+                    cancelled["done"] = True
+                    service_b.abort_transfer()
+
+            service_b.progress_updated.connect(_cancel_on_first_chunk)
+
+            with (
+                qtbot.waitSignal(service_a.transfer_failed, timeout=10000) as fail_a,
+                qtbot.waitSignal(service_b.transfer_failed, timeout=10000) as fail_b,
+            ):
+                service_a.start_transfer(str(source_file))
+
+            assert cancelled["done"], "receiver never reached first chunk before completion"
+            assert "aborted by user" in fail_b.args[0].lower()
+            assert "remote cancelled" in fail_a.args[0].lower()
+            assert service_a.state == TransferState.ABORTED
+            assert service_b.state == TransferState.ABORTED
+            assert service_a._tx_file is None
+            assert service_b._rx_file_handle is None
+            assert not list(downloads_b.glob(".ir_rx_*.part"))
+            assert not (downloads_b / source_file.name).exists()
+
+        mgr_a.shutdown()
+        mgr_b.shutdown()

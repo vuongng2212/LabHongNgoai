@@ -21,21 +21,17 @@
     </div>
     <div class="space-y-space-md">
       <div class="space-y-1.5">
-        <label for="settings-max-mb" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Max file transfer limit (MB)</label>
-        <input id="settings-max-mb" type="number" min="1" max="100" step="1" value="10"
-          class="w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
-        <p class="font-mono-caption text-mono-caption text-outline">Allowed range: 1 – 100 MB. Default: 10 MB.</p>
-      </div>
-      <div class="space-y-1.5">
-        <label for="settings-dir" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Default receive directory</label>
+        <label for="settings-dir" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Default receive directory (Files only)</label>
         <div class="flex items-center gap-2">
-          <input id="settings-dir" type="text" placeholder="Transfers directory path" readonly
+          <input id="settings-dir" type="text" placeholder="Type or browse a receive folder" spellcheck="false" autocomplete="off"
             class="flex-1 bg-surface-container-low border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
           <button id="settings-browse" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
             <span class="material-symbols-outlined text-[16px]">folder_open</span>
             <span>Browse</span>
           </button>
         </div>
+        <p class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed">Only files received over the optical link are saved here. Chat history, logs and telemetry always stay in the app's <span class="font-mono-data">data/</span> folder.</p>
+        <button id="settings-reset" type="button" class="self-start font-title-sm text-title-sm font-medium text-primary hover:underline cursor-pointer">Reset to default</button>
       </div>
       <p id="settings-error" class="hidden font-body-md text-body-md text-error"></p>
     </div>

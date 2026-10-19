@@ -1,7 +1,8 @@
-"""Suite-wide fixtures: isolate every test from the developer's real home directory.
+"""Suite-wide fixtures: isolate every test from the developer's real data directory.
 
-Services fall back to ~/.ir_terminal when no explicit path is injected, so the
-whole suite runs with HOME redirected into a temporary directory.
+Runtime data defaults to ``<exe or project root>/data``; the whole suite runs
+with ``IR_DATA_DIR`` redirected into a per-test temporary directory so tests
+never touch the checkout's ``data/`` tree or the user's home directory.
 """
 
 from __future__ import annotations
@@ -13,5 +14,6 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolated_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Redirects HOME so default storage/log paths never touch real user data."""
+    """Redirects HOME and IR_DATA_DIR so tests never touch real user data."""
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("IR_DATA_DIR", str(tmp_path / "app_data"))

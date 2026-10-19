@@ -5,8 +5,11 @@ from pathlib import Path
 
 import pytest
 
+from ir_terminal.utils import path_helpers
 from ir_terminal.utils.path_helpers import (
+    DATA_DIR_ENV,
     get_app_data_dir,
+    get_app_root,
     get_assets_dir,
     get_data_dir,
     get_logs_dir,
@@ -47,8 +50,8 @@ class TestPathHelpers:
         assert data_dir.exists()
 
         data_dir = get_data_dir()
-        assert data_dir.name == "data"
         assert data_dir.exists()
+        assert data_dir.name == "app_data"  # IR_DATA_DIR override in conftest
 
         transfers = get_transfers_dir()
         assert transfers.exists()
@@ -57,3 +60,55 @@ class TestPathHelpers:
         logs = get_logs_dir()
         assert logs.exists()
         assert logs.name == "logs"
+
+
+class TestAppDataRootResolution:
+    """Verifies dev-root and PyInstaller-frozen data placement."""
+
+    def test_dev_default_is_project_root_data(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Development runs keep data/ at the repository root by default."""
+        monkeypatch.delenv(DATA_DIR_ENV, raising=False)
+        monkeypatch.setattr(sys, "frozen", False, raising=False)
+        monkeypatch.setattr(path_helpers, "get_project_root", lambda: tmp_path)
+
+        assert get_app_root() == tmp_path
+        app_data = get_app_data_dir()
+        assert app_data == tmp_path / "data"
+        assert (tmp_path / "data").is_dir()
+
+    def test_frozen_uses_executable_directory(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Frozen builds put data/ next to the .exe, not in the home directory."""
+        monkeypatch.delenv(DATA_DIR_ENV, raising=False)
+        exe_dir = tmp_path / "dist" / "IR_OWC_Lab_Terminal"
+        exe_dir.mkdir(parents=True)
+        exe = exe_dir / "IR_OWC_Lab_Terminal.exe"
+        exe.write_bytes(b"")
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", str(exe))
+
+        assert get_app_root() == exe_dir
+        assert get_app_data_dir() == exe_dir / "data"
+        assert get_data_dir() == exe_dir / "data"
+        assert get_transfers_dir() == exe_dir / "data" / "transfers"
+        assert get_logs_dir() == exe_dir / "data" / "logs"
+        assert (exe_dir / "data" / "transfers").is_dir()
+        assert (exe_dir / "data" / "logs").is_dir()
+
+    def test_override_and_instance_isolation(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """IR_DATA_DIR wins and dual-mock instances get isolated subtrees."""
+        override = tmp_path / "portable"
+        monkeypatch.setenv(DATA_DIR_ENV, str(override))
+
+        assert get_app_data_dir() == override
+        assert get_app_data_dir("a") == override / "instances" / "A"
+        assert get_data_dir("b") == override / "instances" / "B"
+        assert get_transfers_dir("A") == override / "instances" / "A" / "transfers"
+        assert get_logs_dir("b") == override / "instances" / "B" / "logs"
+        assert (override / "instances" / "A" / "transfers").is_dir()
+        assert (override / "instances" / "B" / "logs").is_dir()

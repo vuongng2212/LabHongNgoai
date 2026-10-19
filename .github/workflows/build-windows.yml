@@ -1,79 +1,140 @@
-name: Build Windows Executable
+name: Build Windows x64
 
 on:
   push:
-    branches: [ main, master ]
-    tags: [ 'v*' ]
+    branches: [main, master]
+    tags: ["v*"]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       create_release:
-        description: 'Tạo GitHub Release ngay từ lần chạy này?'
+        description: Create a GitHub Release from this run
         required: false
         type: boolean
         default: false
       tag_name:
-        description: 'Tag version cho Release (nếu chọn tạo release)'
+        description: Existing or new version tag to publish (for example v0.1.0)
         required: false
         type: string
-        default: 'v0.1.0'
+        default: ""
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-and-build:
-    name: Build & Package (Windows x64)
+    name: Test and package (Windows x64)
     runs-on: windows-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Setup Astral uv
-        uses: astral-sh/setup-uv@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10
         with:
           enable-cache: true
-          version: "latest"
+          cache-dependency-glob: uv.lock
 
-      - name: Install Python 3.12
-        run: uv python install 3.12
+      - name: Set up Python 3.12 x64
+        shell: pwsh
+        run: |
+          if ($env:PROCESSOR_ARCHITECTURE -ne "AMD64") {
+            throw "Expected an x64 Windows runner; got $env:PROCESSOR_ARCHITECTURE"
+          }
+          uv python install 3.12
 
-      - name: Install Project Dependencies
-        run: uv sync --extra dev
+      - name: Install locked project dependencies
+        run: uv sync --locked --extra dev
 
-      - name: Run Test Suite (Headless Offscreen)
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Run tests (Qt offscreen)
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          uv run pytest tests/ -v
+          uv run pytest tests/
 
-      - name: Build Standalone Executable via PyInstaller
-        shell: pwsh
+      - name: Build with PyInstaller spec
         run: uv run python scripts/build_standalone.py
 
-      - name: Archive Distribution Directory
+      - name: Verify executable and bundled web UI
         shell: pwsh
         run: |
-          Compress-Archive -Path dist\IR_OWC_Lab_Terminal\* -DestinationPath dist\IR_OWC_Lab_Terminal-Windows-x64.zip
+          $distDir = "dist/IR_OWC_Lab_Terminal"
+          $exePath = Join-Path $distDir "IR_OWC_Lab_Terminal.exe"
+          $webIndex = Join-Path $distDir "_internal/ir_terminal/ui/web/index.html"
+          if (-not (Test-Path $exePath -PathType Leaf)) { throw "Missing executable: $exePath" }
+          if (-not (Test-Path $webIndex -PathType Leaf)) { throw "Missing bundled web UI: $webIndex" }
+          if ((Get-Item $exePath).Length -le 0) { throw "Executable is empty: $exePath" }
 
-      - name: Upload Build Artifact (CI Temp Storage)
-        uses: actions/upload-artifact@v4
+      - name: Create zip and SHA-256 checksum
+        shell: pwsh
+        run: |
+          $distDir = "dist/IR_OWC_Lab_Terminal"
+          $zipPath = "dist/IR_OWC_Lab_Terminal-Windows-x64.zip"
+          Compress-Archive -Path "$distDir/*" -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  IR_OWC_Lab_Terminal-Windows-x64.zip" | Set-Content "dist/SHA256SUMS.txt" -Encoding ascii
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v7
         with:
           name: IR_OWC_Lab_Terminal-Windows-x64
-          path: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
+          path: |
+            dist/IR_OWC_Lab_Terminal-Windows-x64.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
           retention-days: 14
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+  release:
+    name: Publish GitHub Release
+    needs: test-and-build
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.create_release)
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          if ($env:EVENT_NAME -eq "workflow_dispatch") {
+            $tag = $env:INPUT_TAG.Trim()
+          } else {
+            $tag = $env:REF_NAME
+          }
+          if ($tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$') {
+            throw "Release tag must use a version form such as v1.2.3; received '$tag'"
+          }
+          "tag=$tag" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Download packaged artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: IR_OWC_Lab_Terminal-Windows-x64
+          path: release-assets
+
+      - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
-          name: Release ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
-          files: dist/IR_OWC_Lab_Terminal-Windows-x64.zip
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          files: |
+            release-assets/IR_OWC_Lab_Terminal-Windows-x64.zip
+            release-assets/SHA256SUMS.txt
           generate_release_notes: true
           draft: false
           prerelease: false

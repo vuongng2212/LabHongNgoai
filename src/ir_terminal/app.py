@@ -28,8 +28,8 @@ def create_app(instance: str | None = None) -> tuple[QApplication, WebMainWindow
     Args:
         instance: Optional dual-mock instance name (A/B). When set, JSON
             stores, transfers, and logs are isolated under
-            ~/.ir_terminal/instances/<A|B>/ so two apps on one PC never
-            share state. None keeps the legacy single-app ~/.ir_terminal/.
+            ``<app root>/data/instances/<A|B>/`` so two apps on one PC never
+            share state. None keeps the shared ``<app root>/data/`` tree.
 
     Returns:
         A tuple of (QApplication, WebMainWindow).

@@ -1,6 +1,6 @@
 # IR-OWC Lab Terminal (Infrared Optical Wireless Communication)
 
-[![Tests](https://img.shields.io/badge/tests-173%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-200%20passed-brightgreen.svg)]()
 [![Type Checked](https://img.shields.io/badge/mypy-strict%20passing-blue.svg)]()
 [![Linting](https://img.shields.io/badge/ruff-clean-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
@@ -31,6 +31,8 @@ Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision L
 2. **Dedicated File Transfer Station (Screen 2):**
    - Hỗ trợ chọn file qua Native Dialog hoặc Kéo thả (Drag & Drop).
    - Động cơ **Stop-and-Wait ARQ**: Cắt nhỏ file 240B/chunk, tự động retry khi timeout (250ms), bảo toàn Sequence number.
+   - **Truyền file không giới hạn kích thước**: TX/RX streaming từng chunk xuống đĩa (RAM không tăng theo dung lượng file); file lớn tự động dùng phần mở rộng giao thức `u64/u32`.
+   - **Hủy hai chiều**: người gửi hoặc người nhận đều có thể dừng phiên; bên còn lại nhận `TRANSFER_PAUSE/ABORT`, ACK, xóa file tạm và reset trạng thái.
    - Giám sát tiến độ %, tốc độ truyền thực tế (KB/s), ETA và đối soát băm **CRC-32** toàn vẹn khi kết thúc.
    - Lưu trữ bền vững lịch sử truyền file vào file JSON trên ổ cứng.
 
@@ -59,7 +61,7 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (173/173 tests passed)
+# 3. Chạy bộ kiểm thử tự động (200/200 tests passed)
 QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn
@@ -80,6 +82,31 @@ uv run python scripts/build_standalone.py
 # File thực thi nằm tại:
 # dist/IR_OWC_Lab_Terminal/IR_OWC_Lab_Terminal
 ```
+
+### Dữ liệu Runtime (`data/`)
+
+Toàn bộ dữ liệu ghi được đặt cạnh ứng dụng, **không** dùng thư mục home:
+
+```text
+<app root>/data/                  # dev: repo root; frozen: cạnh file .exe
+├── chat_history.json
+├── file_transfers.json
+├── telemetry_samples.json
+├── settings.json
+├── transfers/                    # file nhận qua quang (file tạm .ir_rx_*.part khi đang nhận)
+├── logs/                         # log xoay vòng + CSV export
+└── instances/<A|B>/              # chỉ khi chạy dual-mock, tách biệt hoàn toàn
+```
+
+Thư mục được tạo tự động khi khởi động. Biến môi trường `IR_DATA_DIR` có thể ghi đè gốc
+`data/` (hữu ích cho bản portable hoặc test).
+
+Thư mục **nhận file** có thể đổi trong *Settings → Default receive directory (Files only)*:
+gõ tay hoặc dùng **Browse**, cần thì bấm **Reset to default** để quay về `data/transfers/`.
+Chỉ file nhận qua quang đổi chỗ; JSON (chat/lịch sử/telemetry), `settings.json` và `logs/`
+**luôn** ở `data/`. Đường dẫn được lưu dạng tuyệt đối (`expanduser().resolve()`), tạo nếu chưa
+có, và báo lỗi ngay trên UI nếu không hợp lệ. Mỗi phiên nhận khóa thư mục đích tại thời điểm
+bắt đầu nên đổi setting giữa chừng không gây lỗi `EXDEV`.
 
 ---
 

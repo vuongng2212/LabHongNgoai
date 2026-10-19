@@ -48,6 +48,9 @@ _OPCODE_NAMES: dict[int, str] = {
     0x31: "TRANSFER_END",
     0x32: "TRANSFER_PAUSE",
     0x33: "TRANSFER_RESUME",
+    0x34: "TRANSFER_START_LARGE",
+    0x35: "DATA_CHUNK_LARGE",
+    0x36: "TRANSFER_END_LARGE",
 }
 
 _ACK_STATUS_NAMES: dict[int, str] = {
@@ -175,7 +178,8 @@ def setup_logger(
     """Configures root application logger with console, rotating file, and Qt handlers.
 
     Args:
-        log_dir: Directory where log files are stored. Defaults to ~/.ir_terminal/logs.
+        log_dir: Directory where log files are stored. Defaults to the
+            application data tree (``<exe or project root>/data/logs``).
         log_level: Base logging severity level.
 
     Returns:
@@ -199,7 +203,9 @@ def setup_logger(
 
     # 2. File Handler (Rotating)
     if log_dir is None:
-        log_dir = Path.home() / ".ir_terminal" / "logs"
+        from ir_terminal.utils.path_helpers import get_logs_dir
+
+        log_dir = get_logs_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "app.log"
 

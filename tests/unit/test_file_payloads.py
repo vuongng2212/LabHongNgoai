@@ -8,8 +8,11 @@ from ir_terminal.protocol.constants import AckStatus
 from ir_terminal.protocol.file_payloads import (
     AckPayload,
     FileChunkPayload,
+    FileChunkPayloadLarge,
     FileEndPayload,
+    FileEndPayloadLarge,
     FileStartPayload,
+    FileStartPayloadLarge,
 )
 
 
@@ -138,3 +141,55 @@ class TestFilePayloads:
         """Verifies unpacking fewer than 2 bytes raises ValueError."""
         with pytest.raises(ValueError, match="Data too short"):
             AckPayload.unpack(b"\x00")
+
+
+class TestLargeFilePayloads:
+    """Test suite for the u64/u32 large-transfer extension payloads."""
+
+    def test_large_start_roundtrip_supports_files_above_u32(self) -> None:
+        """Verifies a >4 GiB file size survives pack/unpack with u64 fields."""
+        payload = FileStartPayloadLarge(
+            file_size=8 * 1024 * 1024 * 1024,
+            chunk_size=508,
+            total_chunks=20_000_000,
+            file_crc32=0xDEADBEEF,
+            filename="huge_capture.bin",
+        )
+        packed = payload.pack()
+        assert len(packed) == 19 + len("huge_capture.bin")
+
+        unpacked = FileStartPayloadLarge.unpack(packed)
+        assert unpacked == payload
+
+    def test_large_start_truncated_raises(self) -> None:
+        """Verifies the fixed 19-byte large header is mandatory."""
+        with pytest.raises(ValueError, match="Payload too short"):
+            FileStartPayloadLarge.unpack(b"\x00" * 18)
+
+    def test_large_chunk_uses_u32_id(self) -> None:
+        """Verifies chunk ids above 65535 roundtrip in the large extension."""
+        chunk = FileChunkPayloadLarge(chunk_id=70_000, chunk_data=b"payload")
+        packed = chunk.pack()
+        assert len(packed) == 4 + len(b"payload")
+        unpacked = FileChunkPayloadLarge.unpack(packed)
+        assert unpacked.chunk_id == 70_000
+        assert unpacked.chunk_data == b"payload"
+
+    def test_large_chunk_too_short_raises(self) -> None:
+        """Verifies a 4-byte chunk id prefix is mandatory."""
+        with pytest.raises(ValueError, match="Data too short"):
+            FileChunkPayloadLarge.unpack(b"\x00\x00\x00")
+
+    def test_large_end_uses_u64_byte_count(self) -> None:
+        """Verifies >4 GiB byte counts roundtrip in TRANSFER_END_LARGE."""
+        end = FileEndPayloadLarge(
+            file_crc32=0x12345678, total_bytes_sent=9 * 1024 * 1024 * 1024
+        )
+        packed = end.pack()
+        assert len(packed) == 12
+        assert FileEndPayloadLarge.unpack(packed) == end
+
+    def test_large_end_too_short_raises(self) -> None:
+        """Verifies a 12-byte large end payload is mandatory."""
+        with pytest.raises(ValueError, match="Data too short"):
+            FileEndPayloadLarge.unpack(b"\x00" * 11)

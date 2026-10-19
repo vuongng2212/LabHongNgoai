@@ -1,9 +1,15 @@
 // Transfer Settings Modal Controller (Apple Modern Precision Light)
 //
 // Opens via header #btn-top-settings, loads JSON via bridge.getSettings,
-// saves via bridge.saveSettings, browses via bridge.browseTransfersDir.
-// Applies the saved max-size hint to #file-limit-hint without reload.
+// saves the receive directory via bridge.saveSettings, browses via
+// bridge.browseTransfersDir and resets to the app default via
+// default_transfers_dir. The path field accepts typed/pasted paths (validated
+// by the backend). File transfers are unlimited by design (the service streams
+// chunks to disk), so there is no max-size field anymore.
 (function () {
+  // Backend-provided default receive folder (used by "Reset to default").
+  let defaultDir = '';
+
   function $(id) { return document.getElementById(id); }
 
   function showOverlay() {
@@ -36,27 +42,19 @@
     if (window.UIFeedback) window.UIFeedback.showToast(type, title, message);
   }
 
-  function applyLimitHint(maxMb) {
+  function applyUnlimitedHint() {
     const hint = $('file-limit-hint');
-    if (hint && maxMb > 0) {
-      hint.innerText = 'Drop file to transmit across infrared beam (Max ' + maxMb + 'MB)';
+    if (hint) {
+      hint.innerText = 'Drop file to transmit across infrared beam (Unlimited size)';
     }
   }
 
   function fillForm(config) {
-    const maxInput = $('settings-max-mb');
     const dirInput = $('settings-dir');
     if (!config) return;
-    if (maxInput && config.max_file_size_mb !== undefined) {
-      maxInput.value = config.max_file_size_mb;
-    } else if (maxInput && config.max_file_size_bytes !== undefined) {
-      maxInput.value = Math.round(config.max_file_size_bytes / (1024 * 1024));
-    }
     if (dirInput && config.transfers_dir) dirInput.value = config.transfers_dir;
-    if (config.max_file_size_mb) applyLimitHint(config.max_file_size_mb);
-    else if (config.max_file_size_bytes) {
-      applyLimitHint(Math.round(config.max_file_size_bytes / (1024 * 1024)));
-    }
+    if (config.default_transfers_dir) defaultDir = config.default_transfers_dir;
+    applyUnlimitedHint();
   }
 
   function loadSettings() {
@@ -76,35 +74,61 @@
   function openSettings() {
     showOverlay();
     loadSettings();
-    const maxInput = $('settings-max-mb');
-    if (maxInput) maxInput.focus();
+    const dirInput = $('settings-dir');
+    if (dirInput) dirInput.focus();
   }
 
-  function saveSettings() {
-    const maxInput = $('settings-max-mb');
-    const dirInput = $('settings-dir');
-    const maxMb = maxInput ? parseFloat(maxInput.value) : NaN;
-    if (!isFinite(maxMb) || maxMb < 1 || maxMb > 100) {
-      showError('Max file size must be a number between 1 and 100 MB.');
-      return;
-    }
+  // Persists a receive directory through the bridge; the backend validates,
+  // creates and stores it, and returns an error string when it is unusable.
+  function persistDir(dir, successTitle) {
     if (!window.bridge || typeof window.bridge.saveSettings !== 'function') {
       showError('Backend not connected.');
       return;
     }
-    const payload = JSON.stringify({
-      max_file_size_mb: maxMb,
-      transfers_dir: dirInput ? dirInput.value : '',
-    });
+    const payload = JSON.stringify({ transfers_dir: dir });
     window.bridge.saveSettings(payload, (raw) => {
       let result = null;
       try { result = JSON.parse(raw); } catch (e) { result = null; }
       if (result && result.ok) {
+        if (result.default_transfers_dir) defaultDir = result.default_transfers_dir;
         hideOverlay();
-        applyLimitHint(result.max_file_size_mb || maxMb);
-        toast('success', 'Settings saved', 'Max ' + (result.max_file_size_mb || maxMb) + 'MB • ' + (result.transfers_dir || ''));
+        applyUnlimitedHint();
+        toast('success', successTitle, 'Unlimited transfer size • ' + (result.transfers_dir || dir));
       } else {
         showError((result && result.error) || 'Failed to save settings.');
+      }
+    });
+  }
+
+  function saveSettings() {
+    const dirInput = $('settings-dir');
+    const dir = dirInput ? dirInput.value.trim() : '';
+    if (!dir) {
+      showError('Type or browse a receive directory before saving.');
+      return;
+    }
+    persistDir(dir, 'Settings saved');
+  }
+
+  function resetToDefault() {
+    const dirInput = $('settings-dir');
+    const applyDefault = (dir) => {
+      if (!dir) { showError('Could not resolve the default directory.'); return; }
+      if (dirInput) dirInput.value = dir;
+      persistDir(dir, 'Reset to default');
+    };
+    if (defaultDir) { applyDefault(defaultDir); return; }
+    if (!window.bridge || typeof window.bridge.getSettings !== 'function') {
+      showError('Backend not connected.');
+      return;
+    }
+    window.bridge.getSettings((raw) => {
+      try {
+        const config = JSON.parse(raw);
+        if (config && config.default_transfers_dir) defaultDir = config.default_transfers_dir;
+        applyDefault(defaultDir);
+      } catch (e) {
+        showError('Could not resolve the default directory.');
       }
     });
   }
@@ -131,24 +155,26 @@
       if (target.closest('#settings-backdrop')) { hideOverlay(); return; }
       if (target.closest('#settings-save')) { saveSettings(); return; }
       if (target.closest('#settings-browse')) { browseDirectory(); return; }
+      if (target.closest('#settings-reset')) { resetToDefault(); return; }
     });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') hideOverlay();
       if (e.key === 'Enter' && $('settings-overlay') && !$('settings-overlay').classList.contains('hidden')) {
         const active = document.activeElement;
-        if (active && (active.id === 'settings-max-mb' || active.id === 'settings-dir')) saveSettings();
+        if (active && active.id === 'settings-dir') saveSettings();
       }
     });
-    // Refresh the limit hint once the bridge is ready (QWebChannel async).
+    // Refresh the hint once the bridge is ready (QWebChannel async).
     function refreshHintWhenReady() {
       if (window.bridge && typeof window.bridge.getSettings === 'function') {
         window.bridge.getSettings((raw) => {
           try {
             const config = JSON.parse(raw);
-            const mb = config.max_file_size_mb
-              || Math.round((config.max_file_size_bytes || 0) / (1024 * 1024));
-            if (mb > 0) applyLimitHint(mb);
+            const dirInput = $('settings-dir');
+            if (dirInput && config.transfers_dir) dirInput.value = config.transfers_dir;
+            if (config.default_transfers_dir) defaultDir = config.default_transfers_dir;
           } catch (e) { /* keep default hint */ }
+          applyUnlimitedHint();
         });
       } else {
         setTimeout(refreshHintWhenReady, 500);
@@ -157,5 +183,10 @@
     setTimeout(refreshHintWhenReady, 800);
   });
 
-  window.TransferSettings = { open: openSettings, close: hideOverlay, save: saveSettings };
+  window.TransferSettings = {
+    open: openSettings,
+    close: hideOverlay,
+    save: saveSettings,
+    reset: resetToDefault,
+  };
 })();

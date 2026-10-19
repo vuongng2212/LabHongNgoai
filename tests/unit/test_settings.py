@@ -6,13 +6,13 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
 from pytestqt.qtbot import QtBot
 
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import MAX_FILE_SIZE_BYTES
 from ir_terminal.services.file_transfer_service import (
     MAX_CONFIGURABLE_FILE_SIZE_BYTES,
-    MIN_FILE_SIZE_BYTES,
     FileTransferService,
 )
 from ir_terminal.services.storage_service import StorageService
@@ -54,8 +54,8 @@ class TestFileTransferServiceConfig:
         finally:
             manager.shutdown()
 
-    def test_set_max_file_size_persists_and_clamps(self, tmp_path: Path) -> None:
-        """Verifies limit update persists and clamps to 1MB..100MB."""
+    def test_set_max_file_size_persists_and_supports_unlimited(self, tmp_path: Path) -> None:
+        """Verifies optional caps persist, 0 means unlimited, and protocol clamps apply."""
         manager = SerialManager()
         try:
             storage = StorageService(data_dir=tmp_path / "data")
@@ -66,16 +66,17 @@ class TestFileTransferServiceConfig:
             )
             assert service.set_max_file_size_bytes(5 * 1024 * 1024) == 5 * 1024 * 1024
             assert storage.get_setting("max_file_size_bytes") == str(5 * 1024 * 1024)
-            assert service.set_max_file_size_bytes(1000) == MIN_FILE_SIZE_BYTES
+            assert service.set_max_file_size_bytes(0) == 0
+            assert storage.get_setting("max_file_size_bytes") == "0"
             assert (
-                service.set_max_file_size_bytes(10 * 1024 * 1024 * 1024)
+                service.set_max_file_size_bytes(MAX_CONFIGURABLE_FILE_SIZE_BYTES + 1)
                 == MAX_CONFIGURABLE_FILE_SIZE_BYTES
             )
         finally:
             manager.shutdown()
 
-    def test_set_max_file_size_rejects_non_positive(self, tmp_path: Path) -> None:
-        """Verifies zero or negative limits raise ValueError."""
+    def test_set_max_file_size_rejects_negative(self, tmp_path: Path) -> None:
+        """Verifies only negative limits raise ValueError; 0 is unlimited."""
         manager = SerialManager()
         try:
             storage = StorageService(data_dir=tmp_path / "data")
@@ -84,8 +85,9 @@ class TestFileTransferServiceConfig:
                 storage_service=storage,
                 transfers_dir=tmp_path / "rx",
             )
+            assert service.set_max_file_size_bytes(0) == 0
             try:
-                service.set_max_file_size_bytes(0)
+                service.set_max_file_size_bytes(-1)
                 raise AssertionError("expected ValueError")
             except ValueError:
                 pass
@@ -106,6 +108,89 @@ class TestFileTransferServiceConfig:
             assert service.set_transfers_dir(str(target)) == target
             assert target.is_dir()
             assert storage.get_setting("transfers_dir") == str(target)
+        finally:
+            manager.shutdown()
+
+    def test_set_transfers_dir_normalizes_typed_path(self, tmp_path: Path) -> None:
+        """A manually typed path with '..' resolves to an absolute directory."""
+        manager = SerialManager()
+        try:
+            storage = StorageService(data_dir=tmp_path / "data")
+            service = FileTransferService(
+                serial_manager=manager,
+                storage_service=storage,
+                transfers_dir=tmp_path / "rx",
+            )
+            typed = str(tmp_path / "nested" / ".." / "typed_rx")
+            resolved = service.set_transfers_dir(typed)
+            assert resolved.is_absolute()
+            assert resolved == (tmp_path / "typed_rx").resolve()
+            assert resolved.is_dir()
+            assert storage.get_setting("transfers_dir") == str(resolved)
+        finally:
+            manager.shutdown()
+
+    def test_set_transfers_dir_rejects_file_path(self, tmp_path: Path) -> None:
+        """Pointing the receive dir at an existing file raises ValueError."""
+        manager = SerialManager()
+        try:
+            storage = StorageService(data_dir=tmp_path / "data")
+            default_dir = tmp_path / "rx"
+            service = FileTransferService(
+                serial_manager=manager,
+                storage_service=storage,
+                transfers_dir=default_dir,
+            )
+            target_file = tmp_path / "not_a_dir.txt"
+            target_file.write_text("x")
+            with pytest.raises(ValueError):
+                service.set_transfers_dir(str(target_file))
+            # Failed update must not clobber the running configuration.
+            assert service.transfers_dir_path == default_dir
+        finally:
+            manager.shutdown()
+
+    def test_default_transfers_dir_exposed_and_resettable(self, tmp_path: Path) -> None:
+        """default_transfers_dir is exposed and unaffected by custom changes."""
+        manager = SerialManager()
+        try:
+            storage = StorageService(data_dir=tmp_path / "data")
+            default_dir = tmp_path / "rx_default"
+            service = FileTransferService(
+                serial_manager=manager,
+                storage_service=storage,
+                transfers_dir=default_dir,
+            )
+            service.set_transfers_dir(tmp_path / "custom")
+            config = service.get_config()
+            assert config["transfers_dir"] == str((tmp_path / "custom").resolve())
+            assert config["default_transfers_dir"] == str(default_dir)
+
+            service.set_transfers_dir(service.default_transfers_dir_path)
+            assert service.transfers_dir_path == default_dir.resolve()
+        finally:
+            manager.shutdown()
+
+    def test_load_settings_warns_and_keeps_default_on_bad_dir(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An unusable persisted dir falls back to the default with a warning."""
+        manager = SerialManager()
+        try:
+            storage = StorageService(data_dir=tmp_path / "data")
+            blocked = tmp_path / "blocked_as_file"
+            blocked.write_text("not a directory")
+            storage.save_setting("transfers_dir", str(blocked))
+
+            default_dir = tmp_path / "rx_default"
+            with caplog.at_level("WARNING"):
+                service = FileTransferService(
+                    serial_manager=manager,
+                    storage_service=storage,
+                    transfers_dir=default_dir,
+                )
+            assert service.transfers_dir_path == default_dir
+            assert any("transfers_dir" in rec.message for rec in caplog.records)
         finally:
             manager.shutdown()
 
@@ -143,8 +228,8 @@ class TestFileTransferServiceConfig:
                 storage_service=storage,
                 transfers_dir=tmp_path / "rx",
             )
-            service.set_max_file_size_bytes(MIN_FILE_SIZE_BYTES)
-            payload = b"\0" * (MIN_FILE_SIZE_BYTES + 16)
+            service.set_max_file_size_bytes(1024 * 1024)
+            payload = b"\0" * (1024 * 1024 + 16)
             with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
                 tmp.write(payload)
                 tmp_path_str = tmp.name
@@ -167,8 +252,9 @@ class TestBackendBridgeSettings:
             storage = StorageService(data_dir=tmp_path / "data")
             bridge = BackendBridge(manager, storage_service=storage)
             config = json.loads(bridge.getSettings())
-            assert config["max_file_size_bytes"] == MAX_FILE_SIZE_BYTES
-            assert config["max_file_size_mb"] == 10.0
+            assert config["max_file_size_bytes"] == MAX_FILE_SIZE_BYTES == 0
+            assert config["max_file_size_mb"] == 0.0
+            assert config["max_file_size_label"] == "Unlimited"
             assert isinstance(config["transfers_dir"], str)
         finally:
             manager.shutdown()
@@ -200,8 +286,36 @@ class TestBackendBridgeSettings:
             bridge = BackendBridge(manager, storage_service=storage)
             assert json.loads(bridge.saveSettings("not-json"))["ok"] is False
             assert json.loads(bridge.saveSettings("{}"))["ok"] is False
-            assert json.loads(bridge.saveSettings('{"max_file_size_mb": 0}'))["ok"] is False
+            assert json.loads(bridge.saveSettings('{"max_file_size_mb": -1}'))["ok"] is False
             # Failed saves must not clobber the running config.
             assert bridge.file_service.max_file_size_bytes == MAX_FILE_SIZE_BYTES
+        finally:
+            manager.shutdown()
+
+    def test_get_settings_exposes_default_dir(self, tmp_path: Path) -> None:
+        """getSettings carries default_transfers_dir for the Reset action."""
+        manager = SerialManager()
+        try:
+            storage = StorageService(data_dir=tmp_path / "data")
+            bridge = BackendBridge(manager, storage_service=storage)
+            config = json.loads(bridge.getSettings())
+            assert config["default_transfers_dir"]
+            assert config["default_transfers_dir"] == config["transfers_dir"]
+        finally:
+            manager.shutdown()
+
+    def test_save_settings_rejects_file_as_dir(self, tmp_path: Path) -> None:
+        """saveSettings returns ok=False when the path points at a file."""
+        manager = SerialManager()
+        try:
+            storage = StorageService(data_dir=tmp_path / "data")
+            bridge = BackendBridge(manager, storage_service=storage)
+            target_file = tmp_path / "file.txt"
+            target_file.write_text("x")
+            result = json.loads(
+                bridge.saveSettings(json.dumps({"transfers_dir": str(target_file)}))
+            )
+            assert result["ok"] is False
+            assert result["error"]
         finally:
             manager.shutdown()

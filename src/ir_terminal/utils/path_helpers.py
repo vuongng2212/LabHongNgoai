@@ -1,10 +1,24 @@
-"""Filesystem, asset, and persistent data storage resolution helpers."""
+"""Filesystem, asset, and persistent data storage resolution helpers.
+
+Runtime data (JSON stores, received files, logs, CSV exports) is kept next to
+the running application instead of in the user home directory:
+
+* Frozen PyInstaller build: ``<folder containing IR_OWC_Lab_Terminal.exe>/data``
+  (works for both one-file and one-folder builds).
+* Development checkout: ``<project root>/data``.
+
+``IR_DATA_DIR`` can override the base directory (used by the test suite and
+portable deployments).
+"""
 
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
+
+# Environment override for the writable data root (absolute or relative).
+DATA_DIR_ENV = "IR_DATA_DIR"
 
 
 def get_instance_name(explicit: str | None = None) -> str | None:
@@ -16,11 +30,29 @@ def get_instance_name(explicit: str | None = None) -> str | None:
 
 
 def get_project_root() -> Path:
-    """Returns the absolute root directory of the application."""
+    """Returns the absolute root directory of the application bundle."""
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
         return Path(str(meipass))
     return Path(__file__).resolve().parent.parent.parent.parent
+
+
+def get_app_root() -> Path:
+    """Returns the directory the application was launched from.
+
+    PyInstaller sets ``sys.frozen`` and ``sys.executable`` points at the
+    generated executable. For a one-folder build that is the folder containing
+    ``IR_OWC_Lab_Terminal.exe``; for a one-file build it is the temporary
+    extraction *source* executable path, which is exactly where the user placed
+    the ``.exe``. In development the repository root is used.
+
+    Returns:
+        Absolute directory used as the parent of the ``data/`` tree.
+    """
+    if getattr(sys, "frozen", False):
+        executable = getattr(sys, "executable", "") or sys.argv[0]
+        return Path(executable).resolve().parent
+    return get_project_root()
 
 
 def get_web_index_path() -> Path:
@@ -55,32 +87,44 @@ def get_assets_dir() -> Path:
 
 
 def get_app_data_dir(instance: str | None = None) -> Path:
-    """Returns the persistent application data directory on hard drive.
+    """Returns the persistent application data directory and creates it.
 
-    Structure:
-        ~/.ir_terminal/
-            ├── data/ (JSON file stores)
-            ├── transfers/ (Received & saved optical files)
-            └── logs/ (Tagged rotating log files)
+    Default layout::
 
-    When instance is set (dual-mock A/B), an isolated subtree
-    ~/.ir_terminal/instances/<A|B>/ is used so two apps on one PC
-    never share JSON stores, transfers, or logs.
+        <app root>/data/
+            ├── chat_history.json
+            ├── file_transfers.json
+            ├── telemetry_samples.json
+            ├── settings.json
+            ├── transfers/   (received optical files)
+            └── logs/        (rotating tagged log files)
+
+    ``IR_DATA_DIR`` replaces ``<app root>/data`` when set. When instance is set
+    (dual-mock A/B), an isolated ``instances/<A|B>/`` subtree is used so two
+    apps on one PC never share JSON stores, transfers, or logs.
+
+    Args:
+        instance: Optional dual-mock instance name (A/B).
+
+    Returns:
+        Existing data directory path.
     """
+    override = os.environ.get(DATA_DIR_ENV, "").strip()
+    if override:
+        base_dir = Path(override).expanduser()
+    else:
+        base_dir = get_app_root() / "data"
+
     inst = get_instance_name(instance)
     if inst:
-        base_dir = Path.home() / ".ir_terminal" / "instances" / inst
-    else:
-        base_dir = Path.home() / ".ir_terminal"
+        base_dir = base_dir / "instances" / inst
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir
 
 
 def get_data_dir(instance: str | None = None) -> Path:
-    """Returns the persistent application data directory for JSON file stores."""
-    data_dir = get_app_data_dir(instance) / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-    return data_dir
+    """Returns the directory holding JSON file stores (same as app data root)."""
+    return get_app_data_dir(instance)
 
 
 def get_transfers_dir(instance: str | None = None) -> Path:

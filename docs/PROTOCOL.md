@@ -35,7 +35,7 @@ Mọi trường số nguyên từ 2 bytes trở lên **bắt buộc tuân thủ 
 5. **PAYLOAD (N bytes):** Dữ liệu ứng dụng (Chat text hoặc File chunk).
 6. **CRC32 (Checksum - 4 bytes Little-Endian):** Tính toán từ trường `SEQ` qua hết `PAYLOAD` (không bao gồm SOF). Đa thức chuẩn IEEE 802.3: `0xEDB88320`.
 7. **EOF (End of Frame - 2 bytes):** Cố định `0x55AA` (Truyền trên dây UART: `0xAA`, sau đó `0x55`).
-8. **Giới hạn phiên file:** `total_chunks` là `uint16` nên tối đa **65.535 chunk/phiên**. Với chunk mặc định `240B`, một phiên tối đa $\approx 15.7\text{ MB}$; file lớn hơn phải tăng `chunk_size` (tối đa `510B` dữ liệu, vì payload frame tối đa `512B` đã gồm 2B `chunk_id`) hoặc chia nhỏ. App reject sớm với lỗi rõ ràng nếu vượt giới hạn.
+8. **Giới hạn phiên file:** payload legacy dùng `total_chunks` `uint16` nên tối đa **65.535 chunk/phiên** (với chunk mặc định `240B` $\approx 15.7\text{ MB}$; dữ liệu chunk legacy tối đa `510B` vì payload `512B` đã gồm 2B `chunk_id`). App **không đặt giới hạn kích thước sản phẩm**: khi file cần hơn 65.535 chunk hoặc `file_size > uint32`, app tự chuyển sang **large-file extension** `0x34/0x35/0x36` với `file_size`/`total_bytes` `uint64`, `total_chunks`/`chunk_id` `uint32` (chunk data tối đa `508B`). Giới hạn cấu trúc của extension là $2^{32}-1$ chunk $\times 508\text{B} \approx 2.18\text{ TB}$. Firmware legacy vẫn tương thích byte-for-byte với các phiên nhỏ; firmware muốn nhận file lớn phải implement thêm extension.
 
 ---
 
@@ -51,7 +51,34 @@ Mọi trường số nguyên từ 2 bytes trở lên **bắt buộc tuân thủ 
 | `0x30` | `TRANSFER_START`| Bắt đầu truyền file (Metadata) | Xem định dạng metadata bên dưới |
 | `0x01` | `DATA_CHUNK` | Khối dữ liệu file nhị phân | `[chunk_id (uint16_t), data_bytes...]` |
 | `0x31` | `TRANSFER_END` | Hoàn tất truyền file & đối soát | `[file_crc32 (uint32_t), bytes_sent (uint32_t)]` |
-| `0x32` | `TRANSFER_PAUSE`| Hủy / Tạm dừng truyền do chắn tia | Mã lý do (ASCII) |
+| `0x32` | `TRANSFER_PAUSE`| Hủy / Tạm dừng truyền do chắn tia | Mã lý do (ASCII); MVP user-cancel dùng `ABORT` |
+| `0x33` | `TRANSFER_RESUME` | Định nghĩa cho auto-resume (Post-MVP, chưa dùng) | — |
+| `0x34` | `TRANSFER_START_LARGE` | Bắt đầu phiên file lớn (`u64`/`u32`) | Xem §3.1 |
+| `0x35` | `DATA_CHUNK_LARGE` | Chunk file lớn, `chunk_id` `uint32` | `[chunk_id (uint32_t), data_bytes...]` |
+| `0x36` | `TRANSFER_END_LARGE` | Kết thúc phiên file lớn | `[file_crc32 (uint32_t), bytes_sent (uint64_t)]` |
+
+### 3.1. Large-file extension (opcode `0x34/0x35/0x36`)
+
+Extension giữ nguyên frame `SOF/SEQ/CMD/LEN/PAYLOAD/CRC/EOF`, chỉ mở rộng các trường số. App tự chọn extension khi `planned_chunks > 65535` hoặc `file_size > 0xFFFFFFFF`; hai bên phải dùng cùng thế hệ opcode trong một phiên.
+
+```
+TRANSFER_START_LARGE payload (19-byte header + N-byte filename)
++----------+-----------+--------+--------------------------------------+
+| Offset   | Field     | Type   | Meaning                              |
++----------+-----------+--------+--------------------------------------+
+| 0x00-07  | file_size | uint64 | Tổng dung lượng file (bytes, LE)     |
+| 0x08-09  | chunk_size| uint16 | Kích thước dữ liệu mỗi chunk (<=508) |
+| 0x0A-0D  | total_chk | uint32 | Tổng số chunk                        |
+| 0x0E-11  | file_crc32| uint32 | CRC-32 toàn file (IEEE 802.3)        |
+| 0x12     | fname_len | uint8  | Độ dài tên file (bytes)              |
+| 0x13-... | filename  | UTF-8  | Tên file, không có null terminator   |
++----------+-----------+--------+--------------------------------------+
+
+DATA_CHUNK_LARGE payload: [chunk_id uint32 LE][chunk_data ...]  (tối đa 508B data)
+TRANSFER_END_LARGE payload: [file_crc32 uint32 LE][total_bytes uint64 LE] (12B)
+```
+
+`total_chunks` phải khớp `ceil(file_size / chunk_size)` (file rỗng vẫn dùng 1 chunk rỗng). Receiver từ chối `chunk_size` ngoài `1..508`, sai `total_chunks`, sai thứ tự `chunk_id`, hoặc độ dài chunk không khớp phần còn lại của file.
 
 ---
 
@@ -78,8 +105,30 @@ Mọi trường số nguyên từ 2 bytes trở lên **bắt buộc tuân thủ 
 - Nếu sau 250ms không nhận được `ACK` $\to$ Retransmit lại đúng chunk đó (tối đa 5 lần), **giữ nguyên SEQ** (`new_seq=False`).
 - STM32 khi nhận frame sai CRC $\to$ Phản hồi `NACK` ngay lập tức để PC gửi lại mà không cần đợi hết 250ms.
 - Nếu `ACK` bị mất, bên gửi sẽ retransmit `START`/`END` với **cùng SEQ**. Bên nhận phải nhận diện đây là duplicate của phiên hiện tại và **gửi lại ACK (idempotent)**, không NACK và không ghi file/lưu bản ghi lần hai.
-- `DATA_CHUNK` trùng (`cùng chunk_id`) được **ACK lại** và ghi đè idempotent, không cộng dồn `bytes_received`.
+- `DATA_CHUNK` trùng (`chunk_id < expected`) được **ACK lại** nhưng **không ghi lặp**; chunk lệch thứ tự (`chunk_id > expected`) bị `NACK OUT_OF_ORDER` để bên gửi retransmit đúng chunk.
 - Trên PC, frame sai CRC/EOF bị `framer` loại bỏ và đếm vào `crc_errors/eof_errors`; bên gửi retry theo timeout 250ms. `NACK CRC` tức thời là hành vi phía STM32 khi STM32 là bên nhận.
+
+### 4.1. Streaming & không giới hạn kích thước (phía PC)
+
+- **TX:** CRC-32 toàn file được tính bằng một pass đọc có buffer cố định (`1 MiB`); sau đó file được mở một lần và mỗi chunk được đọc theo offset khi cần. Không có `read_bytes()` toàn file, RAM chỉ `O(chunk_size)`.
+- **RX:** mỗi chunk được ghi tuần tự vào file tạm `.ir_rx_*.part` trong `transfers/` và `flush()` ngay; CRC-32 được cộng dồn trong lúc ghi. Khi nhận `TRANSFER_END`, app kiểm tra `bytes_received == file_size` và CRC khớp rồi mới `os.replace()` sang tên chính thức. File lỗi/hủy luôn xóa `.part`.
+- Không có giới hạn dung lượng sản phẩm. Chỉ khi vượt khả năng biểu diễn của payload legacy app mới tự dùng extension §3.1.
+
+### 4.2. Hủy phiên hai chiều (`TRANSFER_PAUSE` + `ABORT`)
+
+Người gửi hoặc người nhận đều có thể hủy. Bên chủ động hủy gửi `TRANSFER_PAUSE` với payload ASCII `ABORT`; bên còn lại trả `ACK` cho đúng `seq` đó rồi cùng tear down phiên.
+
+```
+[Bên hủy]                                              [Bên còn lại]
+    |------ TRANSFER_PAUSE (payload "ABORT") -------------->|
+    |<----- ACK (seq, status OK) ---------------------------|
+    |  đóng handle, xóa .part/partial, ghi FAILED/ABORTED    |  đóng handle, xóa .part, ghi FAILED/ABORTED
+```
+
+- Hủy khi đang **gửi**: dừng `ACK` timer, đóng file TX, ghi lịch sử failure, reset `_reset_tx_session()`.
+- Hủy khi đang **nhận**: đóng file tạm, xóa `.part`, reset `_reset_rx_session()`, ghi lịch sử failure.
+- Bên nhận `TRANSFER_PAUSE` khi đang gửi cũng phải hủy TX (không chỉ RX); đây là hành vi bắt buộc để tránh một bên tiếp tục đẩy chunk vào link đã bị bỏ.
+- `TRANSFER_PAUSE` nhận được khi đang `IDLE/COMPLETED/FAILED/ABORTED` bị bỏ qua (không ACK) để tránh vòng lặp trạng thái.
 
 ---
 
@@ -105,7 +154,7 @@ typedef struct {
 // Payload Opcode 0x01: DATA_CHUNK
 typedef struct {
     uint16_t chunk_id;      // 2 bytes: Thứ tự chunk bắt đầu từ 0 (Little-Endian)
-    uint8_t  chunk_data[];  // M bytes: Dữ liệu nhị phân của khối (tối đa 240B)
+    uint8_t  chunk_data[];  // M bytes: Dữ liệu nhị phân của khối (tối đa 510B legacy)
 } FileChunkPayload_t;
 
 // Payload Opcode 0x31: TRANSFER_END
@@ -113,6 +162,33 @@ typedef struct {
     uint32_t file_crc32;    // 4 bytes: Mã băm CRC-32 toàn bộ file để đối soát
     uint32_t total_bytes;   // 4 bytes: Tổng số bytes đã truyền
 } FileEndPayload_t;
+
+// --- Large-file extension (opcodes 0x34 / 0x35 / 0x36) ---
+
+// Payload Opcode 0x34: TRANSFER_START_LARGE (19-byte header + filename)
+typedef struct {
+    uint64_t file_size;     // 8 bytes: Tổng kích thước file (Little-Endian)
+    uint16_t chunk_size;    // 2 bytes: Kích thước dữ liệu mỗi chunk (tối đa 508B)
+    uint32_t total_chunks;  // 4 bytes: Tổng số chunk (Little-Endian)
+    uint32_t file_crc32;    // 4 bytes: CRC-32 toàn bộ file
+    uint8_t  fname_len;     // 1 byte: Độ dài tên file
+    char     filename[];    // N bytes: UTF-8, không null-terminator
+} FileStartPayloadLarge_t;
+
+// Payload Opcode 0x35: DATA_CHUNK_LARGE
+typedef struct {
+    uint32_t chunk_id;      // 4 bytes: Thứ tự chunk (Little-Endian)
+    uint8_t  chunk_data[];  // M bytes: Dữ liệu (tối đa 508B)
+} FileChunkPayloadLarge_t;
+
+// Payload Opcode 0x36: TRANSFER_END_LARGE
+typedef struct {
+    uint32_t file_crc32;    // 4 bytes: CRC-32 toàn bộ file
+    uint64_t total_bytes;   // 8 bytes: Tổng số bytes đã truyền (Little-Endian)
+} FileEndPayloadLarge_t;
+
+// Payload Opcode 0x32: TRANSFER_PAUSE (MVP user-cancel)
+// payload = "ABORT" (5 byte ASCII), không có struct nhị phân.
 
 // Payload Opcode 0x10: ACK
 typedef struct {
@@ -182,5 +258,5 @@ void IR_Send_ACK(UART_HandleTypeDef *huart, uint8_t acked_seq) {
 
 ## 7. RÀNG BUỘC MVP ↔ POST-MVP (KHỚP `LAB_BaoGia.xlsx`)
 
-* MVP đã chốt: `chunk mặc định 240B` (tối đa `510B` dữ liệu, do payload frame tối đa `512B` đã gồm 2B `chunk_id`), `ACK timeout 250ms`, `retry tối đa 5 → FAILED + gửi lại tay`, toàn vẹn `CRC-32`, `TRANSFER_PAUSE` mang payload `ABORT` khi user hủy, `TRANSFER_RESUME (0x33)` mới chỉ định nghĩa chưa dùng.
-* Post-MVP (báo riêng, chưa implement): `0x33 resume` + ping định kỳ để tự phục hồi sau chắn tia; `SHA-256` song song CRC-32; `BER` chỉ bật khi firmware cung cấp counter; streaming chống tràn RAM; hotplug/auto-reconnect; priority queue `Control > Text > File`.
+* MVP đã chốt: `chunk mặc định 240B` (legacy tối đa `510B`, large tối đa `508B`, do payload frame tối đa `512B` đã gồm prefix `chunk_id`), `ACK timeout 250ms`, `retry tối đa 5 → FAILED + gửi lại tay`, toàn vẹn `CRC-32`, **streaming TX/RX không giới hạn dung lượng**, extension `0x34/0x35/0x36` cho file > 65.535 chunk, `TRANSFER_PAUSE` payload `ABORT` hủy được từ cả hai phía, `TRANSFER_RESUME (0x33)` mới chỉ định nghĩa chưa dùng.
+* Post-MVP (báo riêng, chưa implement): `0x33 resume` + ping định kỳ để tự phục hồi sau chắn tia; `SHA-256` song song CRC-32; `BER` chỉ bật khi firmware cung cấp counter; hotplug/auto-reconnect; priority queue `Control > Text > File`.

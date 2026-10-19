@@ -1,6 +1,15 @@
 """Binary payload definitions for optical file transfer and flow control.
 
 All multi-byte integer fields strictly follow Little-Endian byte ordering.
+
+Two wire-compatible generations are defined:
+
+* Legacy payloads (opcodes ``0x30/0x01/0x31``): ``u32`` file size, ``u16`` chunk
+  count and ``u16`` chunk id. They stay byte-identical for existing STM32
+  firmware and small transfers.
+* Large-transfer payloads (opcodes ``0x34/0x35/0x36``): ``u64`` file size,
+  ``u32`` chunk count and ``u32`` chunk id. ``FileTransferService`` selects
+  them automatically when a file would overflow the legacy chunk counter.
 """
 
 from __future__ import annotations
@@ -8,6 +17,7 @@ from __future__ import annotations
 import logging
 import struct
 from dataclasses import dataclass
+from typing import ClassVar
 
 from ir_terminal.protocol.constants import AckStatus
 from ir_terminal.utils.logger import LogTag, format_hex_preview
@@ -238,6 +248,155 @@ class FileEndPayload:
         # Offset 4-7: total_bytes_sent -> uint32 (Little-Endian, total payload bytes)
         # =========================================================================
         file_crc32, bytes_sent = struct.unpack("<II", data[:8])
+        return cls(file_crc32=file_crc32, total_bytes_sent=bytes_sent)
+
+
+@dataclass(frozen=True)
+class FileStartPayloadLarge:
+    """Large-transfer initialization metadata (opcode ``0x34``).
+
+    Binary Layout (19-byte header, then UTF-8 filename):
+    +---------------+-----------+--------+---------------+----------------------+
+    | Byte Offset   | Field Name| Type   | Endianness    | Description          |
+    +---------------+-----------+--------+---------------+----------------------+
+    | 0x00 - 0x07   | file_size | uint64 | Little-Endian | Total file size (B)  |
+    | 0x08 - 0x09   | chunk_size| uint16 | Little-Endian | Chunk payload size   |
+    | 0x0A - 0x0D   | total_chnk| uint32 | Little-Endian | Total chunk count    |
+    | 0x0E - 0x11   | file_crc32| uint32 | Little-Endian | Whole-file CRC-32    |
+    | 0x12          | fname_len | uint8  | -             | Length of filename   |
+    | 0x13 - 0x13+N | filename  | bytes  | UTF-8 string  | File name string     |
+    +---------------+-----------+--------+---------------+----------------------+
+    """
+
+    file_size: int
+    chunk_size: int
+    total_chunks: int
+    file_crc32: int
+    filename: str
+
+    HEADER_SIZE: ClassVar[int] = 19
+
+    def pack(self) -> bytes:
+        """Packs metadata into binary bytes.
+
+        Returns:
+            Serialized binary bytes including the fixed 19-byte header and filename.
+        """
+        fname_bytes = self.filename.encode("utf-8")
+        if len(fname_bytes) > 255:
+            logger.warning(
+                "%s FileStartLarge filename truncated: %dB->255B name=%r",
+                LogTag.FILE_SVC,
+                len(fname_bytes),
+                self.filename,
+            )
+            fname_bytes = fname_bytes[:255]
+        header_bytes = struct.pack(
+            "<QHIIB",
+            self.file_size,
+            self.chunk_size,
+            self.total_chunks,
+            self.file_crc32,
+            len(fname_bytes),
+        )
+        return header_bytes + fname_bytes
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FileStartPayloadLarge:
+        """Unpacks large-transfer metadata.
+
+        Args:
+            data: Binary payload bytes to deserialize.
+
+        Returns:
+            Deserialized FileStartPayloadLarge instance.
+
+        Raises:
+            ValueError: If the fixed header or declared filename is truncated.
+        """
+        if len(data) < cls.HEADER_SIZE:
+            logger.error(
+                "%s FileStartPayloadLarge unpack FAILED: got=%dB need>=%dB hex=%s",
+                LogTag.FILE_SVC,
+                len(data),
+                cls.HEADER_SIZE,
+                format_hex_preview(data),
+            )
+            raise ValueError(
+                f"Payload too short for FileStartPayloadLarge: {len(data)} < {cls.HEADER_SIZE}"
+            )
+        file_size, chunk_size, total_chunks, file_crc32, fname_len = struct.unpack(
+            "<QHIIB", data[: cls.HEADER_SIZE]
+        )
+        if len(data) < cls.HEADER_SIZE + fname_len:
+            raise ValueError(f"Filename truncated: expected {fname_len} bytes")
+        fname = data[cls.HEADER_SIZE : cls.HEADER_SIZE + fname_len].decode(
+            "utf-8", errors="replace"
+        )
+        return cls(
+            file_size=file_size,
+            chunk_size=chunk_size,
+            total_chunks=total_chunks,
+            file_crc32=file_crc32,
+            filename=fname,
+        )
+
+
+@dataclass(frozen=True)
+class FileChunkPayloadLarge:
+    """Large-transfer indexed chunk (opcode ``0x35``).
+
+    Binary Layout: ``chunk_id uint32`` followed by raw bytes.
+    """
+
+    chunk_id: int
+    chunk_data: bytes
+
+    HEADER_SIZE: ClassVar[int] = 4
+
+    def pack(self) -> bytes:
+        """Packs the 32-bit chunk id and binary data."""
+        return struct.pack("<I", self.chunk_id) + self.chunk_data
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FileChunkPayloadLarge:
+        """Unpacks a large-transfer chunk.
+
+        Raises:
+            ValueError: If data is shorter than the 4-byte chunk id.
+        """
+        if len(data) < cls.HEADER_SIZE:
+            raise ValueError("Data too short for FileChunkPayloadLarge")
+        (chunk_id,) = struct.unpack("<I", data[: cls.HEADER_SIZE])
+        return cls(chunk_id=chunk_id, chunk_data=data[cls.HEADER_SIZE :])
+
+
+@dataclass(frozen=True)
+class FileEndPayloadLarge:
+    """Large-transfer completion metadata (opcode ``0x36``).
+
+    Binary Layout: ``file_crc32 uint32`` + ``total_bytes_sent uint64`` (12 bytes).
+    """
+
+    file_crc32: int
+    total_bytes_sent: int
+
+    HEADER_SIZE: ClassVar[int] = 12
+
+    def pack(self) -> bytes:
+        """Packs 32-bit CRC and 64-bit byte count."""
+        return struct.pack("<IQ", self.file_crc32, self.total_bytes_sent)
+
+    @classmethod
+    def unpack(cls, data: bytes) -> FileEndPayloadLarge:
+        """Unpacks large-transfer completion metadata.
+
+        Raises:
+            ValueError: If data is shorter than 12 bytes.
+        """
+        if len(data) < cls.HEADER_SIZE:
+            raise ValueError("Data too short for FileEndPayloadLarge")
+        file_crc32, bytes_sent = struct.unpack("<IQ", data[: cls.HEADER_SIZE])
         return cls(file_crc32=file_crc32, total_bytes_sent=bytes_sent)
 
 

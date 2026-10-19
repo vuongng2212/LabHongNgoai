@@ -410,7 +410,8 @@ class TelemetryService(QObject):
         """Exports channel telemetry data to CSV file and string.
 
         Args:
-            output_path: Optional destination Path. Defaults to ~/.ir_terminal/logs/telemetry.csv.
+            output_path: Optional destination Path. Defaults to
+                ``<app root>/data/logs/telemetry_<timestamp>.csv``.
 
         Returns:
             CSV formatted string.
