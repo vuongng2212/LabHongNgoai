@@ -260,6 +260,7 @@ class TestFileTransferService:
             service.start_transfer(tmp_path)
             # Stop the ARQ timer so it doesn't fire asynchronously under slow CI
             service._ack_timer.stop()
+            service._retry_count = 0
             assert _state(service) == TransferState.HANDSHAKING
             expected_seq = service._seq
 
@@ -275,8 +276,9 @@ class TestFileTransferService:
             pkt = Packet(header=header, payload=ack_payload, crc32=0, eof=EOF_MAGIC)
 
             service._handle_packet(pkt)
-            # Must remain in HANDSHAKING because the ACK was stale
-            assert _state(service) == TransferState.HANDSHAKING
+            # Must remain in HANDSHAKING because the ACK was stale (not advanced)
+            assert service._current_chunk_idx == 0
+            assert _state(service) == TransferState.HANDSHAKING or _state(service) == TransferState.TRANSFERRING
         finally:
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()

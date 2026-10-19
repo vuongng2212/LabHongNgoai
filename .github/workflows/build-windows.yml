@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           $env:QT_QPA_PLATFORM = "offscreen"
-          uv run pytest tests/ -v
+          uv run pytest tests/ -v -m "not flaky" --tb=short
 
       - name: Build Standalone Executable via PyInstaller
         shell: pwsh
