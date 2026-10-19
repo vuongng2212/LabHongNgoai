@@ -407,32 +407,30 @@ class TestFileTransferService:
             Path(tmp_path).unlink(missing_ok=True)
             manager.shutdown()
 
-    def test_file_transfer_busy_state_guard(self) -> None:
+    def test_file_transfer_busy_state_guard(self, qtbot: QtBot, tmp_path: Path) -> None:
         """Verifies start_transfer does not interrupt an ongoing active transfer."""
         manager = SerialManager()
         service = FileTransferService(manager)
 
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp1:
-            tmp1.write(b"File 1")
-            path1 = tmp1.name
+        path1 = tmp_path / "busy_file_1.txt"
+        path1.write_text("File 1")
 
-        with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as tmp2:
-            tmp2.write(b"File 2")
-            path2 = tmp2.name
+        path2 = tmp_path / "busy_file_2.txt"
+        path2.write_text("File 2")
 
         try:
-            service.start_transfer(path1)
+            service.start_transfer(str(path1))
+            service._ack_timer.stop()
             assert _state(service) == TransferState.HANDSHAKING
-            assert service._current_file_path == Path(path1)
+            assert service._current_file_path == path1
 
             # Attempt to start a second transfer while busy
-            service.start_transfer(path2)
+            service.start_transfer(str(path2))
             # File path must remain file 1
-            assert service._current_file_path == Path(path1)
+            assert service._current_file_path == path1
             assert _state(service) == TransferState.HANDSHAKING
         finally:
-            Path(path1).unlink(missing_ok=True)
-            Path(path2).unlink(missing_ok=True)
+            service.abort_transfer()
             manager.shutdown()
 
     def test_file_receiver_full_cycle_success(self, qtbot: QtBot) -> None:
@@ -683,7 +681,7 @@ class TestFileTransferService:
 
         manager.shutdown()
 
-    def test_file_receiver_abort_clears_buffer(self) -> None:
+    def test_file_receiver_abort_clears_buffer(self, qtbot: QtBot) -> None:
         """Verifies aborting an incoming file transfer cleanly resets receiver state."""
         manager = SerialManager()
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -802,7 +800,7 @@ class TestFileTransferReceiver:
         finally:
             manager.shutdown()
 
-    def test_rx_invalid_chunk_size_rejected(self) -> None:
+    def test_rx_invalid_chunk_size_rejected(self, qtbot: QtBot) -> None:
         """Verifies receiver refuses zero or over-limit chunk sizes."""
         manager = SerialManager()
         service = FileTransferService(serial_manager=manager)
