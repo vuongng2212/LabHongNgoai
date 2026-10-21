@@ -204,6 +204,12 @@ function initBridgeListeners() {
       }, 120);
     }
   });
+
+  if (typeof bridge.portsChanged !== 'undefined' && bridge.portsChanged) {
+    bridge.portsChanged.connect(() => {
+      refreshPortList();
+    });
+  }
 }
 
 function applyLaunchConfig() {
@@ -231,26 +237,35 @@ function refreshPortList(triggerBtn, preselect) {
   bridge.scanPorts((portsJson) => {
     let ports = [];
     try { ports = JSON.parse(portsJson); } catch (e) { ports = []; }
+    const entries = ports.map((p) => {
+      if (typeof p === 'string') {
+        return { name: p, label: p.includes('MOCK') ? p + ' (Virtual Loopback)' : p };
+      }
+      const name = p.device || p.name || '';
+      return { name: name, label: p.label || p.description || name };
+    }).filter((entry) => entry.name);
     const select = document.querySelector('#view-hardware select');
     if (select) {
       const previous = preselect || select.value;
+      const names = entries.map((entry) => entry.name);
       select.innerHTML = '';
-      ports.forEach(p => {
+      entries.forEach((entry) => {
         const opt = document.createElement('option');
-        opt.value = p;
-        opt.innerText = p.includes('MOCK') ? p + ' (Virtual Loopback)' : p + ' - STM32F407 CDC';
+        opt.value = entry.name;
+        opt.innerText = entry.label;
+        if (entry.name) opt.title = entry.label;
         select.appendChild(opt);
       });
-      if (previous && ports.includes(previous)) {
+      if (previous && names.includes(previous)) {
         select.value = previous;
-      } else if (ports.length > 0) {
-        select.value = ports[0];
+      } else if (names.length > 0) {
+        select.value = names[0];
       }
     }
     if (triggerBtn && window.UIFeedback) window.UIFeedback.setButtonLoading(triggerBtn, false);
     if (triggerBtn) {
-      if (ports.length === 0) toast('warning', 'No ports found', 'Check USB cable, STM32 driver, or mock backend.');
-      else toast('info', 'Port list refreshed', 'Found ' + ports.length + ' port(s).');
+      if (entries.length === 0) toast('warning', 'No ports found', 'Check USB cable, STM32 driver, or mock backend.');
+      else toast('info', 'Port list refreshed', 'Found ' + entries.length + ' port(s).');
     }
   });
 }

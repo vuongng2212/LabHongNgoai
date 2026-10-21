@@ -18,14 +18,55 @@ class TestBackendBridge:
     """Test suite verifying BackendBridge QWebChannel slots and signals."""
 
     def test_scan_ports_returns_json_list(self) -> None:
-        """Verifies scanPorts slot returns valid JSON list with available ports."""
+        """Verifies scanPorts slot returns a JSON list of detailed port objects."""
         manager = SerialManager()
         bridge = BackendBridge(manager)
 
         ports_json = bridge.scanPorts()
         ports = json.loads(ports_json)
         assert isinstance(ports, list)
-        assert "MOCK_COM_LOOPBACK" in ports
+        devices = [port["device"] for port in ports]
+        assert "MOCK_COM_LOOPBACK" in devices
+
+        manager.shutdown()
+
+    def test_scan_ports_includes_detailed_metadata(self) -> None:
+        """Verifies every scanned port exposes the detailed metadata contract."""
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        ports = json.loads(bridge.scanPorts())
+        assert ports
+        for port in ports:
+            assert set(port) == {
+                "device",
+                "description",
+                "manufacturer",
+                "vid",
+                "pid",
+                "hwid",
+                "label",
+            }
+            assert isinstance(port["device"], str)
+            assert isinstance(port["label"], str)
+            assert port["vid"] is None or len(port["vid"]) == 4
+            assert port["pid"] is None or len(port["pid"]) == 4
+
+        mock = next(port for port in ports if port["device"] == "MOCK_COM_LOOPBACK")
+        assert mock["label"] == "MOCK_COM_LOOPBACK (Virtual Loopback)"
+        assert mock["vid"] is None
+        assert mock["pid"] is None
+
+        manager.shutdown()
+
+    def test_port_info_list_matches_string_port_list(self) -> None:
+        """Verifies get_port_info_list stays consistent with get_port_list."""
+        manager = SerialManager()
+
+        infos = manager.get_port_info_list()
+        devices = [info.device for info in infos]
+        assert devices == manager.get_port_list()
+        assert "MOCK_COM_LOOPBACK" in devices
 
         manager.shutdown()
 

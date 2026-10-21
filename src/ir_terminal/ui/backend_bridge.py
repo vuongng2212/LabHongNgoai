@@ -20,6 +20,7 @@ from ir_terminal.config import (
     LaunchConfig,
 )
 from ir_terminal.core.serial_manager import SerialManager
+from ir_terminal.core.serial_worker import PortInfo
 from ir_terminal.protocol.constants import DEFAULT_HEALTH_CHECK_SEC, Opcode
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.chat_service import ChatService
@@ -183,11 +184,12 @@ class BackendBridge(QObject):
             was_connected,
         )
 
-    def _on_ports_changed(self, ports: list[str]) -> None:
+    def _on_ports_changed(self, ports: list[PortInfo]) -> None:
         """Forwards hotplug port-list changes to the Web UI."""
         try:
-            logger.info("%s Hotplug ports -> UI: %s", LogTag.IPC_BRIDGE, ports)
-            self.portsChanged.emit(json.dumps(list(ports)))
+            payload = [self._serialize_port(port) for port in ports]
+            logger.info("%s Hotplug ports -> UI: %s", LogTag.IPC_BRIDGE, payload)
+            self.portsChanged.emit(json.dumps(payload))
         except Exception as exc:
             logger.debug(
                 "%s portsChanged forward failed (%s: %s) ports=%s",
@@ -196,6 +198,22 @@ class BackendBridge(QObject):
                 exc,
                 ports,
             )
+
+    @staticmethod
+    def _serialize_port(port: object) -> dict[str, str | None]:
+        """Normalizes a PortInfo (or legacy string) into a JSON-friendly dict."""
+        if isinstance(port, PortInfo):
+            return port.to_dict()
+        device = str(port)
+        return {
+            "device": device,
+            "description": "",
+            "manufacturer": None,
+            "vid": None,
+            "pid": None,
+            "hwid": "",
+            "label": device,
+        }
 
     def _on_framer_error(self, kind: str, count: int) -> None:
         """Counts framer corruption as link loss for telemetry."""
@@ -357,9 +375,9 @@ class BackendBridge(QObject):
     # Slots callable from JavaScript
     @Slot(result=str)
     def scanPorts(self) -> str:
-        """Returns JSON list of available COM ports."""
-        ports = self._serial_manager.get_port_list()
-        return json.dumps(ports)
+        """Returns JSON list of available COM ports with detailed metadata."""
+        ports = self._serial_manager.get_port_info_list()
+        return json.dumps([self._serialize_port(port) for port in ports])
 
     @Slot(result=str)
     def getLaunchConfig(self) -> str:

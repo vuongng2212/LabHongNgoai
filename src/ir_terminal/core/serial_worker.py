@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 import re
+from dataclasses import dataclass
 from typing import ClassVar
 
 from PySide6.QtCore import QObject, QTimer, Signal, Slot
@@ -68,6 +69,59 @@ def _windows_registry_ports() -> list[str]:
     return ports
 
 
+@dataclass(slots=True)
+class PortInfo:
+    """Detailed metadata describing a single selectable serial port."""
+
+    device: str
+    description: str
+    manufacturer: str | None
+    vid: str | None
+    pid: str | None
+    hwid: str
+    label: str
+
+    def to_dict(self) -> dict[str, str | None]:
+        """Serializes the port metadata into a JSON-friendly dictionary."""
+        return {
+            "device": self.device,
+            "description": self.description,
+            "manufacturer": self.manufacturer,
+            "vid": self.vid,
+            "pid": self.pid,
+            "hwid": self.hwid,
+            "label": self.label,
+        }
+
+
+def _format_hex_identifier(value: int | None) -> str | None:
+    """Formats a numeric USB identifier as a 4-character uppercase hex string."""
+    if value is None:
+        return None
+    return f"{int(value) & 0xFFFF:04X}"
+
+
+def _friendly_label(device: str, description: str, vid: str | None, pid: str | None) -> str:
+    """Builds a human-friendly display label for a hardware serial port."""
+    if vid and pid:
+        return f"{description or device} [{vid}:{pid}]"
+    if description:
+        return f"{device} - {description}"
+    return device
+
+
+def _virtual_port_info(device: str, description: str) -> PortInfo:
+    """Builds a PortInfo entry for an in-process virtual (non-hardware) port."""
+    return PortInfo(
+        device=device,
+        description=description,
+        manufacturer=None,
+        vid=None,
+        pid=None,
+        hwid="",
+        label=f"{device} ({description})",
+    )
+
 
 class SerialWorker(QObject):
     """Background worker managing serial port I/O and emitting parsed packets."""
@@ -79,7 +133,7 @@ class SerialWorker(QObject):
     raw_data_received: ClassVar[Signal] = Signal(bytes)
     raw_data_sent: ClassVar[Signal] = Signal(bytes)
     packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
-    ports_changed: ClassVar[Signal] = Signal(list)  # ([port names])
+    ports_changed: ClassVar[Signal] = Signal(list)
     framer_error: ClassVar[Signal] = Signal(str, int)  # (kind, count delta)
 
     def __init__(
@@ -109,7 +163,7 @@ class SerialWorker(QObject):
         self._rx_consumed = 0
         self._rx_dropped = 0
         self._framer_stats = FramerStats()
-        self._last_ports: list[str] = []
+        self._last_ports: list[PortInfo] = []
         self._port_poll_timer: QTimer | None = None
         self._poll_timer: QTimer | None = None
         self._link_endpoints = link_endpoints
@@ -445,7 +499,7 @@ class SerialWorker(QObject):
 
     def _start_port_watcher(self) -> None:
         """Starts hotplug polling (emits ports_changed only on change)."""
-        self._last_ports = scan_available_ports(self._include_link)
+        self._last_ports = scan_available_port_infos(self._include_link)
         logger.debug(
             "%s Hotplug watcher started: initial_ports=%s",
             LogTag.HW_SERIAL,
@@ -467,7 +521,7 @@ class SerialWorker(QObject):
     def _poll_ports(self) -> None:
         """Emits ports_changed when the OS port list differs."""
         try:
-            current = scan_available_ports(self._include_link)
+            current = scan_available_port_infos(self._include_link)
             if current != self._last_ports:
                 logger.info(
                     "%s Hotplug ports changed: %s -> %s",
@@ -496,8 +550,8 @@ class SerialWorker(QObject):
         return self._framer_stats.snapshot()
 
 
-def scan_available_ports(include_link: bool | None = None) -> list[str]:
-    """Scans and returns available system COM ports plus MOCK options.
+def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo]:
+    """Scans available ports and returns detailed metadata for each one.
 
     Merges ``pyserial`` enumeration with the Windows registry so virtual COM
     drivers that pyserial misses still show up, then appends
@@ -508,14 +562,64 @@ def scan_available_ports(include_link: bool | None = None) -> list[str]:
             back to the IR_ENABLE_DUAL_MOCK env gate (back-compat).
 
     Returns:
-        Naturally sorted, de-duplicated list of port identifiers.
+        Naturally sorted, de-duplicated list of PortInfo records.
     """
-    ports = [p.device for p in list_ports.comports()]
+    infos: list[PortInfo] = []
+    seen: set[str] = set()
+    for listed in list_ports.comports():
+        device = listed.device
+        if device in seen:
+            continue
+        seen.add(device)
+        vid = _format_hex_identifier(listed.vid)
+        pid = _format_hex_identifier(listed.pid)
+        description = (listed.description or "").strip()
+        if description.lower() in ("n/a", "none"):
+            description = ""
+        infos.append(
+            PortInfo(
+                device=device,
+                description=description,
+                manufacturer=listed.manufacturer or None,
+                vid=vid,
+                pid=pid,
+                hwid=listed.hwid or "",
+                label=_friendly_label(device, description, vid, pid),
+            )
+        )
     for extra in _windows_registry_ports():
-        if extra not in ports:
-            ports.append(extra)
-    ports.append("MOCK_COM_LOOPBACK")
+        if extra in seen:
+            continue
+        seen.add(extra)
+        infos.append(
+            PortInfo(
+                device=extra,
+                description="Windows Registry Serial Port",
+                manufacturer=None,
+                vid=None,
+                pid=None,
+                hwid="",
+                label=f"{extra} - Windows Registry Serial Port",
+            )
+        )
+    infos.append(_virtual_port_info("MOCK_COM_LOOPBACK", "Virtual Loopback"))
     link_enabled = is_dual_mock_enabled() if include_link is None else include_link
     if link_enabled:
-        ports.extend(["LINK_A", "LINK_B"])
-    return sorted(set(ports), key=_natural_port_key)
+        infos.append(_virtual_port_info("LINK_A", "Virtual Dual-Link"))
+        infos.append(_virtual_port_info("LINK_B", "Virtual Dual-Link"))
+    return sorted(infos, key=lambda info: _natural_port_key(info.device))
+
+
+def scan_available_ports(include_link: bool | None = None) -> list[str]:
+    """Scans and returns available port device names plus MOCK options.
+
+    Backward-compatible string projection of :func:`scan_available_port_infos`.
+
+    Args:
+        include_link: Whether to list the LINK_A/B virtual ports. None falls
+            back to the IR_ENABLE_DUAL_MOCK env gate (back-compat).
+
+    Returns:
+        Naturally sorted, de-duplicated list of port identifiers.
+    """
+    return [info.device for info in scan_available_port_infos(include_link)]

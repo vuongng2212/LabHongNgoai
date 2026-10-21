@@ -7,7 +7,12 @@ from typing import ClassVar
 
 from PySide6.QtCore import QObject, QThread, Signal
 
-from ir_terminal.core.serial_worker import SerialWorker, scan_available_ports
+from ir_terminal.core.serial_worker import (
+    PortInfo,
+    SerialWorker,
+    scan_available_port_infos,
+    scan_available_ports,
+)
 from ir_terminal.protocol.constants import (
     DEFAULT_BAUDRATE,
     SHUTDOWN_WAIT_MS,
@@ -208,6 +213,10 @@ class SerialManager(QObject):
     def get_port_list(self) -> list[str]:
         """Scans for available serial ports on the host system."""
         return scan_available_ports(self._include_link)
+
+    def get_port_info_list(self) -> list[PortInfo]:
+        """Scans for available serial ports including VID/PID/description."""
+        return scan_available_port_infos(self._include_link)
 
     def shutdown(self) -> None:
         """Cleanly halts background thread and worker."""
