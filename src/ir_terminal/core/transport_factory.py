@@ -7,15 +7,16 @@ import logging
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.mock_serial import MockSerialPort
 from ir_terminal.core.socket_transport import SocketTransport, resolve_link_endpoint
-from ir_terminal.protocol.constants import SOCKET_CONNECT_TIMEOUT_SEC
+from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, SOCKET_CONNECT_TIMEOUT_SEC
 from ir_terminal.utils.logger import LogTag
 
 logger = logging.getLogger(__name__)
 
 
 def create_transport(
-    port_name: str,
-    baudrate: int = 115200,
+    tx_port: str,
+    rx_port: str | None = None,
+    baudrate: int = DEFAULT_BAUDRATE,
     link_endpoints: dict[str, tuple[str, int]] | None = None,
     *,
     link_connect_retries: int = 0,
@@ -23,10 +24,11 @@ def create_transport(
     link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
     link_token: str | None = None,
 ) -> ITransport:
-    """Creates the concrete transport for a port name without editing callers.
+    """Creates the concrete transport for a TX/RX port pair.
 
     Args:
-        port_name: Target port identifier (MOCK_*, LINK_*, or physical COM/tty).
+        tx_port: Target TX port identifier (MOCK_*, LINK_*, or physical COM/tty).
+        rx_port: Target RX port identifier for physical ports. None reuses tx_port.
         baudrate: Baud rate for serial transports.
         link_endpoints: Optional LINK_* -> (host, port) override map.
         link_connect_retries: Extra LINK connect attempts (dual-node startup).
@@ -37,33 +39,33 @@ def create_transport(
     Returns:
         Concrete ITransport instance (not yet opened).
     """
-    # Local import avoids a hard core->pyserial dependency at module import time
-    # so unit tests can import the factory without pyserial installed.
-    if port_name.startswith("MOCK"):
+    tx_name = (tx_port or "").strip()
+    rx_name = (rx_port or "").strip() or tx_name
+    if tx_name.startswith("MOCK"):
         auto_respond = not (
-            "PIPE" in port_name or "NO_LOOPBACK" in port_name or "NODE" in port_name
+            "PIPE" in tx_name or "NO_LOOPBACK" in tx_name or "NODE" in tx_name
         )
         logger.info(
             "%s Transport select: MOCK port=%s baud=%d auto_respond=%s",
             LogTag.HW_SERIAL,
-            port_name,
+            tx_name,
             baudrate,
             auto_respond,
         )
-        return MockSerialPort(port_name=port_name, baudrate=baudrate, auto_respond=auto_respond)
-    endpoint = resolve_link_endpoint(port_name, link_endpoints)
+        return MockSerialPort(port_name=tx_name, baudrate=baudrate, auto_respond=auto_respond)
+    endpoint = resolve_link_endpoint(tx_name, link_endpoints)
     if endpoint is not None:
         host, tcp_port = endpoint
         logger.info(
             "%s Transport select: SOCKET %s -> %s:%d (retries=%d)",
             LogTag.HW_SERIAL,
-            port_name.strip().upper(),
+            tx_name.upper(),
             host,
             tcp_port,
             link_connect_retries,
         )
         return SocketTransport(
-            port_name=port_name.strip().upper(),
+            port_name=tx_name.upper(),
             host=host,
             port=tcp_port,
             connect_retries=link_connect_retries,
@@ -71,12 +73,13 @@ def create_transport(
             connect_timeout_sec=link_connect_timeout_sec,
             token=link_token,
         )
-    from ir_terminal.core.pyserial_transport import PySerialTransport
+    from ir_terminal.core.dual_serial_transport import DualSerialTransport
 
     logger.info(
-        "%s Transport select: PYSERIAL port=%s baud=%d (8N1)",
+        "%s Transport select: DUAL SERIAL tx=%s rx=%s baud=%d (8N1)",
         LogTag.HW_SERIAL,
-        port_name,
+        tx_name,
+        rx_name,
         baudrate,
     )
-    return PySerialTransport(port_name=port_name, baudrate=baudrate)
+    return DualSerialTransport(tx_port=tx_name, rx_port=rx_name, baudrate=baudrate)

@@ -1,122 +1,99 @@
-<!-- Viewport Header Section -->
-<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-sm pb-space-xs">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-sm pb-space-sm border-b border-black/[0.06]">
 <div>
-<div class="flex items-center gap-space-sm">
-<h2 class="font-headline-lg text-headline-lg text-on-surface font-bold tracking-tight">Lab Analytics &amp; Performance</h2>
-<span class="px-2.5 py-0.5 rounded-full bg-surface-container-high border border-outline-variant/40 text-on-surface font-mono-caption text-[11px] font-medium">
-                880nm NIR Channel A • Half-Duplex Synchronized • Sampling: 100 Hz
-              </span>
+<div class="flex items-baseline gap-space-sm">
+<h2 class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight">Lab Analytics &amp; Performance</h2>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">CH-A • 880 nm • 100 Hz sampling</span>
 </div>
 <p class="text-on-surface-variant font-body-md text-body-md mt-0.5">
-              Realtime optical wireless carrier throughput telemetry, bit error rate distribution, and raw packet frame inspection.
+              Carrier throughput, bit error distribution, and raw packet frame inspection.
             </p>
 </div>
-<!-- Action Toolbar Controls -->
 <div class="flex items-center gap-space-xs shrink-0">
-<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-outline-variant/40 shadow-sm font-label-sm text-label-sm text-on-surface">
-<span class="relative flex h-2 w-2">
-<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-secondary opacity-75"></span>
-<span class="relative inline-flex rounded-full h-2 w-2 bg-secondary"></span>
-</span>
-<span class="font-medium">Live Capture Active</span>
+<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-black/[0.08] font-label-sm text-label-sm text-on-surface">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="font-medium">Live capture</span>
 </div>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors cursor-pointer">
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer">
 <span class="material-symbols-outlined text-[15px]">file_download</span>
-<span>Export CSV Telemetry</span>
+<span>Export CSV</span>
 </button>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-outline-variant/50 text-on-surface font-label-sm text-label-sm shadow-sm transition-colors cursor-pointer">
+<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer">
 <span class="material-symbols-outlined text-[15px]">refresh</span>
-<span>Reset Counters</span>
+<span>Reset counters</span>
 </button>
 </div>
 </div>
-<!-- 4 Top KPI Stat Cards -->
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
-<!-- KPI 1: Speed -->
-<div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmission Speed</span>
-<span class="material-symbols-outlined text-primary text-[18px]">speed</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmission speed</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">speed</span>
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-primary tracking-tight">0.00</span>
-<span class="font-mono-caption text-on-surface-variant font-semibold">KB/s</span>
+<span id="kpi-speed-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0.00</span>
+<span class="font-mono-caption text-on-surface-variant font-medium">KB/s</span>
 </div>
-<div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-on-surface-variant">Active Baud Throughput</span>
-</div>
+<span class="font-mono-caption text-[11px] text-outline">Active baud throughput</span>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary-container rounded-full" style="width: 0%;"></div>
+<div id="kpi-speed-bar" class="h-full bg-primary rounded-full" style="width: 0%;"></div>
 </div>
 </div>
-<!-- KPI 2: Packet Loss & BER -->
-<div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet Loss</span>
-<span class="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet loss</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">check_circle</span>
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">0.00%</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">(0 pkts)</span>
+<span id="kpi-loss-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0.00%</span>
+<span id="kpi-loss-pkts" class="font-mono-caption text-on-surface-variant font-medium">(0 pkts)</span>
 </div>
-<div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold">Clean Optical Channel</span>
-</div>
+<span class="font-mono-caption text-[11px] text-secondary">Clean optical channel</span>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
 <div class="h-full bg-secondary rounded-full" style="width: 100%;"></div>
 </div>
 </div>
-<!-- KPI 3: Latency -->
-<div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Round-Trip Latency</span>
-<span class="material-symbols-outlined text-outline text-[18px]">timer</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Round-trip latency</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">timer</span>
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">--</span>
-<span class="font-mono-caption text-on-surface-variant font-semibold">ms</span>
+<span id="kpi-rtt-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">--</span>
+<span class="font-mono-caption text-on-surface-variant font-medium">ms</span>
 </div>
-<div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-primary font-semibold">Ping/Pong Echo Delay</span>
-</div>
+<span class="font-mono-caption text-[11px] text-outline">Ping / Pong echo delay</span>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
 <div class="h-full bg-primary/70 rounded-full" style="width: 0%;"></div>
 </div>
 </div>
-<!-- KPI 4: Chunks -->
-<div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between">
+<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
 <div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmitted Chunks</span>
-<span class="material-symbols-outlined text-outline text-[18px]">inventory_2</span>
+<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmitted chunks</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">inventory_2</span>
 </div>
 <div class="my-2">
 <div class="flex items-baseline gap-2">
-<span class="font-display-lg text-display-lg font-bold text-on-surface tracking-tight">0</span>
-<span class="font-mono-caption text-on-surface-variant font-semibold">blks</span>
+<span id="kpi-chunks-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0</span>
+<span class="font-mono-caption text-on-surface-variant font-medium">blks</span>
 </div>
-<div class="flex items-center gap-1.5 mt-1 font-mono-caption text-[11px]">
-<span class="text-secondary font-semibold">Stop-and-Wait ARQ Verified</span>
-</div>
+<span class="font-mono-caption text-[11px] text-outline">Stop-and-Wait ARQ verified</span>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
 <div class="h-full bg-secondary-container rounded-full" style="width: 100%;"></div>
 </div>
 </div>
 </div>
-<!-- 2 High-Density Live Charts -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-space-md">
-<!-- Chart 1: Realtime Transmission Speed -->
-<div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between relative">
-<div class="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/20">
+<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative">
+<div class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]">
 <div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Realtime Transmission Speed</span>
-<span class="font-mono-caption text-[10px] text-primary px-1.5 py-0.5 rounded bg-primary/10 font-semibold">Live Feed</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Realtime transmission speed</span>
 </div>
 <div class="flex items-center gap-3 font-mono-caption text-[11px]">
 <div class="flex items-center gap-1">
@@ -128,19 +105,17 @@
 <div class="relative w-full h-44 flex items-center justify-center">
 <canvas id="live-speed-chart" class="w-full h-full"></canvas>
 </div>
-<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-outline-variant/20">
+<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]">
 <span>30s ago</span>
 <span>20s ago</span>
 <span>10s ago</span>
-<span>Now (Realtime)</span>
+<span>Now</span>
 </div>
 </div>
-<!-- Chart 2: Realtime Round-Trip Latency -->
-<div class="bg-surface-container-lowest rounded-[14px] p-space-md border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col justify-between relative">
-<div class="flex items-center justify-between pb-2 mb-2 border-b border-outline-variant/20">
+<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative">
+<div class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]">
 <div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Round-Trip Latency (RTT)</span>
-<span class="font-mono-caption text-[10px] text-secondary px-1.5 py-0.5 rounded bg-secondary/10 font-semibold">Direct LOS</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Round-trip latency (RTT)</span>
 </div>
 <div class="flex items-center gap-3 font-mono-caption text-[11px]">
 <div class="flex items-center gap-1">
@@ -152,59 +127,52 @@
 <div class="relative w-full h-44 flex items-center justify-center">
 <canvas id="live-rtt-chart" class="w-full h-full"></canvas>
 </div>
-<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-outline-variant/20">
+<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]">
 <span>30s ago</span>
 <span>20s ago</span>
 <span>10s ago</span>
-<span>Now (Realtime)</span>
+<span>Now</span>
 </div>
 </div>
 </div>
-<!-- Bottom Collapsible Raw Optical Frame Sniffer & Buffer -->
-<div class="bg-surface-container-lowest rounded-[14px] border border-outline-variant/30 shadow-[0_2px_10px_rgba(0,0,0,0.03)] flex flex-col overflow-hidden">
-<!-- Drawer Header / Controls -->
-<div class="p-space-sm px-space-md bg-surface-container-lowest border-b border-outline-variant/30 flex flex-wrap items-center justify-between gap-space-sm">
+<div class="bg-surface-container-lowest rounded-lg border border-black/[0.08] flex flex-col overflow-hidden">
+<div class="p-space-sm px-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm">
 <div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-primary text-[18px]">terminal</span>
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Raw Optical Frame Sniffer &amp; Buffer (Half-Duplex Bus CH-01)</span>
-<span class="px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-mono-caption text-[10px] font-semibold border border-primary/20">
-                0 frames captured
-              </span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">terminal</span>
+<span class="font-title-sm text-title-sm font-semibold text-on-surface">Raw optical frame sniffer</span>
+<span id="sniffer-frame-count" class="font-mono-caption text-[10px] text-on-surface-variant">0 frames captured</span>
 </div>
 <div class="flex items-center gap-space-sm">
-<!-- Filter Segment Chips -->
-<div class="flex items-center bg-surface-container-low p-0.5 rounded-lg border border-outline-variant/40 font-mono-caption text-[10px]">
-<button class="px-2 py-1 rounded bg-surface-container-lowest text-primary font-semibold shadow-xs cursor-pointer">ALL</button>
+<div id="sniffer-filter-bar" class="flex items-center bg-surface-container-low p-0.5 rounded-md border border-black/[0.08] font-mono-caption text-[10px]">
+<button class="px-2 py-1 rounded bg-surface-container-lowest text-on-surface font-semibold shadow-xs cursor-pointer">ALL</button>
 <button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">SYN/ACK</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface font-semibold cursor-pointer">BURST_DATA</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">BURST_DATA</button>
 <button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">CRC_OK</button>
 <button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">ERROR_FRAMES (0)</button>
 </div>
-<!-- Search Hex Filter Input -->
 <div class="relative">
 <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
-<input class="h-[28px] pl-6 pr-2 rounded-lg bg-surface-container-lowest border border-outline-variant/40 font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-44" placeholder="Hex opcode or frame ID..." type="text"/>
+<input id="sniffer-search" class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-44" placeholder="Hex opcode or frame ID..." type="text"/>
 </div>
 <button class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer" title="Collapse / Expand Drawer">
 <span class="material-symbols-outlined text-[18px]">expand_more</span>
 </button>
 </div>
 </div>
-<!-- High-Density Data Table -->
-<div class="overflow-x-auto max-h-56">
+<div id="sniffer-table-container" class="overflow-x-auto max-h-56">
 <table class="w-full text-left border-collapse">
 <thead>
-<tr class="bg-surface-container-low/60 font-mono-caption text-[10px] text-outline uppercase tracking-wider border-b border-outline-variant/20">
-<th class="py-2 px-space-md font-semibold">Time (UTC)</th>
-<th class="py-2 px-space-sm font-semibold">Frame ID</th>
-<th class="py-2 px-space-sm font-semibold">Carrier</th>
-<th class="py-2 px-space-sm font-semibold">Type</th>
-<th class="py-2 px-space-sm font-semibold">Payload Hex Stream Preview</th>
-<th class="py-2 px-space-sm font-semibold">Checksum</th>
-<th class="py-2 px-space-md font-semibold text-right">Latency</th>
+<tr class="bg-surface-container-low font-mono-caption text-[10px] text-outline uppercase tracking-wider border-b border-black/[0.08]">
+<th class="py-2 px-space-md font-medium">Time (UTC)</th>
+<th class="py-2 px-space-sm font-medium">Frame ID</th>
+<th class="py-2 px-space-sm font-medium">Carrier</th>
+<th class="py-2 px-space-sm font-medium">Type</th>
+<th class="py-2 px-space-sm font-medium">Payload hex preview</th>
+<th class="py-2 px-space-sm font-medium">Checksum</th>
+<th class="py-2 px-space-md font-medium text-right">Latency</th>
 </tr>
 </thead>
-<tbody class="font-mono-data text-[11px] divide-y divide-outline-variant/10">
+<tbody id="sniffer-table-body" class="font-mono-data text-[11px] divide-y divide-black/[0.05]">
 <tr>
 <td colspan="7" class="py-8 text-center text-on-surface-variant text-mono-data">
   <div class="flex flex-col items-center justify-center gap-1">
@@ -217,18 +185,12 @@
 </tbody>
 </table>
 </div>
-<!-- Buffer Status Bar -->
-<div class="px-space-md py-1.5 bg-surface-container-low border-t border-outline-variant/30 flex items-center justify-between font-mono-caption text-[10px] text-on-surface-variant">
+<div class="px-space-md py-1.5 bg-surface-container-low border-t border-black/[0.08] flex items-center justify-between font-mono-caption text-[10px] text-on-surface-variant">
 <div class="flex items-center gap-3">
-<span class="flex items-center gap-1">
-<span class="material-symbols-outlined text-[12px] text-secondary">lock</span>
 <span>Auto-scroll active</span>
-</span>
-<span>Ring Buffer: 1024 Bytes</span>
+<span>Ring buffer: 1024 bytes</span>
 <span>UART 115200 bps 8-N-1</span>
 </div>
-<div class="flex items-center gap-2">
-<span class="text-secondary font-semibold">CRC-32 IEEE 802.3 Active</span>
-</div>
+<span>CRC-32 IEEE 802.3</span>
 </div>
 </div>

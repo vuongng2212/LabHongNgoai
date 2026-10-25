@@ -1,7 +1,5 @@
-<!-- Left Navigation Sidebar -->
 <aside class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0">
   <div class="space-y-space-md">
-    <!-- Brand Block -->
     <div class="flex items-center gap-space-sm px-1 py-1">
       <div class="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center shadow-sm">
         <span class="material-symbols-outlined text-[20px] text-white">radar</span>
@@ -12,7 +10,6 @@
       </div>
     </div>
 
-    <!-- Section Navigation Group -->
     <div class="space-y-1">
       <div class="px-space-xs py-1 text-mono-caption font-mono-caption text-outline font-semibold tracking-wider">
         OPTICAL SUBSYSTEMS
@@ -38,18 +35,23 @@
     </div>
   </div>
 
-  <!-- Sidebar Footer / Hardware Status Widget -->
-  <div class="bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.06] shadow-sm space-y-2">
+  <div class="bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-2">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-1.5">
         <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-outline">OFFLINE</span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-medium text-outline">OFFLINE</span>
       </div>
-      <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">880nm</span>
+      <span class="text-[10px] font-mono text-outline tracking-widest">UART</span>
     </div>
-    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2 flex items-center justify-between">
-      <span class="text-outline">Physical Link:</span>
-      <span id="footer-port-label" class="font-semibold text-on-surface">Disconnected</span>
+    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-outline">Ports:</span>
+        <span id="footer-port-label" class="font-medium text-on-surface truncate text-right">Disconnected</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-outline">Baud:</span>
+        <span id="footer-baud-label" class="font-medium text-on-surface">--</span>
+      </div>
     </div>
     <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors cursor-pointer">
       <span class="material-symbols-outlined text-[14px]">wifi_tethering</span>

@@ -18,6 +18,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from ir_terminal.protocol.constants import SUPPORTED_BAUDRATES
 from ir_terminal.utils.path_helpers import (
     get_app_data_dir,
     get_logs_dir,
@@ -53,7 +54,10 @@ class LaunchConfig:
     instance: str | None = None
     transport: str = "auto"
     port: str | None = None
+    tx_port: str | None = None
+    rx_port: str | None = None
     baud: int = DEFAULT_BAUD
+    supported_baudrates: tuple[int, ...] = SUPPORTED_BAUDRATES
     link_role: str = "off"
     link_host: str = DEFAULT_LINK_HOST
     link_base_port: int = DEFAULT_LINK_BASE_PORT
@@ -81,14 +85,30 @@ class LaunchConfig:
         return self.effective_link_role in ("host", "join")
 
     @property
+    def effective_tx_port(self) -> str | None:
+        """Returns the TX port: explicit ``--tx-port`` wins over ``--port``."""
+        for candidate in (self.tx_port, self.port):
+            if candidate and candidate.strip():
+                return candidate.strip()
+        return None
+
+    @property
+    def effective_rx_port(self) -> str | None:
+        """Returns the RX port: explicit ``--rx-port`` wins over ``--port``."""
+        for candidate in (self.rx_port, self.port):
+            if candidate and candidate.strip():
+                return candidate.strip()
+        return None
+
+    @property
     def preferred_port(self) -> str | None:
         """Returns the port the UI should preselect / auto-connect to.
 
-        Precedence: explicit ``--port`` wins, then the LINK port derived from
-        the role, then the mock loopback when ``--transport mock``.
+        Precedence: explicit ``--tx-port``/``--port`` wins, then the LINK port
+        derived from the role, then the mock loopback when ``--transport mock``.
         """
-        if self.port and self.port.strip():
-            return self.port.strip()
+        if self.effective_tx_port:
+            return self.effective_tx_port
         role = self.effective_link_role
         if role == "host":
             return DEFAULT_LINK_A_PORT_NAME
@@ -134,7 +154,7 @@ def _role_label(config: LaunchConfig) -> str:
         return "Host"
     if role == "join":
         return "Client"
-    if config.port:
+    if config.effective_tx_port:
         return "Serial"
     if config.transport == "mock":
         return "Mock"
@@ -237,6 +257,16 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         default=None,
         help="Explicit port name: COM11, LINK_A, MOCK_COM_LOOPBACK.",
     )
+    parser.add_argument(
+        "--tx-port",
+        default=None,
+        help="Explicit TX port name (overrides --port for outgoing bytes).",
+    )
+    parser.add_argument(
+        "--rx-port",
+        default=None,
+        help="Explicit RX port name (overrides --port for incoming bytes).",
+    )
     parser.add_argument("--baud", type=int, default=DEFAULT_BAUD, help="Baud rate.")
     parser.add_argument(
         "--link-role",
@@ -307,7 +337,10 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         instance=instance,
         transport=str(args.transport),
         port=args.port,
+        tx_port=args.tx_port,
+        rx_port=args.rx_port,
         baud=int(args.baud),
+        supported_baudrates=SUPPORTED_BAUDRATES,
         link_role=link_role,
         link_host=str(args.link_host),
         link_base_port=int(args.link_base_port),

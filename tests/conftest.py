@@ -7,9 +7,12 @@ never touch the checkout's ``data/`` tree or the user's home directory.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
 @pytest.fixture(autouse=True)

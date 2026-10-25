@@ -61,8 +61,8 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (234/234 tests passed)
-QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v
+# 3. Chạy bộ kiểm thử tự động (273/273 tests passed)
+uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn
 uv run ruff check .
@@ -89,10 +89,12 @@ Trên Windows bản `.exe`, double-click **`Start_Dual_Demo.cmd`** (được cop
 `IR_OWC_Lab_Terminal.exe`): cửa sổ Node A `[Node A - Host]` và Node B
 `[Node B - Client]` tự kết nối, chia trái/phải màn hình.
 
-Đường COM ảo (VSPD/VSPE) chỉ dùng cho nghiệm thu HW: `Start_Com_Pair.cmd COM11 COM12`.
+Đường COM ảo (VSPD/VSPE) chỉ dùng cho nghiệm thu HW. Mỗi board dùng 2 cổng TX/RX:
+`Start_Com_Pair.cmd COM11 COM12 COM13 COM14` (TX A, RX A, TX B, RX B).
+Khi chạy tay: `--tx-port COM11 --rx-port COM12`.
 
 Các cờ chính: `--instance A|B`, `--link-role off|host|join|auto`, `--link-base-port`,
-`--port`, `--baud`, `--auto-connect`, `--window-pos left|right|normal`,
+`--port`, `--tx-port`, `--rx-port`, `--baud`, `--auto-connect`, `--window-pos left|right|normal`,
 `--allow-multiple` (bỏ lock), `--broker-only`, `--loss/--latency-ms/--los`.
 Mỗi instance có `data/instances/<ID>/` riêng (JSON, transfers, logs, WebEngine cache)
 và `app.lock` chống mở trùng.

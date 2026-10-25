@@ -127,7 +127,8 @@ class SerialWorker(QObject):
     """Background worker managing serial port I/O and emitting parsed packets."""
 
     # Qt Signals
-    connected: ClassVar[Signal] = Signal(str, int)  # (port_name, baudrate)
+    connected: ClassVar[Signal] = Signal(str, int)
+    ports_connected: ClassVar[Signal] = Signal(str, str, int)
     disconnected: ClassVar[Signal] = Signal()
     error_occurred: ClassVar[Signal] = Signal(str)
     raw_data_received: ClassVar[Signal] = Signal(bytes)
@@ -173,6 +174,24 @@ class SerialWorker(QObject):
         self._link_connect_timeout_sec = link_connect_timeout_sec
         self._link_token = link_token
         self._link_lost_pending = False
+        self._current_tx_port = ""
+        self._current_rx_port = ""
+        self._current_baud = DEFAULT_BAUDRATE
+
+    @property
+    def current_tx_port(self) -> str:
+        """Returns the active TX port name."""
+        return self._current_tx_port
+
+    @property
+    def current_rx_port(self) -> str:
+        """Returns the active RX port name."""
+        return self._current_rx_port
+
+    @property
+    def current_baud(self) -> int:
+        """Returns the active baud rate."""
+        return self._current_baud
 
     def _on_link_lost(self) -> None:
         """Records that the socket transport dropped (handled on next poll)."""
@@ -181,24 +200,39 @@ class SerialWorker(QObject):
 
     @Slot(str, int)
     def open_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Opens physical or virtual serial connection and starts periodic polling.
+        """Opens one port used for both RX and TX (backward-compatible entry).
 
         Args:
             port_name: Target port identifier.
             baudrate: Baud rate integer.
         """
+        self.open_ports(port_name, port_name, baudrate)
+
+    @Slot(str, str, int)
+    def open_ports(self, tx_port: str, rx_port: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
+        """Opens independent TX/RX serial connections and starts periodic polling.
+
+        Args:
+            tx_port: Target port identifier used for writes.
+            rx_port: Target port identifier used for reads.
+            baudrate: Baud rate integer.
+        """
+        tx_name = (tx_port or "").strip()
+        rx_name = (rx_port or "").strip() or tx_name
         try:
             self.close_port()
             logger.info(
-                "%s Opening serial port: %s at %d bps (thread=%s)",
+                "%s Opening serial ports: tx=%s rx=%s at %d bps (thread=%s)",
                 LogTag.HW_SERIAL,
-                port_name,
+                tx_name,
+                rx_name,
                 baudrate,
                 "worker",
             )
 
             self._transport = create_transport(
-                port_name=port_name,
+                tx_port=tx_name,
+                rx_port=rx_name,
                 baudrate=baudrate,
                 link_endpoints=self._link_endpoints,
                 link_connect_retries=self._link_connect_retries,
@@ -211,10 +245,11 @@ class SerialWorker(QObject):
                 self._transport.on_link_lost = self._on_link_lost
             self._link_lost_pending = False
             logger.info(
-                "%s Transport created: %s for port=%s baud=%d",
+                "%s Transport created: %s for tx=%s rx=%s baud=%d",
                 LogTag.HW_SERIAL,
                 transport_kind,
-                port_name,
+                tx_name,
+                rx_name,
                 baudrate,
             )
 
@@ -223,6 +258,9 @@ class SerialWorker(QObject):
             self._rx_consumed = 0
             self._rx_dropped = 0
             self._framer_stats = FramerStats()
+            self._current_tx_port = tx_name
+            self._current_rx_port = rx_name
+            self._current_baud = baudrate
 
             # Setup periodic non-blocking poll timer on worker thread event loop.
             # Mock loopback simulation polls faster (2ms) so file-transfer demos
@@ -237,21 +275,26 @@ class SerialWorker(QObject):
             self._start_port_watcher()
 
             logger.info(
-                "%s Port OPENED: %s @ %d bps via %s poll=%dms rx_cap=%dB",
+                "%s Port OPENED: tx=%s rx=%s @ %d bps via %s poll=%dms rx_cap=%dB",
                 LogTag.HW_SERIAL,
-                port_name,
+                tx_name,
+                rx_name,
                 baudrate,
                 transport_kind,
                 poll_ms,
                 RING_BUFFER_CAPACITY,
             )
-            self.connected.emit(port_name, baudrate)
+            self.connected.emit(tx_name, baudrate)
+            self.ports_connected.emit(tx_name, rx_name, baudrate)
 
         except Exception as exc:
+            self._current_tx_port = ""
+            self._current_rx_port = ""
             logger.exception(
-                "%s Failed to open serial port %s @ %d bps (%s: %s)",
+                "%s Failed to open serial ports tx=%s rx=%s @ %d bps (%s: %s)",
                 LogTag.HW_SERIAL,
-                port_name,
+                tx_name,
+                rx_name,
                 baudrate,
                 type(exc).__name__,
                 exc,
@@ -286,6 +329,8 @@ class SerialWorker(QObject):
         self._rx_accumulation = bytearray()
         self._rx_consumed = 0
         self._link_lost_pending = False
+        self._current_tx_port = ""
+        self._current_rx_port = ""
         # Only emit on a real connected->disconnected transition. open_port()
         # calls close_port() as cleanup, and emitting here would fake a
         # disconnect that wipes pending-connect UI state before the real

@@ -189,7 +189,9 @@ Một bản build duy nhất chạy được 2 node độc lập bằng cờ CLI
 | `--instance A\|B` | Tách `data/instances/<ID>/` (JSON, transfers, logs, WebEngine, lock) |
 | `--link-role off\|host\|join\|auto` | `host` = Node A + broker in-app; `join` = Node B; `auto` suy ra từ instance |
 | `--link-base-port 6001` | `LINK_A` = base, `LINK_B` = base+1 |
-| `--port COM11\|LINK_A\|MOCK_COM_LOOPBACK` | Ép cổng, bỏ qua suy luận theo role |
+| `--port COM11\|LINK_A\|MOCK_COM_LOOPBACK` | Ép cổng dùng chung cho TX và RX |
+| `--tx-port COM3` | Cổng COM phát (ghi dữ liệu xuống board) |
+| `--rx-port COM4` | Cổng COM thu (đọc dữ liệu quang từ board) |
 | `--baud 115200` | Baud rate |
 | `--auto-connect` | Tự kết nối cổng ưu tiên sau khi UI sẵn sàng |
 | `--window-pos left\|right\|normal` | Chia đôi màn hình cho demo 2 node |
@@ -244,7 +246,7 @@ Một bản build duy nhất chạy được 2 node độc lập bằng cờ CLI
 
 Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
 1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + dual-link + Virtual COM loopback):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Sau refactor + dual-node ngày 2026-10-20: `234 passed`.
+2. **Integration Test (2-node mock + dual-link + Virtual COM loopback + dual-COM TX/RX):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Sau nâng cấp dual COM ngày 2026-10-25: `273 passed`.
 
 ---
 
@@ -252,7 +254,7 @@ Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm vi�
 
 * **Đồng bộ môi trường:** `uv sync`
 * **Chạy ứng dụng:** `uv run python -m ir_terminal`
-* **Chạy kiểm thử:** `QT_QPA_PLATFORM=offscreen uv run pytest tests/ -v` (headless/CI; bỏ biến môi trường nếu có desktop)
+* **Chạy kiểm thử:** `uv run pytest tests/ -v` (headless/CI; `tests/conftest.py` tự đặt `QT_QPA_PLATFORM=offscreen`)
 * **Kiểm tra Lint & Format:** `uv run ruff check . && uv run ruff format .`
 * **Kiểm tra Type:** `uv run mypy src/ tests/`
 * **Đóng gói file thực thi `.exe`:**

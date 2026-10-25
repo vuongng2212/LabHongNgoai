@@ -21,7 +21,11 @@ from ir_terminal.config import (
 )
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.core.serial_worker import PortInfo
-from ir_terminal.protocol.constants import DEFAULT_HEALTH_CHECK_SEC, Opcode
+from ir_terminal.protocol.constants import (
+    DEFAULT_HEALTH_CHECK_SEC,
+    SUPPORTED_BAUDRATES,
+    Opcode,
+)
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.chat_service import ChatService
 from ir_terminal.services.file_transfer_service import FileTransferService, TransferState
@@ -42,7 +46,7 @@ class BackendBridge(QObject):
     """Exposes methods and signals to Chromium JavaScript via QWebChannel."""
 
     # Outgoing Link & Hardware Signals to JavaScript
-    portConnected: ClassVar[Signal] = Signal(str, int)  # (port, baud)
+    portConnected: ClassVar[Signal] = Signal(str, str, int)
     portDisconnected: ClassVar[Signal] = Signal()
     errorOccurred: ClassVar[Signal] = Signal(str)
     pingResult: ClassVar[Signal] = Signal(float, int)  # (rtt_ms, seq)
@@ -127,8 +131,8 @@ class BackendBridge(QObject):
     def _wire_signals(self) -> None:
         """Connects underlying core services to bridge signals and telemetry listeners."""
         # Serial Manager
-        self._serial_manager.connected.connect(self.portConnected)
-        self._serial_manager.connected.connect(self._on_link_up)
+        self._serial_manager.ports_connected.connect(self.portConnected)
+        self._serial_manager.ports_connected.connect(self._on_link_up)
         self._serial_manager.disconnected.connect(self.portDisconnected)
         self._serial_manager.disconnected.connect(self._on_link_down)
         self._serial_manager.error_occurred.connect(self.errorOccurred)
@@ -159,15 +163,16 @@ class BackendBridge(QObject):
         self._telemetry.telemetry_updated.connect(self.telemetryUpdated)
         self._telemetry.sniffer_frame_logged.connect(self.snifferFrameLogged)
 
-    def _on_link_up(self, port: str, baud: int) -> None:
+    def _on_link_up(self, tx_port: str, rx_port: str, baud: int) -> None:
         """Starts periodic health checks once the optical link is connected."""
         self._is_connected = True
         if self._health_interval_sec > 0:
             self._health_timer.start()
         logger.info(
-            "%s Bridge link UP: port=%s baud=%d health_every=%.1fs auto_ping=%s",
+            "%s Bridge link UP: tx=%s rx=%s baud=%d health_every=%.1fs auto_ping=%s",
             LogTag.IPC_BRIDGE,
-            port,
+            tx_port,
+            rx_port,
             baud,
             self._health_interval_sec,
             self._health_timer.isActive(),
@@ -385,7 +390,7 @@ class BackendBridge(QObject):
 
         Returns:
             JSON object with instance id, display name, role, preferred port,
-            baud, link settings and data directory.
+            baud, dual-port hints, supported baudrates and data directory.
         """
         ctx = self._instance_context
         cfg = self._launch_config
@@ -396,7 +401,11 @@ class BackendBridge(QObject):
             "window_title": ctx.window_title if ctx else "SpectraLink IR-OWC Workstation",
             "data_dir": str(ctx.data_dir) if ctx else "",
             "preferred_port": cfg.preferred_port if cfg else None,
+            "tx_port": cfg.effective_tx_port if cfg else None,
+            "rx_port": cfg.effective_rx_port if cfg else None,
             "baud": cfg.baud if cfg else DEFAULT_BAUD,
+            "default_baudrate": cfg.baud if cfg else DEFAULT_BAUD,
+            "supported_baudrates": self._configured_baudrates(),
             "transport": cfg.transport if cfg else "auto",
             "link_role": cfg.effective_link_role if cfg else "off",
             "link_host": cfg.link_host if cfg else DEFAULT_LINK_HOST,
@@ -405,50 +414,114 @@ class BackendBridge(QObject):
         }
         return json.dumps(payload)
 
+    def _configured_baudrates(self) -> list[int]:
+        """Returns the supported baudrate list from settings or the defaults."""
+        raw = self._storage.get_setting("supported_baudrates", "")
+        if raw:
+            try:
+                parsed: object = json.loads(raw)
+            except (TypeError, ValueError):
+                parsed = [part.strip() for part in str(raw).split(",")]
+            if isinstance(parsed, list):
+                values: list[int] = []
+                for item in parsed:
+                    try:
+                        value = int(item)
+                    except (TypeError, ValueError):
+                        continue
+                    if value > 0:
+                        values.append(value)
+                if values:
+                    return values
+        return list(SUPPORTED_BAUDRATES)
+
     def _default_export_dir(self) -> str:
         """Returns the per-instance logs dir (or the shared one) for exports."""
         if self._instance_context is not None:
             return str(self._instance_context.logs_dir)
         return str(get_logs_dir())
 
+    @Slot(result=str)
+    def getAvailableBaudrates(self) -> str:
+        """Returns the configured baudrate list as a JSON array."""
+        try:
+            return json.dumps(self._configured_baudrates())
+        except Exception as exc:
+            logger.exception(
+                "%s getAvailableBaudrates FAILED (%s: %s)",
+                LogTag.IPC_BRIDGE,
+                type(exc).__name__,
+                exc,
+            )
+            return json.dumps(list(SUPPORTED_BAUDRATES))
+
+    @Slot(result=str)
+    def getConnectedPorts(self) -> str:
+        """Returns the active TX/RX ports and baud rate as a JSON object."""
+        payload = {
+            "tx_port": self._serial_manager.current_tx_port,
+            "rx_port": self._serial_manager.current_rx_port,
+            "baudrate": self._serial_manager.current_baud,
+        }
+        return json.dumps(payload)
+
     @Slot(str, int)
     def connectPort(self, port_name: str, baudrate: int) -> None:
-        """Connects to specified Serial or Mock COM port.
+        """Connects one shared TX/RX serial port (backward-compatible slot).
 
         Args:
             port_name: Target serial port device name.
             baudrate: Baud rate integer.
         """
+        self.connectDualPorts(port_name, port_name, baudrate)
+
+    @Slot(str, str, int)
+    def connectDualPorts(self, tx_port: str, rx_port: str, baudrate: int) -> None:
+        """Connects independent TX and RX serial ports.
+
+        Args:
+            tx_port: Target serial port device name used for writes.
+            rx_port: Target serial port device name used for reads.
+            baudrate: Baud rate integer.
+        """
         try:
-            name = (port_name or "").strip()
-            if not name:
-                logger.warning("%s Connect rejected: empty port name (baud=%d)", LogTag.HW_SERIAL, baudrate)
-                self.errorOccurred.emit("Connect failed: empty port name")
+            tx_name = (tx_port or "").strip()
+            rx_name = (rx_port or "").strip() or tx_name
+            if not tx_name:
+                logger.warning(
+                    "%s Connect rejected: empty TX port name (baud=%d)",
+                    LogTag.HW_SERIAL,
+                    baudrate,
+                )
+                self.errorOccurred.emit("Connect failed: empty TX port name")
                 return
             if baudrate <= 0:
                 logger.warning(
-                    "%s Connect rejected: invalid baudrate=%d port=%s",
+                    "%s Connect rejected: invalid baudrate=%d tx=%s rx=%s",
                     LogTag.HW_SERIAL,
                     baudrate,
-                    name,
+                    tx_name,
+                    rx_name,
                 )
                 self.errorOccurred.emit(f"Connect failed: invalid baudrate {baudrate}")
                 return
             logger.info(
-                "%s UI connect requested: port=%s baud=%d connected=%s",
+                "%s UI dual connect requested: tx=%s rx=%s baud=%d connected=%s",
                 LogTag.HW_SERIAL,
-                name,
+                tx_name,
+                rx_name,
                 baudrate,
                 self._is_connected,
             )
-            self._serial_manager.connect_port(name, baudrate)
+            self._serial_manager.connect_ports(tx_name, rx_name, baudrate)
         except Exception as exc:
             logger.exception(
-                "%s Connect slot FAILED (%s: %s) port=%s baud=%d",
+                "%s connectDualPorts slot FAILED (%s: %s) tx=%s rx=%s baud=%d",
                 LogTag.HW_SERIAL,
                 type(exc).__name__,
                 exc,
-                port_name,
+                tx_port,
+                rx_port,
                 baudrate,
             )
             self.errorOccurred.emit(f"Connect failed: {exc}")

@@ -113,7 +113,13 @@ MAX_RETRY_COUNT: int = 5
 
 # Serial Port Baudrate
 DEFAULT_BAUDRATE: int = 115200
-AVAILABLE_BAUDRATES: tuple[int, ...] = (9600, 19200, 38400, 57600, 115200, 230400)
+SUPPORTED_BAUDRATES: tuple[int, ...] = (
+    9600,
+    38400,
+    57600,
+    115200,
+)
+AVAILABLE_BAUDRATES: tuple[int, ...] = SUPPORTED_BAUDRATES
 
 # ==============================================================================
 # 4. TRANSPORT / BUFFER / POLL TUNING (single source for magic numbers)

@@ -481,7 +481,7 @@ class TestBridgeLogging:
         try:
             bridge = BackendBridge(serial_manager=manager)
             with caplog.at_level(logging.DEBUG, logger="ir_terminal"):
-                bridge._on_link_up("COM9", 115200)
+                bridge._on_link_up("COM9", "COM10", 115200)
                 bridge._on_packet_received(object())
                 bridge._on_link_down()
             assert "link UP" in caplog.text

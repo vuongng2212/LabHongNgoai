@@ -8,22 +8,22 @@ function initTelemetryController() {
   const viewTelemetry = document.getElementById('view-telemetry');
   if (!viewTelemetry) return;
 
-  const speedValueElem = viewTelemetry.querySelector('.grid-cols-1.sm\\:grid-cols-2.lg\\:grid-cols-4 > div:nth-child(1) .font-display-lg');
-  const speedBarElem = viewTelemetry.querySelector('.grid-cols-1.sm\\:grid-cols-2.lg\\:grid-cols-4 > div:nth-child(1) .h-full');
-  
-  const lossValueElem = viewTelemetry.querySelector('.grid-cols-1.sm\\:grid-cols-2.lg\\:grid-cols-4 > div:nth-child(2) .font-display-lg');
-  const lossPktsElem = viewTelemetry.querySelector('.grid-cols-1.sm\\:grid-cols-2.lg\\:grid-cols-4 > div:nth-child(2) .font-mono-caption.text-on-surface-variant');
-  
-  const rttValueElem = viewTelemetry.querySelector('.grid-cols-1.sm\\:grid-cols-2.lg\\:grid-cols-4 > div:nth-child(3) .font-display-lg');
-  
-  const chunksValueElem = viewTelemetry.querySelector('.grid-cols-1.sm\\:grid-cols-2.lg\\:grid-cols-4 > div:nth-child(4) .font-display-lg');
-  
-  const frameCountBadge = viewTelemetry.querySelector('.bg-surface-container-lowest .bg-surface-container-high.text-primary.font-mono-caption');
-  const snifferTableBody = viewTelemetry.querySelector('table tbody');
-  const searchInput = viewTelemetry.querySelector('input[placeholder*="Hex opcode"]');
-  const filterButtons = viewTelemetry.querySelectorAll('.flex.items-center.bg-surface-container-low button');
+  const speedValueElem = document.getElementById('kpi-speed-value');
+  const speedBarElem = document.getElementById('kpi-speed-bar');
+
+  const lossValueElem = document.getElementById('kpi-loss-value');
+  const lossPktsElem = document.getElementById('kpi-loss-pkts');
+
+  const rttValueElem = document.getElementById('kpi-rtt-value');
+
+  const chunksValueElem = document.getElementById('kpi-chunks-value');
+
+  const frameCountBadge = document.getElementById('sniffer-frame-count');
+  const snifferTableBody = document.getElementById('sniffer-table-body');
+  const searchInput = document.getElementById('sniffer-search');
+  const filterButtons = viewTelemetry.querySelectorAll('#sniffer-filter-bar button');
   const collapseBtn = viewTelemetry.querySelector('button[title*="Collapse"]');
-  const snifferTableContainer = viewTelemetry.querySelector('.overflow-x-auto.max-h-56');
+  const snifferTableContainer = document.getElementById('sniffer-table-container');
 
   // Canvas Chart Elements
   const speedCanvas = document.getElementById('live-speed-chart');
@@ -197,20 +197,23 @@ function initTelemetryController() {
     const row = document.createElement('tr');
     row.className = 'hover:bg-surface-container-low/50 transition-colors';
 
-    let badgeClass = 'bg-primary-fixed/40 text-on-primary-fixed';
+    let typeTone = 'text-on-surface';
     if (rec.type_str.includes('ACK') || rec.type_str.includes('PONG')) {
-      badgeClass = 'bg-secondary-fixed/40 text-on-secondary-fixed';
+      typeTone = 'text-secondary';
     } else if (rec.type_str.includes('ERR') || rec.type_str.includes('NACK')) {
-      badgeClass = 'bg-error-container text-on-error-container';
+      typeTone = 'text-error';
+    } else if (rec.type_str.includes('PING')) {
+      typeTone = 'text-primary';
     }
+    const checksumTone = rec.is_valid === false ? 'text-error' : 'text-secondary';
 
     row.innerHTML = `
       <td class="py-1.5 px-space-md text-on-surface-variant font-mono-data">${escapeHtml(rec.time_str)}</td>
-      <td class="py-1.5 px-space-sm font-semibold text-primary font-mono-data">${escapeHtml(rec.frame_id)}</td>
-      <td class="py-1.5 px-space-sm text-on-surface font-mono-data">${escapeHtml(rec.carrier || '880nm NIR')}</td>
-      <td class="py-1.5 px-space-sm"><span class="px-1.5 py-0.5 rounded ${badgeClass} text-[10px] font-medium">${escapeHtml(rec.type_str)}</span></td>
+      <td class="py-1.5 px-space-sm font-medium text-on-surface font-mono-data">${escapeHtml(rec.frame_id)}</td>
+      <td class="py-1.5 px-space-sm text-on-surface-variant font-mono-data">${escapeHtml(rec.carrier || '880nm NIR')}</td>
+      <td class="py-1.5 px-space-sm font-mono-data font-medium ${typeTone}">${escapeHtml(rec.type_str)}</td>
       <td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> ${escapeHtml(rec.payload_preview)}</td>
-      <td class="py-1.5 px-space-sm text-secondary font-semibold font-mono-data"><span class="inline-flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>${escapeHtml(rec.checksum_status || 'CRC32 Valid')}</span></td>
+      <td class="py-1.5 px-space-sm font-mono-data ${checksumTone}">${escapeHtml(rec.checksum_status || 'CRC32 Valid')}</td>
       <td class="py-1.5 px-space-md text-right text-on-surface-variant font-mono-data">${(rec.latency_ms || 32.0).toFixed(1)} ms</td>
     `;
     return row;

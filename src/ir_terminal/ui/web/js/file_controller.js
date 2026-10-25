@@ -3,18 +3,31 @@
 let selectedFilePath = '';
 
 function initFileController() {
-  const historyTable = document.querySelector('#view-file tbody');
+  const historyTable = document.querySelector('#file-history-body');
   const searchInput = document.querySelector('#view-file input[placeholder*="Filter transmissions"]');
 
-  // Active transmission card elements
-  const activeFileName = document.querySelector('#view-file .text-title-sm.font-bold.truncate');
-  const activeFileSize = document.querySelector('#view-file .text-mono-data.font-semibold.text-on-surface-variant');
-  const activeStatusBadge = document.querySelector('#view-file .text-mono-caption.bg-primary-container');
-  const progressBar = document.querySelector('#view-file .w-full.h-2\\.5 .h-full, #view-file [style*="width:"]');
-  const progressPct = document.querySelector('#view-file .text-primary.font-bold.text-mono-data');
-  const speedLabel = document.querySelector('#view-file .grid-cols-3 > div:nth-child(1) .text-headline-md');
-  const etaLabel = document.querySelector('#view-file .grid-cols-3 > div:nth-child(2) .text-headline-md');
-  const packetsLabel = document.querySelector('#view-file .grid-cols-3 > div:nth-child(3) .text-headline-md');
+  const activeFileName = document.getElementById('file-active-name');
+  const activeFileSize = document.getElementById('file-active-size');
+  const activeStatusBadge = document.getElementById('file-active-status');
+  const progressBar = document.getElementById('file-progress-bar');
+  const progressPct = document.getElementById('file-progress-pct');
+  const speedLabel = document.getElementById('file-speed');
+  const etaLabel = document.getElementById('file-eta');
+  const packetsLabel = document.getElementById('file-packets');
+
+  function setActiveStatus(label, tone) {
+    if (!activeStatusBadge) return;
+    const palette = {
+      idle: ['text-outline', 'bg-outline'],
+      ready: ['text-primary', 'bg-primary'],
+      active: ['text-primary', 'bg-primary'],
+      success: ['text-secondary', 'bg-secondary'],
+      error: ['text-error', 'bg-error'],
+    };
+    const [textClass, dotClass] = palette[tone] || palette.idle;
+    activeStatusBadge.className = 'flex items-center gap-1.5 ' + textClass;
+    activeStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full ' + dotClass + '"></span><span>' + label + '</span>';
+  }
 
   const history = window.TransferHistory
     ? window.TransferHistory.create({ table: historyTable, searchInput: searchInput })
@@ -82,10 +95,7 @@ function initFileController() {
       if (window.bridge) {
         const doAbort = () => {
           window.bridge.abortFileTransfer();
-          if (activeStatusBadge) {
-            activeStatusBadge.innerText = 'ABORTED';
-            activeStatusBadge.className = 'text-mono-caption font-mono-caption bg-error text-white px-2 py-0.5 rounded-full font-bold';
-          }
+          setActiveStatus('ABORTED', 'error');
           if (window.UIFeedback) window.UIFeedback.showToast('info', 'Transfer aborted', 'Optical transmission cancelled by user.');
         };
         if (window.UIFeedback) {
@@ -106,10 +116,7 @@ function initFileController() {
     selectedFilePath = path;
     const fname = path.split('/').pop().split('\\').pop();
     if (activeFileName) activeFileName.innerText = fname;
-    if (activeStatusBadge) {
-      activeStatusBadge.innerText = 'READY';
-      activeStatusBadge.className = 'text-mono-caption font-mono-caption bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-bold';
-    }
+    setActiveStatus('READY', 'ready');
     if (progressBar) progressBar.style.width = '0%';
     if (progressPct) progressPct.innerText = '0%';
     if (window.UIFeedback) window.UIFeedback.showToast('info', 'File selected', fname + ' ready for optical transmission.');
@@ -130,13 +137,7 @@ function initFileController() {
       if (speedLabel) speedLabel.innerHTML = `${speedKbps.toFixed(1)} <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span>`;
       if (etaLabel) etaLabel.innerText = `${Math.ceil(etaSec)}s`;
       if (packetsLabel) packetsLabel.innerHTML = `${curChunk}<span class="text-label-sm font-label-sm font-normal text-outline">/${totalChunks}</span>`;
-
-      if (activeStatusBadge) {
-        activeStatusBadge.innerText = pct >= 100 ? 'COMPLETED' : 'STREAMING';
-        activeStatusBadge.className = pct >= 100 ?
-          'text-mono-caption font-mono-caption bg-secondary text-white px-2 py-0.5 rounded-full font-bold' :
-          'text-mono-caption font-mono-caption bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full font-bold animate-pulse';
-      }
+      setActiveStatus(pct >= 100 ? 'COMPLETED' : 'STREAMING', pct >= 100 ? 'success' : 'active');
     });
 
     window.bridge.transferCompleted.connect((filename, bytesSent, elapsedSec, crcHex) => {
@@ -145,6 +146,7 @@ function initFileController() {
         size_bytes: bytesSent,
         crc32_hex: crcHex,
         status: 'SUCCESS',
+        direction: 'TX',
         duration_sec: elapsedSec,
         timestamp: 'Just now'
       };
@@ -161,10 +163,7 @@ function initFileController() {
 
     window.bridge.transferFailed.connect((reason) => {
       console.error(`File Transfer Failed: ${reason}`);
-      if (activeStatusBadge) {
-        activeStatusBadge.innerText = 'FAILED';
-        activeStatusBadge.className = 'text-mono-caption font-mono-caption bg-error text-white px-2 py-0.5 rounded-full font-bold';
-      }
+      setActiveStatus('FAILED', 'error');
       if (window.UIFeedback) {
         window.UIFeedback.showModal({
           variant: 'error',

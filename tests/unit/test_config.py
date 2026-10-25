@@ -82,6 +82,44 @@ class TestParseLaunchArgs:
         config = parse_launch_args(["--transport", "mock"])
         assert config.preferred_port == "MOCK_COM_LOOPBACK"
 
+    def test_tx_and_rx_port_flags(self) -> None:
+        config = parse_launch_args(["--tx-port", "COM3", "--rx-port", "COM4"])
+        assert config.tx_port == "COM3"
+        assert config.rx_port == "COM4"
+        assert config.effective_tx_port == "COM3"
+        assert config.effective_rx_port == "COM4"
+        assert config.preferred_port == "COM3"
+
+    def test_legacy_port_feeds_both_effective_ports(self) -> None:
+        config = parse_launch_args(["--port", "COM9"])
+        assert config.effective_tx_port == "COM9"
+        assert config.effective_rx_port == "COM9"
+
+    def test_explicit_ports_override_legacy_port(self) -> None:
+        config = parse_launch_args(
+            ["--port", "COM9", "--tx-port", "COM3", "--rx-port", "COM4"]
+        )
+        assert config.effective_tx_port == "COM3"
+        assert config.effective_rx_port == "COM4"
+
+    def test_partial_dual_ports_fall_back_to_legacy_port(self) -> None:
+        tx_only = parse_launch_args(["--tx-port", "COM3"])
+        assert tx_only.effective_tx_port == "COM3"
+        assert tx_only.effective_rx_port is None
+
+        rx_only = parse_launch_args(["--rx-port", "COM4"])
+        assert rx_only.effective_tx_port is None
+        assert rx_only.effective_rx_port == "COM4"
+
+    def test_supported_baudrates_default_list(self) -> None:
+        config = parse_launch_args([])
+        assert config.supported_baudrates == (
+            9600,
+            38400,
+            57600,
+            115200,
+        )
+
     def test_link_endpoints_use_base_port(self) -> None:
         config = parse_launch_args(["--instance", "A", "--link-role", "host", "--link-base-port", "7100"])
         assert config.link_endpoints == {

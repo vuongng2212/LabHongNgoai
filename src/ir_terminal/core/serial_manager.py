@@ -36,6 +36,7 @@ class SerialManager(QObject):
 
     # UI facing signals
     connected: ClassVar[Signal] = Signal(str, int)  # (port, baud)
+    ports_connected: ClassVar[Signal] = Signal(str, str, int)
     disconnected: ClassVar[Signal] = Signal()
     error_occurred: ClassVar[Signal] = Signal(str)
     raw_tx: ClassVar[Signal] = Signal(bytes)
@@ -46,6 +47,7 @@ class SerialManager(QObject):
 
     # Internal dispatch signals to worker thread
     _sig_open: ClassVar[Signal] = Signal(str, int)
+    _sig_open_dual: ClassVar[Signal] = Signal(str, str, int)
     _sig_close: ClassVar[Signal] = Signal()
     _sig_send: ClassVar[Signal] = Signal(bytes)
     _sig_inject: ClassVar[Signal] = Signal(bytes)
@@ -85,12 +87,14 @@ class SerialManager(QObject):
 
         # Connect internal dispatch signals
         self._sig_open.connect(self._worker.open_port)
+        self._sig_open_dual.connect(self._worker.open_ports)
         self._sig_close.connect(self._worker.close_port)
         self._sig_send.connect(self._worker.send_bytes)
         self._sig_inject.connect(self._worker.inject_rx_data)
 
         # Forward worker signals to manager subscribers
         self._worker.connected.connect(self.connected)
+        self._worker.ports_connected.connect(self.ports_connected)
         self._worker.disconnected.connect(self.disconnected)
         self._worker.error_occurred.connect(self.error_occurred)
         self._worker.raw_data_sent.connect(self.raw_tx)
@@ -102,19 +106,36 @@ class SerialManager(QObject):
         self._thread.start()
         self._is_connected = False
         self._current_port = ""
+        self._current_tx_port = ""
+        self._current_rx_port = ""
         self._current_baud = DEFAULT_BAUDRATE
 
         self.connected.connect(self._on_connected)
+        self.ports_connected.connect(self._on_ports_connected)
         self.disconnected.connect(self._on_disconnected)
 
     def _on_connected(self, port: str, baud: int) -> None:
         self._is_connected = True
         self._current_port = port
+        self._current_tx_port = port
         self._current_baud = baud
         logger.info(
             "%s Manager link UP: port=%s baud=%d",
             LogTag.HW_SERIAL,
             port,
+            baud,
+        )
+
+    def _on_ports_connected(self, tx_port: str, rx_port: str, baud: int) -> None:
+        self._is_connected = True
+        self._current_tx_port = tx_port
+        self._current_rx_port = rx_port
+        self._current_baud = baud
+        logger.info(
+            "%s Manager dual link UP: tx=%s rx=%s baud=%d",
+            LogTag.HW_SERIAL,
+            tx_port,
+            rx_port,
             baud,
         )
 
@@ -127,6 +148,8 @@ class SerialManager(QObject):
         )
         self._is_connected = False
         self._current_port = ""
+        self._current_tx_port = ""
+        self._current_rx_port = ""
 
     @property
     def is_connected(self) -> bool:
@@ -139,19 +162,39 @@ class SerialManager(QObject):
         return self._current_port
 
     @property
+    def current_tx_port(self) -> str:
+        """Returns current active TX port name."""
+        return self._current_tx_port
+
+    @property
+    def current_rx_port(self) -> str:
+        """Returns current active RX port name."""
+        return self._current_rx_port
+
+    @property
     def current_baud(self) -> int:
         """Returns current baud rate."""
         return self._current_baud
 
-    def connect_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Requests opening serial port in background thread."""
+    def connect_ports(
+        self,
+        tx_port: str,
+        rx_port: str,
+        baudrate: int = DEFAULT_BAUDRATE,
+    ) -> None:
+        """Requests opening independent TX/RX serial ports in background thread."""
         logger.info(
-            "%s Manager connect requested: port=%s baud=%d (dispatch to worker thread)",
+            "%s Manager connect requested: tx=%s rx=%s baud=%d (dispatch to worker thread)",
             LogTag.HW_SERIAL,
-            port_name,
+            tx_port,
+            rx_port,
             baudrate,
         )
-        self._sig_open.emit(port_name, baudrate)
+        self._sig_open_dual.emit(tx_port, rx_port, baudrate)
+
+    def connect_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
+        """Requests opening a single shared serial port (backward-compatible)."""
+        self.connect_ports(port_name, port_name, baudrate)
 
     def disconnect_port(self) -> None:
         """Requests closing serial port in background thread."""

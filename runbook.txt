@@ -1,0 +1,104 @@
+1. Setup môi trường
+--------------------------------------------------------------------------------
+Windows (PowerShell):
+    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+Kiểm tra:
+    uv --version
+
+
+2. Cài đặt thư viện
+--------------------------------------------------------------------------------
+Windows (PowerShell):
+    uv sync
+
+
+3. CHẠY ỨNG DỤNG
+--------------------------------------------------------------------------------
+3.1. Chạy cơ bản (1 node, chọn cổng trên UI)
+    uv run python -m ir_terminal
+
+3.2. Chạy với 1 cổng dùng chung cho TX và RX
+    uv run python -m ir_terminal --port COM11 --baud 115200 --auto-connect
+
+3.3. Chạy mock, không cần phần cứng (1 node)
+    uv run python -m ir_terminal --port MOCK_COM_LOOPBACK
+
+3.4. Chạy với 2 cổng COM tách biệt (dual COM)
+    uv run python -m ir_terminal --tx-port COM3 --rx-port COM4 --baud 115200 --auto-connect
+
+    --tx-port : cổng COM máy tính ghi dữ liệu xuống board để phát quang.
+    --rx-port : cổng COM board đẩy dữ liệu thu quang lên máy tính.
+    Nếu bỏ --rx-port, ứng dụng dùng --tx-port cho cả hai chiều.
+    Nếu bỏ cả hai, ứng dụng dùng --port cho cả hai chiều.
+
+3.5. Chạy 2 node trên cùng 1 máy (dual COM, 4 cổng)
+    Node A:
+        uv run python -m ir_terminal --instance A --tx-port COM3 --rx-port COM4 --baud 115200 --auto-connect --window-pos left
+
+    Node B:
+        uv run python -m ir_terminal --instance B --tx-port COM5 --rx-port COM6 --baud 115200 --auto-connect --window-pos right
+
+
+4. NỐI DÂY VÀ CHỌN CỔNG
+--------------------------------------------------------------------------------
+Mỗi board STM32 + MCP2122 + TFDU4101 cung cấp 2 cổng USB-UART:
+    COM TX (Transmitter) : máy tính -> board -> LED hồng ngoại phát.
+    COM RX (Receiver)    : photodiode -> board -> máy tính.
+
+Khi mở Hardware & Link:
+    COM TX (Transmitter - Gửi) : chọn cổng phát.
+    COM RX (Receiver - Nhận)   : chọn cổng thu.
+    Nếu chỉ có 1 cổng, chọn cùng một cổng cho cả TX và RX.
+    Baudrate                    : chọn đúng vị trí DIP switch trên board.
+    Connect                     : mở cả hai cổng.
+
+Kiểm tra nhanh sau khi Connect:
+    Ribbon header hiển thị: TX: COM3 • RX: COM4 (115200 bps)
+    Footer hiển thị ONLINE, Ports và Baud.
+    Nhấn Ping Test: nhận PONG và RTT trong vòng 1.5 giây.
+
+Nếu Ping timeout:
+    Kiểm tra hướng cửa sổ quang, khoảng cách và nguồn board.
+    Kiểm tra DIP switch baudrate có khớp giá trị đã chọn.
+    Thử đổi chéo cổng TX và RX.
+    Nhấn Rescan Ports để nạp lại danh sách cổng.
+
+
+5. DANH SÁCH BAUDRATE
+--------------------------------------------------------------------------------
+Mặc định:
+    9600, 38400, 57600, 115200
+
+Danh sách này được nạp động từ data/settings.json:
+    "supported_baudrates": [9600, 38400, 57600, 115200],
+    "default_baudrate": 115200
+
+Có thể thêm tốc độ đặc thù của phòng lab vào mảng trên; UI sẽ tự hiển thị.
+Trên giao diện, giá trị đang chọn được đánh dấu trắng và dùng cho lần Connect kế tiếp.
+
+
+6. CHẠY DUAL MOCK KHÔNG CẦN PHẦN CỨNG
+--------------------------------------------------------------------------------
+Windows:
+    scripts\Start_Dual_Demo.cmd
+
+Linux/macOS:
+    ./scripts/run_dual_mock.sh
+
+Hai node nói chuyện qua TCP loopback nội bộ, dữ liệu tách biệt tại:
+    data/instances/A/
+    data/instances/B/
+
+
+7. KIỂM THỬ
+--------------------------------------------------------------------------------
+Toàn bộ test:
+    pytest tests/ -v
+
+Nếu shell không tìm thấy pytest (PATH thiếu .venv/bin hoặc ~/.local/bin):
+    .venv/bin/pytest tests/ -v
+
+Chỉ test dual COM:
+    pytest tests/unit/test_dual_serial_transport.py -v
+    pytest tests/integration/test_dual_com_bidirectional_e2e.py -v

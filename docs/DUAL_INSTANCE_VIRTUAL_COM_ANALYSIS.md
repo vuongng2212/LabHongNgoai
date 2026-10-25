@@ -248,7 +248,7 @@ Thêm nữa, `SocketTransport` coi “TCP connect tới broker thành công” l
 | 2 bản `.exe` ở 2 thư mục khác nhau, không tham số | Mỗi bản 1 data root | Tách theo thư mục | **Vẫn chung** (cùng app name) | Có thể chọn trùng | 🟠 WebEngine + COM vẫn rủi ro |
 | Cùng 1 build, `--instance A` / `--instance B` | `data/instances/A|B` | Tách | **Hiện vẫn chung** | Chưa auto | 🟠 Gần đúng; còn WebEngine + link |
 | C + `--instance A/B` + `--link-role host/join` + sửa WebEngine profile + lock | Tách hoàn toàn | Tách | Tách | Tự động | ✅ Mục tiêu |
-| C + `--instance A/B` + `--port COM11/COM12` | Tách hoàn toàn | Tách | Tách | Người dùng chọn đúng cặp COM ảo | ✅ Cho nghiệm thu driver |
+| C + `--instance A/B` + `--tx-port/--rx-port` (4 cổng) | Tách hoàn toàn | Tách | Tách | Người dùng chọn đúng cặp COM ảo TX/RX cho từng node | ✅ Cho nghiệm thu driver |
 
 ### 2.4. Checklist cách ly tối thiểu cho “client mode”
 

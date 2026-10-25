@@ -8,9 +8,11 @@ from pathlib import Path
 
 from pytestqt.qtbot import QtBot
 
+from ir_terminal.config import LaunchConfig
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import EOF_MAGIC, SOF_MAGIC, Opcode
 from ir_terminal.protocol.packet import Header, Packet
+from ir_terminal.services.storage_service import StorageService
 from ir_terminal.ui.backend_bridge import BackendBridge
 
 
@@ -78,10 +80,94 @@ class TestBackendBridge:
         with qtbot.waitSignal(bridge.portConnected, timeout=2000) as blocker:
             bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
 
-        assert blocker.args == ["MOCK_COM_LOOPBACK", 115200]
+        assert blocker.args == [
+            "MOCK_COM_LOOPBACK",
+            "MOCK_COM_LOOPBACK",
+            115200,
+        ]
 
         with qtbot.waitSignal(bridge.portDisconnected, timeout=2000):
             bridge.disconnectPort()
+
+        manager.shutdown()
+
+    def test_connect_dual_ports_emits_tx_rx_baud(self, qtbot: QtBot) -> None:
+        """Verifies connectDualPorts forwards both ports and the baudrate."""
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000) as blocker:
+                bridge.connectDualPorts("MOCK_NODE_A", "MOCK_NODE_B", 57600)
+
+            assert blocker.args == ["MOCK_NODE_A", "MOCK_NODE_B", 57600]
+            qtbot.waitUntil(lambda: manager.current_rx_port == "MOCK_NODE_B", timeout=1000)
+            connected = json.loads(bridge.getConnectedPorts())
+            assert connected == {
+                "tx_port": "MOCK_NODE_A",
+                "rx_port": "MOCK_NODE_B",
+                "baudrate": 57600,
+            }
+        finally:
+            manager.shutdown()
+
+    def test_connect_dual_ports_rejects_invalid_input(self, qtbot: QtBot) -> None:
+        """Verifies empty TX port and non-positive baudrate are rejected."""
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as blocker:
+                bridge.connectDualPorts("", "MOCK_COM_LOOPBACK", 115200)
+            assert "empty TX port" in blocker.args[0]
+
+            with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as blocker:
+                bridge.connectDualPorts("MOCK_COM_LOOPBACK", "MOCK_COM_LOOPBACK", 0)
+            assert "invalid baudrate" in blocker.args[0]
+        finally:
+            manager.shutdown()
+
+    def test_get_available_baudrates_defaults(self, tmp_path: Path) -> None:
+        """Verifies the default supported baudrate list is exposed as JSON."""
+        manager = SerialManager()
+        bridge = BackendBridge(
+            manager,
+            storage_service=StorageService(data_dir=tmp_path / "data"),
+        )
+
+        baudrates = json.loads(bridge.getAvailableBaudrates())
+        assert baudrates == [9600, 38400, 57600, 115200]
+
+        manager.shutdown()
+
+    def test_get_available_baudrates_honors_settings(self, tmp_path: Path) -> None:
+        """Verifies a custom JSON list in settings overrides the defaults."""
+        manager = SerialManager()
+        storage = StorageService(data_dir=tmp_path / "data")
+        storage.save_setting("supported_baudrates", json.dumps([9600, 14400, 28800]))
+        bridge = BackendBridge(manager, storage_service=storage)
+
+        assert json.loads(bridge.getAvailableBaudrates()) == [9600, 14400, 28800]
+        launch = json.loads(bridge.getLaunchConfig())
+        assert launch["supported_baudrates"] == [9600, 14400, 28800]
+
+        manager.shutdown()
+
+    def test_launch_config_includes_dual_port_fields(self, tmp_path: Path) -> None:
+        """Verifies getLaunchConfig exposes the dual-port hints and defaults."""
+        manager = SerialManager()
+        bridge = BackendBridge(
+            manager,
+            storage_service=StorageService(data_dir=tmp_path / "data"),
+            launch_config=LaunchConfig(tx_port="COM3", rx_port="COM4", baud=57600),
+        )
+
+        launch = json.loads(bridge.getLaunchConfig())
+        assert launch["tx_port"] == "COM3"
+        assert launch["rx_port"] == "COM4"
+        assert launch["default_baudrate"] == 57600
+        assert launch["baud"] == 57600
+        assert launch["supported_baudrates"][-1] == 115200
 
         manager.shutdown()
 

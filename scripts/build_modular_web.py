@@ -124,8 +124,8 @@ def build_modular_components() -> None:
     </div>
     <div class="h-4 w-px bg-outline-variant/40"></div>
     <div class="flex items-center gap-space-xs bg-surface-container-low px-2 py-0.5 rounded-md border border-outline-variant/50">
-      <span id="ribbon-dot" class="w-2 h-2 rounded-full bg-secondary status-pulse"></span>
-      <span id="ribbon-text" class="font-mono-data text-mono-data text-on-surface font-medium">STM32 Optical Bridge • COM4 (Ready)</span>
+      <span id="ribbon-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+      <span id="ribbon-text" class="font-mono-data text-mono-data text-on-surface font-medium">STM32 Optical Bridge • Disconnected</span>
     </div>
   </div>
 
@@ -137,9 +137,7 @@ def build_modular_components() -> None:
 
   <!-- Right Actions -->
   <div class="flex items-center gap-space-xs">
-    <div class="flex items-center bg-surface-container-high/40 text-on-surface-variant px-2 py-0.5 rounded text-mono-caption font-mono-caption font-bold">
-      SESSION #4029-A
-    </div>
+    <span id="chrome-instance-label" class="font-mono-caption text-mono-caption text-on-surface-variant border border-outline-variant/50 px-2 py-0.5 rounded">IR-OWC</span>
     <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Refresh Telemetry">
       <span class="material-symbols-outlined text-[16px]">refresh</span>
     </button>
@@ -200,15 +198,20 @@ def build_modular_components() -> None:
   <div class="bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.06] shadow-sm space-y-2">
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-1.5">
-        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-secondary"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-semibold text-secondary">HEALTH 99.8% ONLINE</span>
+        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline"></span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-medium text-outline">OFFLINE</span>
       </div>
-      <span class="text-mono-caption font-mono-caption text-on-surface-variant bg-surface-container-high px-1.5 py-0.5 rounded font-bold">NIR</span>
+      <span class="text-[10px] font-mono text-outline tracking-widest">UART</span>
     </div>
-    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.04] pt-2">
-      <div><span class="text-outline">FW:</span> v2.4.1-ARM (F407)</div>
-      <div class="truncate"><span class="text-outline">SN:</span> SL-880-STM407-RX04</div>
-      <div><span class="text-outline">λ:</span> 880nm Infrared LOS</div>
+    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-outline">Ports:</span>
+        <span id="footer-port-label" class="font-medium text-on-surface truncate text-right">Disconnected</span>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-outline">Baud:</span>
+        <span id="footer-baud-label" class="font-medium text-on-surface">--</span>
+      </div>
     </div>
     <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors">
       <span class="material-symbols-outlined text-[14px]">adjust</span>
@@ -341,13 +344,6 @@ def build_modular_components() -> None:
     }}
     .traffic-dot:hover span {{
       opacity: 0.6;
-    }}
-    @keyframes pulse-subtle {{
-      0%, 100% {{ opacity: 1; transform: scale(1); }}
-      50% {{ opacity: 0.5; transform: scale(0.92); }}
-    }}
-    .status-pulse {{
-      animation: pulse-subtle 2s infinite ease-in-out;
     }}
     .view-panel {{
       display: none;

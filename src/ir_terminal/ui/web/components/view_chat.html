@@ -1,63 +1,46 @@
-<!-- Header Banner inside main panel -->
-<section class="px-space-lg py-space-md bg-surface-container-lowest border-b border-outline-variant flex flex-wrap items-center justify-between gap-space-sm shadow-xs shrink-0">
+<section class="px-space-lg py-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm shadow-xs shrink-0">
 <div>
-<div class="flex items-center gap-2">
-<h1 class="text-headline-md font-headline-md font-bold text-on-surface">Realtime Optical Messaging</h1>
-<span class="px-2 py-0.5 rounded-full text-label-sm font-label-sm font-semibold bg-secondary-container/40 text-on-secondary-container border border-secondary/20">
-                Half-Duplex Synchronized
-              </span>
+<div class="flex items-baseline gap-space-sm">
+<h1 class="text-headline-md font-headline-md font-semibold text-on-surface">Realtime Optical Messaging</h1>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">Half-Duplex • 880 nm • Direct LOS</span>
 </div>
 <p class="text-body-md font-body-md text-on-surface-variant mt-0.5">
-              Realtime optical telemetry &amp; ASCII chat stream across direct Line-Of-Sight (LOS) 880nm photodiode transceiver.
+              Realtime ASCII chat stream across the infrared photodiode transceiver.
             </p>
 </div>
-<div class="flex items-center gap-2">
-<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/60">
-<span class="material-symbols-outlined text-[14px] text-primary" data-icon="lens_blur">lens_blur</span>
-<span class="text-mono-caption font-mono-caption text-on-surface">Carrier: <strong class="font-semibold text-primary">880nm NIR Direct LOS</strong></span>
-</div>
-<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container border border-outline-variant/60">
-<span class="w-2 h-2 rounded-full bg-secondary"></span>
-<span class="text-mono-caption font-mono-caption text-on-surface">Link: <strong class="font-semibold text-secondary">Locked</strong></span>
-</div>
+<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
+<span>CH: <strong class="text-on-surface font-semibold">880nm NIR</strong></span>
+<span class="text-outline-variant">•</span>
+<span>MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span>
+<span class="text-outline-variant">•</span>
+<span id="chat-link-state" class="text-outline font-medium">LINK: STANDBY</span>
 </div>
 </section>
-<!-- Conversation Timeline / Stream -->
 <section class="flex-1 overflow-y-auto px-space-xl py-space-lg space-y-5 bg-[#FBFBFC] flex flex-col justify-center">
 <div id="chat-empty-state" class="flex flex-col items-center justify-center py-16 text-center text-on-surface-variant my-auto">
-  <div class="w-12 h-12 rounded-2xl bg-surface-container flex items-center justify-center text-primary mb-3 shadow-xs">
-    <span class="material-symbols-outlined text-[24px]">forum</span>
+  <div class="w-10 h-10 rounded-lg border border-black/[0.08] bg-surface-container-low flex items-center justify-center text-on-surface-variant mb-3">
+    <span class="material-symbols-outlined text-[22px]">forum</span>
   </div>
-  <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">No optical messages yet</p>
-  <p class="text-body-md font-body-md text-outline max-w-sm">Type a text message below and press Enter to transmit across the 880nm Line-Of-Sight optical carrier.</p>
+  <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">No messages yet</p>
+  <p class="text-body-md font-body-md text-outline max-w-sm">Type a message below and press Enter to transmit across the infrared link.</p>
 </div>
 </section>
-<!-- Bottom Rounded Input Bar & Action Controls -->
-<footer class="p-space-lg bg-surface-container-lowest border-t border-outline-variant shrink-0">
+<footer class="p-space-lg bg-surface-container-lowest border-t border-black/[0.08] shrink-0">
 <div class="flex flex-col gap-2">
-<!-- Sleek rounded white input container (14px rounded styling) -->
-<div class="flex items-center gap-2 p-1.5 pl-3 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 transition-all duration-150">
-<!-- Code prompt prefix / Optical burst mode badge -->
-<div class="flex items-center gap-1 px-2 py-1 rounded bg-surface-container-low text-primary text-mono-caption font-mono-caption shrink-0">
-<span class="font-bold">[ ]</span>
-<span class="text-[9px] uppercase tracking-wider font-semibold">BURST_TX</span>
-</div>
-<!-- Input Field -->
+<div class="flex items-center gap-2 p-1.5 pl-3 bg-surface-container-lowest border border-black/[0.12] rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-150">
+<span class="font-mono-data text-mono-data text-on-surface-variant font-semibold shrink-0 select-none">TX &gt;</span>
 <input class="flex-1 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline" placeholder="Enter payload string or message to transmit..." type="text" value=""/>
-<!-- Action Controls Cluster -->
 <div class="flex items-center gap-1.5 shrink-0">
-<!-- Primary Send Payload Button in vibrant Cobalt Blue -->
-<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-[#1D4ED8] transition-colors shadow-sm active:scale-[0.98] cursor-pointer">
-<span>Send Payload</span>
+<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-primary transition-colors active:scale-[0.98] cursor-pointer">
+<span>Transmit</span>
 <span class="material-symbols-outlined text-[14px]" data-icon="send">send</span>
 </button>
 </div>
 </div>
-<!-- Sub-bar hint & buffer capacity indicator -->
 <div class="flex items-center justify-between px-1 text-mono-caption font-mono-caption text-outline">
 <div class="flex items-center gap-1 truncate">
-<span class="material-symbols-outlined text-[12px] text-secondary" data-icon="info">info</span>
-<span>Half-duplex link: Transmitter pauses RX carrier during modulated burst. Maximum packet length: 512 bytes.</span>
+<span class="material-symbols-outlined text-[12px]" data-icon="info">info</span>
+<span>Half-duplex link: transmitter pauses RX carrier during modulated burst. Maximum packet length: 512 bytes.</span>
 </div>
 </div>
 </div>

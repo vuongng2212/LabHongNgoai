@@ -30,8 +30,9 @@ class TestSystemE2EFullLifecycle:
             with qtbot.waitSignal(bridge.portConnected, timeout=1000) as conn_blocker:
                 bridge.connectPort("MOCK_COM_E2E", 115200)
 
-            port_name, baud = conn_blocker.args
-            assert "MOCK" in port_name
+            tx_port, rx_port, baud = conn_blocker.args
+            assert "MOCK" in tx_port
+            assert tx_port == rx_port
             assert baud == 115200
 
             with qtbot.waitSignal(bridge.pingResult, timeout=1000) as ping_blocker:

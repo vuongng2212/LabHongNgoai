@@ -87,26 +87,28 @@
 
         const rowIdx = renderedRows.length;
         renderedRows.push(item);
+        const stateRaw = String(item.status || 'SUCCESS').toUpperCase();
+        const stateFailed = stateRaw.includes('FAIL') || stateRaw.includes('ABORT');
+        const statePending = stateRaw.includes('STREAM') || stateRaw.includes('PROGRESS');
+        const stateText = stateFailed ? 'Failed' : statePending ? 'In progress' : 'Complete';
+        const stateTone = stateFailed ? 'text-error' : statePending ? 'text-tertiary' : 'text-secondary';
+        const stateDot = stateFailed ? 'bg-error' : statePending ? 'bg-tertiary' : 'bg-secondary';
         row.innerHTML = `
           <td class="px-space-md">
             <div class="flex items-center gap-2">
-              <span class="material-symbols-outlined text-[18px] text-primary">description</span>
-              <span class="font-mono-data font-semibold text-on-surface truncate max-w-[200px]">${esc(item.filename)}</span>
+              <span class="material-symbols-outlined text-[18px] text-on-surface-variant">description</span>
+              <span class="font-mono-data font-medium text-on-surface truncate max-w-[200px]">${esc(item.filename)}</span>
             </div>
           </td>
           <td class="px-space-md font-mono-data text-on-surface-variant">${sizeStr}</td>
-          <td class="px-space-md">
-            <span class="text-mono-caption font-mono-caption bg-surface-container px-2 py-0.5 rounded text-on-surface font-semibold">880nm NIR</span>
-          </td>
+          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.direction || '—')}</td>
           <td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">${esc(item.timestamp || 'Today')}</td>
+          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.crc32_hex || '—')}</td>
           <td class="px-space-md">
-            <span class="text-mono-caption font-mono-caption font-mono text-outline-variant bg-surface-container-lowest px-1.5 py-0.5 rounded border border-outline-variant/20">CRC32: ${esc(item.crc32_hex)}</span>
-          </td>
-          <td class="px-space-md">
-            <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-secondary/10 text-secondary text-mono-caption font-mono-caption font-semibold">
-              <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-              <span>Verified (${esc(item.status || '100%')})</span>
-            </div>
+            <span class="inline-flex items-center gap-1.5 text-mono-caption font-mono-caption ${stateTone}">
+              <span class="w-1.5 h-1.5 rounded-full ${stateDot}"></span>
+              <span>${esc(stateText)}</span>
+            </span>
           </td>
           <td class="px-space-md text-right">
             <div class="flex items-center justify-end gap-1">
@@ -114,7 +116,7 @@
                 <span class="material-symbols-outlined text-[16px]">folder_open</span>
               </button>
               <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Verified Checksum">
-                <span class="material-symbols-outlined text-[16px] text-secondary">verified</span>
+                <span class="material-symbols-outlined text-[16px]">verified</span>
               </button>
             </div>
           </td>
