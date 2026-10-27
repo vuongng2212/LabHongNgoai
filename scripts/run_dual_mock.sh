@@ -9,6 +9,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+if [[ "${1:-}" == "--pty" ]]; then
+  shift
+  exec uv run python scripts/virtual_dual_com_pty.py --launch "$@"
+fi
+
 BASE_PORT="${IR_LINK_BASE_PORT:-6001}"
 
 cleanup() {

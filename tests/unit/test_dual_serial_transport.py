@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 from pytestqt.qtbot import QtBot
 
@@ -24,6 +26,8 @@ class FakeSerial:
         self.is_open = True
         self.closed = False
         self.close_calls = 0
+        self.flushed = False
+        self.flush_calls = 0
         self.fail_close = False
         self.fail_read = False
         self.written: list[bytes] = []
@@ -32,6 +36,10 @@ class FakeSerial:
     def write(self, data: bytes) -> int:
         self.written.append(bytes(data))
         return len(data)
+
+    def flush(self) -> None:
+        self.flushed = True
+        self.flush_calls += 1
 
     def read(self, size: int) -> bytes:
         if self.fail_read:
@@ -87,8 +95,8 @@ class TestDualSerialTransportOpen:
 
         assert [handle.port for handle in serial_factory.created] == ["COM3", "COM4"]
         tx, rx = serial_factory.created
-        assert transport._tx_serial is tx
-        assert transport._rx_serial is rx
+        assert cast(object, transport._tx_serial) is tx
+        assert cast(object, transport._rx_serial) is rx
         assert transport.tx_port == "COM3"
         assert transport.rx_port == "COM4"
         assert transport.baudrate == 57600
@@ -106,8 +114,8 @@ class TestDualSerialTransportOpen:
 
         assert len(serial_factory.created) == 1
         handle = serial_factory.created[0]
-        assert transport._tx_serial is handle
-        assert transport._rx_serial is handle
+        assert cast(object, transport._tx_serial) is handle
+        assert cast(object, transport._rx_serial) is handle
         assert transport.rx_port == "COM7"
         assert transport.is_single_port is True
         assert transport.is_open is True
@@ -164,6 +172,22 @@ class TestDualSerialTransportIO:
         assert transport.write(b"echo") == 4
         assert handle.written == [b"echo"]
         assert transport.read(4) == b"loop"
+
+    def test_flush_calls_only_tx_flush(self, serial_factory: SerialFactory) -> None:
+        transport = DualSerialTransport("COM3", "COM4", 115200)
+        transport.open()
+        tx, rx = serial_factory.created
+
+        transport.flush()
+
+        assert tx.flushed is True
+        assert tx.flush_calls == 1
+        assert rx.flushed is False
+        assert rx.flush_calls == 0
+
+    def test_flush_on_closed_transport_is_noop(self) -> None:
+        transport = DualSerialTransport("COM3", "COM4", 115200)
+        transport.flush()
 
     def test_write_on_closed_transport_raises(self) -> None:
         transport = DualSerialTransport("COM3", "COM4", 115200)

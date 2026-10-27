@@ -12,7 +12,6 @@ from PySide6.QtCore import QObject, QTimer, Signal, Slot
 from serial.tools import list_ports
 
 from ir_terminal.core.interfaces import ITransport
-from ir_terminal.core.socket_transport import SocketTransport
 from ir_terminal.core.transport_factory import create_transport
 from ir_terminal.protocol.constants import (
     DEFAULT_BAUDRATE,
@@ -33,8 +32,7 @@ logger = logging.getLogger(__name__)
 def _natural_port_key(name: str) -> str:
     """Sort key placing COM2 before COM10 (natural numeric ordering)."""
     return "".join(
-        f"{int(part):08d}" if part.isdigit() else part.lower()
-        for part in re.split(r"(\d+)", name)
+        f"{int(part):08d}" if part.isdigit() else part.lower() for part in re.split(r"(\d+)", name)
     )
 
 
@@ -52,9 +50,7 @@ def _windows_registry_ports() -> list[str]:
         return []
     ports: list[str] = []
     try:
-        with winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DEVICEMAP\SERIALCOMM"
-        ) as key:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DEVICEMAP\SERIALCOMM") as key:
             index = 0
             while True:
                 try:
@@ -197,7 +193,6 @@ class SerialWorker(QObject):
         """Records that the socket transport dropped (handled on next poll)."""
         self._link_lost_pending = True
 
-
     @Slot(str, int)
     def open_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
         """Opens one port used for both RX and TX (backward-compatible entry).
@@ -241,7 +236,7 @@ class SerialWorker(QObject):
                 link_token=self._link_token,
             )
             transport_kind = type(self._transport).__name__
-            if isinstance(self._transport, SocketTransport):
+            if hasattr(self._transport, "on_link_lost"):
                 self._transport.on_link_lost = self._on_link_lost
             self._link_lost_pending = False
             logger.info(
@@ -615,12 +610,23 @@ def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo
         device = listed.device
         if device in seen:
             continue
-        seen.add(device)
-        vid = _format_hex_identifier(listed.vid)
-        pid = _format_hex_identifier(listed.pid)
         description = (listed.description or "").strip()
         if description.lower() in ("n/a", "none"):
             description = ""
+        hwid_str = (listed.hwid or "").strip()
+        if hwid_str.lower() in ("n/a", "none"):
+            hwid_str = ""
+        subsystem_str = str(getattr(listed, "subsystem", "") or "").strip().lower()
+        if (
+            device.startswith("/dev/ttyS")
+            and not hwid_str
+            and not description
+            and subsystem_str in ("serial-base", "")
+        ):
+            continue
+        seen.add(device)
+        vid = _format_hex_identifier(listed.vid)
+        pid = _format_hex_identifier(listed.pid)
         infos.append(
             PortInfo(
                 device=device,
@@ -647,11 +653,35 @@ def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo
                 label=f"{extra} - Windows Registry Serial Port",
             )
         )
+    try:
+        from pathlib import Path
+
+        for pty_file in sorted(Path("/tmp").glob("LINK_*")):
+            pty_path = str(pty_file)
+            if pty_path not in seen and (pty_file.exists() or pty_file.is_symlink()):
+                seen.add(pty_path)
+                infos.append(
+                    PortInfo(
+                        device=pty_path,
+                        description="Virtual Dual COM (PTY)",
+                        manufacturer=None,
+                        vid=None,
+                        pid=None,
+                        hwid="",
+                        label=f"{pty_path} - Virtual Dual COM (PTY)",
+                    )
+                )
+    except OSError:
+        pass
     infos.append(_virtual_port_info("MOCK_COM_LOOPBACK", "Virtual Loopback"))
     link_enabled = is_dual_mock_enabled() if include_link is None else include_link
     if link_enabled:
         infos.append(_virtual_port_info("LINK_A", "Virtual Dual-Link"))
         infos.append(_virtual_port_info("LINK_B", "Virtual Dual-Link"))
+        infos.append(_virtual_port_info("LINK_A_TX", "Virtual Dual-Link TX"))
+        infos.append(_virtual_port_info("LINK_A_RX", "Virtual Dual-Link RX"))
+        infos.append(_virtual_port_info("LINK_B_TX", "Virtual Dual-Link TX"))
+        infos.append(_virtual_port_info("LINK_B_RX", "Virtual Dual-Link RX"))
     return sorted(infos, key=lambda info: _natural_port_key(info.device))
 
 

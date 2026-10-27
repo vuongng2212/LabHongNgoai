@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 LINK_PORT_MAP: dict[str, tuple[str, int]] = {
     "LINK_A": ("127.0.0.1", 6001),
     "LINK_B": ("127.0.0.1", 6002),
+    "LINK_A_TX": ("127.0.0.1", 6001),
+    "LINK_A_RX": ("127.0.0.1", 6001),
+    "LINK_B_TX": ("127.0.0.1", 6002),
+    "LINK_B_RX": ("127.0.0.1", 6002),
 }
 
 # Optional handshake prefix shared with LinkBroker when a token is configured.
@@ -331,3 +335,7 @@ class SocketTransport(ITransport):
             return 0
         self._fill()
         return len(self._rx_buffer)
+
+    def flush(self) -> None:
+        """Flushes the outgoing transmit buffer (no-op for TCP stream)."""
+

@@ -83,6 +83,12 @@ class TestBridgeClientContract:
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
         assert "const DEFAULT_BAUDRATES = [9600, 38400, 57600, 115200];" in script
 
+    def test_refresh_port_list_preserves_configured_launch_ports(self) -> None:
+        """Configured launch ports are injected into entries if missing from scan."""
+        script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
+        assert "targetTx && !entries.some" in script
+        assert "targetRx && !entries.some" in script
+
 
 class TestLauncherContract:
     """Verifies the hardware launcher accepts four independent COM ports."""

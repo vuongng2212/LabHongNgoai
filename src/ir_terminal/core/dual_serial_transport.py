@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import logging
 
-import serial
+import serial as serial
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
 from ir_terminal.utils.logger import LogTag, format_hex_preview
 
 logger = logging.getLogger(__name__)
+
+__all__ = ["DualSerialTransport", "serial"]
 
 
 class DualSerialTransport(ITransport):
@@ -227,3 +229,17 @@ class DualSerialTransport(ITransport):
             return 0
         waiting = self._rx_serial.in_waiting
         return int(waiting) if waiting is not None else 0
+
+    def flush(self) -> None:
+        """Flushes the outgoing transmit buffer on the TX serial handle."""
+        if not self._tx_serial or not self._tx_serial.is_open:
+            return
+        try:
+            self._tx_serial.flush()
+        except Exception:
+            logger.exception(
+                "%s DualSerial flush FAILED: tx=%s",
+                LogTag.HW_SERIAL,
+                self._tx_port,
+            )
+            raise

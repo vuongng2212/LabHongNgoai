@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 
 class ITransport(ABC):
@@ -47,3 +48,9 @@ class ITransport(ABC):
     @abstractmethod
     def in_waiting(self) -> int:
         """Returns number of bytes currently available to read."""
+
+    @abstractmethod
+    def flush(self) -> None:
+        """Flushes the outgoing transmit buffer to the physical medium."""
+
+    on_link_lost: Callable[[], None] | None = None

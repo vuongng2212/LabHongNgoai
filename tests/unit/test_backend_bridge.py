@@ -6,6 +6,7 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
 from pytestqt.qtbot import QtBot
 
 from ir_terminal.config import LaunchConfig
@@ -304,4 +305,53 @@ class TestBackendBridge:
         bridge._on_packet_received("NOT_A_PACKET")
 
         assert len(ping_events) == 0
+        manager.shutdown()
+
+    def test_scan_ports_includes_dual_virtual_links(self) -> None:
+        manager = SerialManager(include_link=True)
+        bridge = BackendBridge(manager)
+
+        ports_json = bridge.scanPorts()
+        ports = json.loads(ports_json)
+        devices = [port["device"] for port in ports]
+
+        assert "LINK_A" in devices
+        assert "LINK_B" in devices
+        assert "LINK_A_TX" in devices
+        assert "LINK_A_RX" in devices
+        assert "LINK_B_TX" in devices
+        assert "LINK_B_RX" in devices
+
+        manager.shutdown()
+
+    def test_scan_ports_filters_dummy_linux_serial_base_ports(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from serial.tools import list_ports_common
+
+        dummy_port = list_ports_common.ListPortInfo("/dev/ttyS0")
+        dummy_port.description = "n/a"
+        dummy_port.hwid = "n/a"
+        subsystem_attr = "subsystem"
+        setattr(dummy_port, subsystem_attr, "serial-base")
+
+        real_port = list_ports_common.ListPortInfo("/dev/ttyUSB0")
+        real_port.description = "FTDI USB Serial"
+        real_port.hwid = "USB VID:PID=0403:6001"
+        real_port.vid = 0x0403
+        real_port.pid = 0x6001
+
+        from serial.tools import list_ports
+
+        monkeypatch.setattr(list_ports, "comports", lambda: [dummy_port, real_port])
+
+        manager = SerialManager(include_link=False)
+        bridge = BackendBridge(manager)
+
+        ports = json.loads(bridge.scanPorts())
+        devices = [port["device"] for port in ports]
+
+        assert "/dev/ttyS0" not in devices
+        assert "/dev/ttyUSB0" in devices
+
         manager.shutdown()

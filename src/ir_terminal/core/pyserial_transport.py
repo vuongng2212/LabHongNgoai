@@ -172,3 +172,9 @@ class PySerialTransport(ITransport):
             return 0
         waiting = self._serial.in_waiting
         return int(waiting) if waiting is not None else 0
+
+    def flush(self) -> None:
+        """Flushes the outgoing serial write buffer."""
+        if self._serial and self._serial.is_open:
+            self._serial.flush()
+

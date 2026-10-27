@@ -13,9 +13,9 @@ set "RX_A=%~2"
 set "TX_B=%~3"
 set "RX_B=%~4"
 if "%TX_A%"=="" set "TX_A=COM11"
-if "%RX_A%"=="" set "RX_A=COM12"
+if "%RX_A%"=="" set "RX_A=COM14"
 if "%TX_B%"=="" set "TX_B=COM13"
-if "%RX_B%"=="" set "RX_B=COM14"
+if "%RX_B%"=="" set "RX_B=COM12"
 
 echo Usage: Start_Com_Pair.cmd [TX_A] [RX_A] [TX_B] [RX_B]
 echo Starting dual-port COM pair: Node A=TX %TX_A% / RX %RX_A%  Node B=TX %TX_B% / RX %RX_B%

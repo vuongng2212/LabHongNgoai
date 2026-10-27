@@ -321,11 +321,21 @@ function applyLaunchConfig() {
 }
 
 function refreshPortList(triggerBtn, preferredTx, preferredRx) {
+  const cfg = window.launchConfig || {};
+  const targetTx = preferredTx || cfg.tx_port || cfg.preferred_port || null;
+  const targetRx = preferredRx || cfg.rx_port || null;
+
   if (!bridge) {
-    const entries = fallbackEntries();
+    let entries = fallbackEntries();
+    if (targetTx && !entries.some((entry) => entry.name === targetTx)) {
+      entries.unshift({ name: targetTx, label: targetTx + ' (Launch Port)' });
+    }
+    if (targetRx && !entries.some((entry) => entry.name === targetRx)) {
+      entries.unshift({ name: targetRx, label: targetRx + ' (Launch Port)' });
+    }
     const names = entries.map((entry) => entry.name);
-    const txValue = fillPortSelect(document.getElementById('select-port-tx'), entries, preferredTx);
-    fillPortSelect(document.getElementById('select-port-rx'), entries, preferredRx || pickRxPort(names, txValue));
+    const txValue = fillPortSelect(document.getElementById('select-port-tx'), entries, targetTx);
+    fillPortSelect(document.getElementById('select-port-rx'), entries, targetRx || pickRxPort(names, txValue));
     return;
   }
   if (triggerBtn && window.UIFeedback) window.UIFeedback.setButtonLoading(triggerBtn, true, 'Scanning...');
@@ -334,6 +344,14 @@ function refreshPortList(triggerBtn, preferredTx, preferredRx) {
     try { ports = JSON.parse(portsJson); } catch (e) { ports = []; }
     let entries = parsePortEntries(Array.isArray(ports) ? ports : []);
     if (entries.length === 0) entries = fallbackEntries();
+
+    if (targetTx && !entries.some((entry) => entry.name === targetTx)) {
+      entries.unshift({ name: targetTx, label: targetTx + ' (Launch Port)' });
+    }
+    if (targetRx && !entries.some((entry) => entry.name === targetRx)) {
+      entries.unshift({ name: targetRx, label: targetRx + ' (Launch Port)' });
+    }
+
     const names = entries.map((entry) => entry.name);
 
     const selectTx = document.getElementById('select-port-tx');
@@ -342,12 +360,12 @@ function refreshPortList(triggerBtn, preferredTx, preferredRx) {
     const currentRx = selectRx ? selectRx.value : '';
 
     let txValue;
-    if (preferredTx && names.includes(preferredTx)) txValue = preferredTx;
+    if (targetTx && names.includes(targetTx)) txValue = targetTx;
     else if (portSelectionInitialized && names.includes(currentTx)) txValue = currentTx;
     else txValue = names[0] || '';
 
     let rxValue;
-    if (preferredRx && names.includes(preferredRx)) rxValue = preferredRx;
+    if (targetRx && names.includes(targetRx)) rxValue = targetRx;
     else if (portSelectionInitialized && names.includes(currentRx)) rxValue = currentRx;
     else rxValue = pickRxPort(names, txValue);
 

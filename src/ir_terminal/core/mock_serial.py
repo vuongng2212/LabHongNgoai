@@ -272,6 +272,9 @@ class MockSerialPort(ITransport):
         self._deliver_due()
         return len(self._rx_buffer)
 
+    def flush(self) -> None:
+        """Flushes the outgoing transmit buffer (no-op for mock serial)."""
+
     @property
     def dropped_by_loss(self) -> int:
         """Returns cumulative frames dropped by simulated loss."""

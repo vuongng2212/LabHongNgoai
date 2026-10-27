@@ -53,21 +53,42 @@ def create_transport(
             auto_respond,
         )
         return MockSerialPort(port_name=tx_name, baudrate=baudrate, auto_respond=auto_respond)
-    endpoint = resolve_link_endpoint(tx_name, link_endpoints)
-    if endpoint is not None:
-        host, tcp_port = endpoint
+    tx_endpoint = resolve_link_endpoint(tx_name, link_endpoints)
+    rx_endpoint = resolve_link_endpoint(rx_name, link_endpoints)
+    if tx_endpoint is not None and rx_endpoint is not None:
+        if tx_endpoint == rx_endpoint and tx_name.upper() == rx_name.upper():
+            host, tcp_port = tx_endpoint
+            logger.info(
+                "%s Transport select: SOCKET %s -> %s:%d (retries=%d)",
+                LogTag.HW_SERIAL,
+                tx_name.upper(),
+                host,
+                tcp_port,
+                link_connect_retries,
+            )
+            return SocketTransport(
+                port_name=tx_name.upper(),
+                host=host,
+                port=tcp_port,
+                connect_retries=link_connect_retries,
+                retry_interval_sec=link_retry_interval_sec,
+                connect_timeout_sec=link_connect_timeout_sec,
+                token=link_token,
+            )
+        from ir_terminal.core.dual_socket_transport import DualSocketTransport
+
         logger.info(
-            "%s Transport select: SOCKET %s -> %s:%d (retries=%d)",
+            "%s Transport select: DUAL SOCKET tx=%s rx=%s (retries=%d)",
             LogTag.HW_SERIAL,
             tx_name.upper(),
-            host,
-            tcp_port,
+            rx_name.upper(),
             link_connect_retries,
         )
-        return SocketTransport(
-            port_name=tx_name.upper(),
-            host=host,
-            port=tcp_port,
+        return DualSocketTransport(
+            tx_port_name=tx_name.upper(),
+            rx_port_name=rx_name.upper(),
+            tx_endpoint=tx_endpoint,
+            rx_endpoint=rx_endpoint,
             connect_retries=link_connect_retries,
             retry_interval_sec=link_retry_interval_sec,
             connect_timeout_sec=link_connect_timeout_sec,
