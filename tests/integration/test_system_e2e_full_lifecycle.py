@@ -24,9 +24,6 @@ class TestSystemE2EFullLifecycle:
 
             bridge = BackendBridge(serial_manager=manager, storage_service=storage)
 
-            # -------------------------------------------------------------
-            # STEP 1: Hardware Connection & PING/PONG Roundtrip
-            # -------------------------------------------------------------
             with qtbot.waitSignal(bridge.portConnected, timeout=1000) as conn_blocker:
                 bridge.connectPort("MOCK_COM_E2E", 115200)
 
@@ -42,9 +39,6 @@ class TestSystemE2EFullLifecycle:
             assert rtt_ms >= 0.0
             assert ping_seq > 0
 
-            # -------------------------------------------------------------
-            # STEP 2: Realtime Optical Chat Transmission & Frame Inspection
-            # -------------------------------------------------------------
             with qtbot.waitSignal(bridge.chatMessageReceived, timeout=1000) as chat_blocker:
                 bridge.sendChat("E2E Optical Verification Test - 880nm NIR Link Active")
 
@@ -52,14 +46,10 @@ class TestSystemE2EFullLifecycle:
             assert text == "E2E Optical Verification Test - 880nm NIR Link Active"
             assert is_outgoing is True
 
-            # Verify chat persistence in file store
             chat_history = storage.get_chat_history()
             assert len(chat_history) >= 1
             assert chat_history[-1]["text"] == text
 
-            # -------------------------------------------------------------
-            # STEP 3: Stop-and-Wait ARQ File Transfer Station
-            # -------------------------------------------------------------
             sample_file = Path(tmpdir) / "payload_e2e.bin"
             file_payload_bytes = b"OPTICAL_PACKET_STREAM_CHUNK_" * 120  # ~3.3 KB (14 chunks)
             sample_file.write_bytes(file_payload_bytes)
@@ -82,41 +72,30 @@ class TestSystemE2EFullLifecycle:
             assert len(progress_events) >= 10
             assert progress_events[-1] == 100
 
-            # Verify file transfer record in file store
             transfers = storage.get_file_transfers()
             assert len(transfers) >= 1
             assert transfers[0]["filename"] == "payload_e2e.bin"
             assert transfers[0]["size_bytes"] == len(file_payload_bytes)
             assert transfers[0]["status"] == "SUCCESS"
 
-            # -------------------------------------------------------------
-            # STEP 4: Physical LOS Beam Blockage & ARQ Timeout Recovery
-            # -------------------------------------------------------------
-            # Inject simulated line-of-sight blockage into mock serial
             worker = manager._worker
             if worker and isinstance(worker._transport, MockSerialPort):
                 mock_port = worker._transport
                 mock_port.set_los_blocked(True)
 
-                # Attempt another file transfer with blocked beam
                 blocked_file = Path(tmpdir) / "blocked.bin"
                 blocked_file.write_bytes(b"DATA" * 50)
 
-                # Transfer will retry and fail gracefully due to max retries
                 with qtbot.waitSignal(bridge.transferFailed, timeout=5000) as fail_blocker:
                     bridge.startFileTransfer(str(blocked_file))
 
                 (fail_reason,) = fail_blocker.args
                 assert "timeout" in fail_reason.lower() or "retries" in fail_reason.lower()
 
-                # Unblock beam and verify link heals immediately
                 mock_port.set_los_blocked(False)
                 with qtbot.waitSignal(bridge.pingResult, timeout=1000):
                     bridge.sendPing()
 
-            # -------------------------------------------------------------
-            # STEP 5: Disconnect & Teardown
-            # -------------------------------------------------------------
             with qtbot.waitSignal(bridge.portDisconnected, timeout=1000):
                 bridge.disconnectPort()
 

@@ -12,7 +12,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QLockFile
 
-# A lock older than this is treated as stale (previous process crashed).
 DEFAULT_STALE_LOCK_MS: int = 30_000
 
 

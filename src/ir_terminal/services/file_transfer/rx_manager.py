@@ -217,9 +217,6 @@ class RxManager:
             service._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
             return
 
-        # A retransmitted START means our previous ACK was lost. Re-ACK the
-        # already-active session instead of NACKing it as "busy"; otherwise the
-        # sender burns all 5 retries and fails even though the link is healthy.
         if service._is_duplicate_start(pkt, start_payload, extended):
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
             service._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
@@ -232,8 +229,6 @@ class RxManager:
             )
             return
 
-        # Half-duplex guard: never clobber an ongoing outgoing session. NACK tells
-        # the sender to back off and retry after its timeout.
         if service._state in (
             TransferState.HANDSHAKING,
             TransferState.TRANSFERRING,
@@ -318,10 +313,6 @@ class RxManager:
             service.transfer_failed.emit(err_msg)
             return
 
-        # Open the streaming destination: chunks are written straight to disk,
-        # never accumulated in a dict, so memory stays O(chunk_size). The target
-        # directory is locked for the whole session so a mid-transfer settings
-        # change cannot send the final os.replace across filesystems (EXDEV).
         dest_dir = service._transfers_dir
         try:
             rx_handle, temp_path = ChunkBuffer.create_staging_file(dest_dir)
@@ -428,8 +419,6 @@ class RxManager:
             return
 
         if chunk_id < service._rx_expected_chunk:
-            # Duplicate retransmission after our ACK was lost: re-ACK, do not
-            # append the same bytes twice.
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
             service._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
             logger.debug(
@@ -476,8 +465,6 @@ class RxManager:
 
         try:
             ChunkBuffer.append(service._rx_file_handle, chunk_data)
-            # Flush per chunk so the .part file reflects durable progress and
-            # a crash never leaves megabytes of unflushed buffered chunks.
         except OSError as exc:
             ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OUT_OF_ORDER)
             service._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.NACK, payload=ack.pack())
@@ -491,11 +478,9 @@ class RxManager:
         service._rx_received_count += 1
         service._rx_expected_chunk += 1
 
-        # Respond ACK
         ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
         service._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
 
-        # Progress calculation
         now = time.time()
         elapsed = max(now - service._rx_start_time, 0.001)
         speed_kbps = (service._rx_bytes_received / 1024.0) / elapsed
@@ -522,10 +507,6 @@ class RxManager:
     def _on_transfer_end_received(self, pkt: Packet) -> None:
         """Handles TRANSFER_END: verify size + CRC-32, then atomically publish the file."""
         service: FileTransferService = self._service
-        # If our final ACK was lost, the sender retransmits the identical END
-        # with the same sequence number. Re-ACK the completed session (without
-        # writing the file or emitting transfer_completed again), or re-NACK a
-        # previously failed verify, so the sender does not exhaust its retries.
         if pkt.seq == service._rx_end_seq and service._state in (
             TransferState.COMPLETED,
             TransferState.FAILED,
@@ -633,7 +614,6 @@ class RxManager:
             )
             return
 
-        # CRC-32 verification (computed incrementally during streaming writes)
         calculated_crc = service._rx_crc32 & 0xFFFFFFFF
         if not IntegrityVerifier.matches(
             (end_payload.file_crc32, service._rx_file_crc32), calculated_crc
@@ -669,8 +649,6 @@ class RxManager:
             )
             return
 
-        # Publish into the directory locked at TRANSFER_START, not the current
-        # setting, so changing the setting mid-transfer cannot trigger EXDEV.
         dest_dir = service._rx_dest_dir or service._transfers_dir
         try:
             dest_path = ChunkBuffer.publish(temp_path, dest_dir, rx_filename)
@@ -692,7 +670,6 @@ class RxManager:
             return
         service._rx_temp_path = None
 
-        # Send ACK
         ack = AckPayload(acked_seq=pkt.seq, status=AckStatus.OK)
         service._serial_manager.send_packet(seq=pkt.seq, opcode=Opcode.ACK, payload=ack.pack())
 
@@ -700,7 +677,6 @@ class RxManager:
         speed_kbps = (rx_size / 1024.0) / elapsed
         crc_hex = f"0x{calculated_crc:08X}"
 
-        # Persist to database
         rec_id = service._storage.save_file_transfer(
             filename=dest_path.name,
             file_path=str(dest_path),

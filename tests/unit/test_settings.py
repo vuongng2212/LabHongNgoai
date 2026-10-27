@@ -145,7 +145,6 @@ class TestFileTransferServiceConfig:
             target_file.write_text("x")
             with pytest.raises(ValueError):
                 service.set_transfers_dir(str(target_file))
-            # Failed update must not clobber the running configuration.
             assert service.transfers_dir_path == default_dir
         finally:
             manager.shutdown()
@@ -287,7 +286,6 @@ class TestBackendBridgeSettings:
             assert json.loads(bridge.saveSettings("not-json"))["ok"] is False
             assert json.loads(bridge.saveSettings("{}"))["ok"] is False
             assert json.loads(bridge.saveSettings('{"max_file_size_mb": -1}'))["ok"] is False
-            # Failed saves must not clobber the running config.
             assert bridge.file_service.max_file_size_bytes == MAX_FILE_SIZE_BYTES
         finally:
             manager.shutdown()

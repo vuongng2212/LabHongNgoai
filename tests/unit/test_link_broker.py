@@ -61,12 +61,8 @@ def test_relay_roundtrip_and_peer_status() -> None:
     port_a, port_b = _free_ports(2)
     broker = LinkBroker(port_a=port_a, port_b=port_b, latency_ms=0.0)
     broker.start()
-    transport_a = SocketTransport(
-        "LINK_A", "127.0.0.1", port_a, connect_timeout_sec=1.0
-    )
-    transport_b = SocketTransport(
-        "LINK_B", "127.0.0.1", port_b, connect_timeout_sec=1.0
-    )
+    transport_a = SocketTransport("LINK_A", "127.0.0.1", port_a, connect_timeout_sec=1.0)
+    transport_b = SocketTransport("LINK_B", "127.0.0.1", port_b, connect_timeout_sec=1.0)
     try:
         transport_a.open()
         transport_b.open()

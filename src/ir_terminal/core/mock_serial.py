@@ -51,9 +51,6 @@ class MockSerialPort(ITransport):
         self._rx_buffer = ByteRingBuffer(capacity=RING_BUFFER_CAPACITY)
         self._tx_buffer = bytearray()
         self._los_blocked = False
-        # Non-blocking latency queue: (due_monotonic, frame_bytes). Responses are
-        # enqueued in write() and delivered when due in read()/in_waiting, so the
-        # worker event loop is never blocked by time.sleep().
         self._pending: list[tuple[float, bytes]] = []
         self._dropped_by_loss: int = 0
         self._dropped_by_los: int = 0
@@ -86,8 +83,7 @@ class MockSerialPort(ITransport):
             pending = len(self._pending)
             self._pending = []
         logger.info(
-            "%s Mock closed: port=%s was_open=%s dropped_pending=%d "
-            "loss_drops=%d los_drops=%d",
+            "%s Mock closed: port=%s was_open=%s dropped_pending=%d loss_drops=%d los_drops=%d",
             LogTag.HW_SERIAL,
             self._port_name,
             was_open,
@@ -135,8 +131,6 @@ class MockSerialPort(ITransport):
             raise RuntimeError("Cannot write to closed MockSerialPort")
 
         if self._los_blocked:
-            # Beam is physically blocked; packets disappear into void.
-            # Counted (not silent) so ARQ/telemetry can observe the blockage.
             with self._lock:
                 self._dropped_by_los += 1
                 los_total = self._dropped_by_los
@@ -150,9 +144,7 @@ class MockSerialPort(ITransport):
             )
             return len(data)
 
-        # Check if packet should be dropped due to simulated channel noise
         if self._loss_rate > 0 and random.random() < self._loss_rate:
-            # Packet dropped by simulated atmospheric noise (counted).
             with self._lock:
                 self._dropped_by_loss += 1
                 loss_total = self._dropped_by_loss
@@ -168,11 +160,9 @@ class MockSerialPort(ITransport):
             )
             return len(data)
 
-        # Parse outgoing frame to detect commands like PING, CHAT, FILE and auto-respond (if enabled)
         if self._auto_respond:
             self._tx_buffer.extend(data)
             packets, remaining = parse_frames_from_buffer(self._tx_buffer)
-            # remaining is bytes; wrap back into bytearray without extra scan
             self._tx_buffer = bytearray(remaining)
 
             for pkt in packets:
@@ -225,7 +215,6 @@ class MockSerialPort(ITransport):
 
     def _handle_chat_packet(self, seq: int, payload: bytes) -> None:
         """Echoes back chat response from Station Bravo node."""
-        # ACK the chat frame with matching sequence number
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
         if logger.isEnabledFor(logging.DEBUG):
@@ -239,8 +228,6 @@ class MockSerialPort(ITransport):
 
     def _handle_file_ack(self, seq: int) -> None:
         """Sends ACK for file transfer chunk."""
-        # Near-instant ACK keeps loopback simulation snappy (chat PING keeps
-        # the full simulated latency for realistic RTT display).
         delay = min(self._latency_s, 0.002)
         ack_payload = bytes([seq, 0])
         ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)

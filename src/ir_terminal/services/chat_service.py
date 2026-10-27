@@ -55,12 +55,6 @@ class ChatService(QObject):
         original_len = len(encoded)
         if len(encoded) > MAX_PAYLOAD_SIZE:
             truncated = True
-            # Safely truncate without splitting multi-byte UTF-8 character
-            # sequences. Byte-identical to encoded[:MAX].decode(errors="ignore")
-            # without the re-encode: if the first byte past the budget is a
-            # continuation byte (10xxxxxx), the trailing char is split, so walk
-            # back over its in-budget continuation bytes and drop the lead too.
-            # Otherwise [:MAX] already ends on a character boundary.
             cut = MAX_PAYLOAD_SIZE
             if (encoded[cut] & 0xC0) == 0x80:
                 while cut > 0 and (encoded[cut - 1] & 0xC0) == 0x80:
@@ -106,7 +100,6 @@ class ChatService(QObject):
                 clean_text[:80],
             )
 
-            # Save to durable hard drive JSON store
         msg_id = self._storage.save_chat_message(
             sender=self._local_name,
             text=clean_text,
@@ -156,7 +149,6 @@ class ChatService(QObject):
 
             now_str = time.strftime("%Y-%m-%d %H:%M:%S")
 
-            # Save to durable hard drive JSON store
             msg_id = self._storage.save_chat_message(
                 sender=self._remote_name,
                 text=text,

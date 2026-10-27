@@ -23,7 +23,6 @@ from ir_terminal.utils.logger import LogTag, format_hex_preview
 
 logger = logging.getLogger(__name__)
 
-# Default broker endpoints for the two virtual COM ports.
 LINK_PORT_MAP: dict[str, tuple[str, int]] = {
     "LINK_A": ("127.0.0.1", 6001),
     "LINK_B": ("127.0.0.1", 6002),
@@ -33,7 +32,6 @@ LINK_PORT_MAP: dict[str, tuple[str, int]] = {
     "LINK_B_RX": ("127.0.0.1", 6002),
 }
 
-# Optional handshake prefix shared with LinkBroker when a token is configured.
 _HELLO_PREFIX = "IRLINK 1 "
 
 
@@ -89,7 +87,6 @@ class SocketTransport(ITransport):
         self._rx_buffer = bytearray()
         self._is_open = False
         self._lost_notified = False
-        # Invoked (from the worker thread) when the broker/peer drops the link.
         self.on_link_lost: Callable[[], None] | None = None
 
     def open(self) -> None:
@@ -139,7 +136,6 @@ class SocketTransport(ITransport):
                     self._port,
                 )
                 raise
-            # Short timeout so worker poll stays non-blocking (mirrors PySerial 0.05s).
             sock.settimeout(SOCKET_READ_TIMEOUT_SEC)
             self._sock = sock
             self._rx_buffer = bytearray()
@@ -157,7 +153,6 @@ class SocketTransport(ITransport):
                 attempts,
             )
             return
-        # Defensive: the loop either returned on success or raised on failure.
         raise last_exc if last_exc is not None else RuntimeError("SocketTransport open failed")
 
     def _send_handshake(self) -> None:
@@ -178,8 +173,9 @@ class SocketTransport(ITransport):
         try:
             callback()
         except Exception:
-            logger.exception("%s on_link_lost callback failed (%s)", LogTag.HW_SERIAL, self._port_name)
-
+            logger.exception(
+                "%s on_link_lost callback failed (%s)", LogTag.HW_SERIAL, self._port_name
+            )
 
     def close(self) -> None:
         """Closes TCP connection."""
@@ -264,7 +260,6 @@ class SocketTransport(ITransport):
             while True:
                 chunk = sock.recv(SOCKET_RECV_CHUNK)
                 if not chunk:
-                    # Peer broker closed connection.
                     self._is_open = False
                     logger.warning(
                         "%s Socket broker closed: %s %s:%d (peer disconnected)",
@@ -338,4 +333,3 @@ class SocketTransport(ITransport):
 
     def flush(self) -> None:
         """Flushes the outgoing transmit buffer (no-op for TCP stream)."""
-

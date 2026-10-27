@@ -22,15 +22,12 @@ class TestTwoNodesE2EFileTransfer:
 
     def test_two_nodes_file_transfer_and_disk_persistence(self, qtbot: QtBot) -> None:
         """Node A transmits a multi-chunk file to Node B. Node B receives, verifies, and writes to disk."""
-        # 1. Initialize Node A (Transmitter)
         mgr_a = SerialManager()
         mgr_a.connect_port("MOCK_NODE_A", 115200)
 
-        # 2. Initialize Node B (Receiver)
         mgr_b = SerialManager()
         mgr_b.connect_port("MOCK_NODE_B", 115200)
 
-        # 3. Interconnect Node A and Node B serial streams (bidirectional optical link)
         mgr_a.raw_tx.connect(mgr_b.inject_raw_rx)
         mgr_b.raw_tx.connect(mgr_a.inject_raw_rx)
 
@@ -55,34 +52,28 @@ class TestTwoNodesE2EFileTransfer:
                 transfers_dir=downloads_b,
             )
 
-            # Node B should emit transfer_completed upon receiving the whole file
-            # Node A should emit transfer_completed upon receiving final ACK
             with (
                 qtbot.waitSignal(service_a.transfer_completed, timeout=10000) as blocker_a,
                 qtbot.waitSignal(service_b.transfer_completed, timeout=10000) as blocker_b,
             ):
                 service_a.start_transfer(str(source_file))
 
-            # Verify Node A (Transmitter) result
             fname_a, bytes_a, elapsed_a, crc_a = blocker_a.args
             assert fname_a == source_file.name
             assert bytes_a == len(test_content)
             assert crc_a == f"0x{expected_crc:08X}"
             assert service_a.state == TransferState.COMPLETED
 
-            # Verify Node B (Receiver) result
             fname_b, bytes_b, elapsed_b, crc_b = blocker_b.args
             assert fname_b == source_file.name
             assert bytes_b == len(test_content)
             assert crc_b == f"0x{expected_crc:08X}"
             assert service_b.state == TransferState.COMPLETED
 
-            # Verify physical file written to Node B disk
             received_file = downloads_b / source_file.name
             assert received_file.exists()
             assert received_file.read_bytes() == test_content
 
-            # Verify Node B file store records RX entry
             records = storage_b.get_file_transfers()
             assert len(records) >= 1
             rx_record = records[0]
@@ -120,7 +111,6 @@ class TestTwoNodesE2EFileTransfer:
             def _cancel_on_first_chunk(
                 _pct: int, _kbps: float, _eta: float, received: int, _total: int
             ) -> None:
-                # Cancel only once real chunk data has landed, proving partial cleanup.
                 if not cancelled["done"] and received >= 1:
                     cancelled["done"] = True
                     service_b.abort_transfer()

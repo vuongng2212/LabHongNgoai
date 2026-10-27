@@ -36,8 +36,6 @@ from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
 
-# Module-level ping payload constants (refactor: single bytes objects, no
-# per-tick re-allocation or len() recompute; wire bytes unchanged).
 _PING_HEALTH_PAYLOAD: bytes = b"IR_HEALTH"
 _PING_MANUAL_PAYLOAD: bytes = b"IR_PING"
 
@@ -45,7 +43,6 @@ _PING_MANUAL_PAYLOAD: bytes = b"IR_PING"
 class BackendBridge(QObject):
     """Exposes methods and signals to Chromium JavaScript via QWebChannel."""
 
-    # Outgoing Link & Hardware Signals to JavaScript
     portConnected: ClassVar[Signal] = Signal(str, str, int)
     portDisconnected: ClassVar[Signal] = Signal()
     errorOccurred: ClassVar[Signal] = Signal(str)
@@ -54,16 +51,13 @@ class BackendBridge(QObject):
     rawRxData: ClassVar[Signal] = Signal(str)  # hex string
     rawTxData: ClassVar[Signal] = Signal(str)  # hex string
 
-    # Window Control Signals
     closeWindowRequested: ClassVar[Signal] = Signal()
     minimizeWindowRequested: ClassVar[Signal] = Signal()
     maximizeWindowRequested: ClassVar[Signal] = Signal()
 
-    # Chat Signals
     chatMessageReceived: ClassVar[Signal] = Signal(str, str, bool)  # (text, time, is_outgoing)
     chatFrameInspected: ClassVar[Signal] = Signal(str, int, int, int)  # (hex, seq, cmd, len)
 
-    # File Transfer Signals
     transferProgress: ClassVar[Signal] = Signal(
         int, float, float, int, int
     )  # (pct, speed_kbps, eta_sec, cur_chunk, total_chunks)
@@ -73,7 +67,6 @@ class BackendBridge(QObject):
     transferFailed: ClassVar[Signal] = Signal(str)  # (reason)
     transferStateChanged: ClassVar[Signal] = Signal(str)  # (state)
 
-    # Telemetry & Sniffer Signals
     telemetryUpdated: ClassVar[Signal] = Signal(
         float, float, float, int, int
     )  # (speed_kbps, loss_pct, rtt_ms, chunks_count, frames_count)
@@ -130,7 +123,6 @@ class BackendBridge(QObject):
 
     def _wire_signals(self) -> None:
         """Connects underlying core services to bridge signals and telemetry listeners."""
-        # Serial Manager
         self._serial_manager.ports_connected.connect(self.portConnected)
         self._serial_manager.ports_connected.connect(self._on_link_up)
         self._serial_manager.disconnected.connect(self.portDisconnected)
@@ -145,7 +137,6 @@ class BackendBridge(QObject):
         except Exception:
             pass
 
-        # Chat Service
         self._chat_service.message_received.connect(self.chatMessageReceived)
         self._chat_service.frame_inspected.connect(self.chatFrameInspected)
         try:
@@ -153,13 +144,11 @@ class BackendBridge(QObject):
         except Exception:
             pass
 
-        # File Transfer Service
         self._file_service.progress_updated.connect(self._on_transfer_progress)
         self._file_service.transfer_completed.connect(self.transferCompleted)
         self._file_service.transfer_failed.connect(self._on_transfer_failed)
         self._file_service.state_changed.connect(self.transferStateChanged)
 
-        # Telemetry Service
         self._telemetry.telemetry_updated.connect(self.telemetryUpdated)
         self._telemetry.sniffer_frame_logged.connect(self.snifferFrameLogged)
 
@@ -259,7 +248,9 @@ class BackendBridge(QObject):
             return
         self._ping_seq = (self._ping_seq + 1) % 256
         self._last_ping_time = time.time()
-        self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_HEALTH_PAYLOAD)
+        self._serial_manager.send_packet(
+            seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_HEALTH_PAYLOAD
+        )
         self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(_PING_HEALTH_PAYLOAD))
 
     def _on_raw_rx(self, data: bytes) -> None:
@@ -307,9 +298,6 @@ class BackendBridge(QObject):
                 format_hex_preview(pkt.payload, max_bytes=16),
             )
         if pkt.opcode == Opcode.PING:
-            # RX responder: echo PONG so a remote PC gets RTT without firmware help.
-            # PONG never triggers a further reply, so no ping-pong loop. Guard on
-            # link state to avoid write-error spam when disconnected.
             if self._is_connected:
                 self._serial_manager.send_packet(
                     seq=pkt.seq, opcode=Opcode.PONG, payload=pkt.payload
@@ -377,7 +365,6 @@ class BackendBridge(QObject):
         """Returns the FileTransferService instance."""
         return self._file_service
 
-    # Slots callable from JavaScript
     @Slot(result=str)
     def scanPorts(self) -> str:
         """Returns JSON list of available COM ports with detailed metadata."""
@@ -549,8 +536,12 @@ class BackendBridge(QObject):
         try:
             self._ping_seq = (self._ping_seq + 1) % 256
             self._last_ping_time = time.time()
-            self._serial_manager.send_packet(seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_MANUAL_PAYLOAD)
-            self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD))
+            self._serial_manager.send_packet(
+                seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_MANUAL_PAYLOAD
+            )
+            self._telemetry.record_packet_sent(
+                self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD)
+            )
             logger.info(
                 "%s UI manual PING %s payload=%s connected=%s",
                 LogTag.PROTO_FRAME,
@@ -950,9 +941,7 @@ class BackendBridge(QObject):
         """Resets telemetry metrics and sniffer counters."""
         summary = self._telemetry.get_summary()
         self._telemetry.reset_counters()
-        logger.info(
-            "%s Reset telemetry via UI (was %s)", LogTag.IPC_BRIDGE, summary
-        )
+        logger.info("%s Reset telemetry via UI (was %s)", LogTag.IPC_BRIDGE, summary)
 
     @Slot()
     def closeWindow(self) -> None:

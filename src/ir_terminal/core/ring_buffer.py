@@ -57,12 +57,10 @@ class ByteRingBuffer:
             if data_len == 0:
                 return 0
 
-            # If incoming data exceeds capacity, take only the most recent bytes
             if data_len > self._capacity:
                 data = data[-self._capacity :]
                 data_len = self._capacity
 
-            # Bulk two-slice copy (handles wrap-around) instead of per-byte loop.
             first = min(data_len, self._capacity - self._head)
             self._buffer[self._head : self._head + first] = data[:first]
             second = data_len - first
@@ -72,7 +70,6 @@ class ByteRingBuffer:
             if self._size + data_len <= self._capacity:
                 self._size += data_len
             else:
-                # Buffer full: drop oldest bytes (advance tail pointer)
                 overflow = self._size + data_len - self._capacity
                 self._tail = (self._tail + overflow) % self._capacity
                 self._size = self._capacity
@@ -94,7 +91,6 @@ class ByteRingBuffer:
                 return b""
 
             to_read = self._size if max_bytes is None else min(max_bytes, self._size)
-            # Bulk two-slice copy instead of per-byte loop.
             first = min(to_read, self._capacity - self._tail)
             result = bytearray(to_read)
             result[0:first] = self._buffer[self._tail : self._tail + first]
@@ -116,7 +112,6 @@ class ByteRingBuffer:
             if self._size == 0:
                 return b""
 
-            # Bulk two-slice copy instead of per-byte loop.
             first = min(self._size, self._capacity - self._tail)
             result = bytearray(self._size)
             result[0:first] = self._buffer[self._tail : self._tail + first]

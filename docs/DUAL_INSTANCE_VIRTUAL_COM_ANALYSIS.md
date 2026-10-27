@@ -161,10 +161,10 @@ Chạy thực 2 process offscreen xác nhận cả hai node tự kết nối và
 
 ```python
 # storage_service.py (khái quát)
-with self._lock:                     # chỉ có tác dụng trong 1 process
-    records = self._load_list(filename)   # đọc cả file
-    records.append(record)                # sửa trong RAM
-    self._save_list(filename, records)    # ghi .tmp rồi os.replace
+with self._lock:  # chỉ có tác dụng trong 1 process
+    records = self._load_list(filename)  # đọc cả file
+    records.append(record)  # sửa trong RAM
+    self._save_list(filename, records)  # ghi .tmp rồi os.replace
 ```
 
 Khi 2 process cùng `data/`:
@@ -191,7 +191,7 @@ Khi 2 process cùng `data/`:
 
 ```python
 self._view = QWebEngineView(self)
-self._page = WebAppPage(self._view)      # ← default QWebEngineProfile
+self._page = WebAppPage(self._view)  # ← default QWebEngineProfile
 self._view.setPage(self._page)
 ```
 
@@ -521,11 +521,12 @@ from typing import Literal
 TransportMode = Literal["auto", "serial", "link", "mock"]
 LinkRole = Literal["off", "host", "join", "auto"]
 
+
 @dataclass(frozen=True)
 class LaunchConfig:
-    instance: str | None = None          # A/B/... (đã sanitize)
+    instance: str | None = None  # A/B/... (đã sanitize)
     transport: TransportMode = "auto"
-    port: str | None = None              # COM11 / LINK_A / MOCK_*
+    port: str | None = None  # COM11 / LINK_A / MOCK_*
     baud: int = 115200
     link_role: LinkRole = "off"
     link_host: str = "127.0.0.1"
@@ -550,9 +551,9 @@ class InstanceContext:
     webengine_cache: Path
     webengine_storage: Path
     lock_path: Path
-    display_name: str          # "Node A" / "Node B"
-    local_station: str         # "Station Alpha"
-    remote_station: str        # "Station Bravo"
+    display_name: str  # "Node A" / "Node B"
+    local_station: str  # "Station Alpha"
+    remote_station: str  # "Station Bravo"
 ```
 
 - `instance_id` được validate `^[A-Za-z0-9_-]{1,16}$`; sai → lỗi rõ ràng.
@@ -566,7 +567,7 @@ class InstanceContext:
 ```python
 def create_app(config: LaunchConfig) -> ...:
     ctx = build_instance_context(config)
-    logger, _ = setup_logger(log_dir=ctx.logs_dir)   # ← tạo đúng ngay từ đầu
+    logger, _ = setup_logger(log_dir=ctx.logs_dir)  # ← tạo đúng ngay từ đầu
     # xoá đoạn re-point handler hiện tại
 ```
 
@@ -596,8 +597,8 @@ Chuyển `scripts/virtual_optical_link.py` thành `src/ir_terminal/core/virtual_
 ```python
 class LinkBroker:
     def __init__(self, host, port_a, port_b, *, loss, latency_ms, token=None): ...
-    def start(self) -> None: ...   # spawn accept + forward threads (daemon)
-    def stop(self) -> None: ...    # set event, close listeners/sockets
+    def start(self) -> None: ...  # spawn accept + forward threads (daemon)
+    def stop(self) -> None: ...  # set event, close listeners/sockets
     def set_los_blocked(self, blocked: bool) -> None: ...
 ```
 
@@ -658,8 +659,11 @@ from PySide6.QtCore import QLockFile
 lock = QLockFile(str(ctx.lock_path))
 lock.setStaleLockTime(0)  # hoặc 30_000
 if not lock.tryLock(100) and not config.allow_multiple:
-    QMessageBox.warning(None, "Instance đang chạy",
-        f"Node {ctx.instance_id} đã mở. Đóng app cũ hoặc dùng --allow-multiple.")
+    QMessageBox.warning(
+        None,
+        "Instance đang chạy",
+        f"Node {ctx.instance_id} đã mở. Đóng app cũ hoặc dùng --allow-multiple.",
+    )
     return None
 ```
 
@@ -674,7 +678,7 @@ Truyền vào `ChatService`:
 chat_service = ChatService(
     serial_manager=serial_manager,
     storage_service=storage_service,
-    local_name=ctx.local_station,     # "Station Alpha" cho A, "Station Bravo" cho B
+    local_name=ctx.local_station,  # "Station Alpha" cho A, "Station Bravo" cho B
     remote_name=ctx.remote_station,
 )
 ```

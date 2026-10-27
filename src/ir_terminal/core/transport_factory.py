@@ -42,9 +42,7 @@ def create_transport(
     tx_name = (tx_port or "").strip()
     rx_name = (rx_port or "").strip() or tx_name
     if tx_name.startswith("MOCK"):
-        auto_respond = not (
-            "PIPE" in tx_name or "NO_LOOPBACK" in tx_name or "NODE" in tx_name
-        )
+        auto_respond = not ("PIPE" in tx_name or "NO_LOOPBACK" in tx_name or "NODE" in tx_name)
         logger.info(
             "%s Transport select: MOCK port=%s baud=%d auto_respond=%s",
             LogTag.HW_SERIAL,

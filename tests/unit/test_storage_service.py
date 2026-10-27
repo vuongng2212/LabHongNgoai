@@ -75,7 +75,9 @@ class TestChatPersistence:
 
     def test_unicode_text_roundtrip(self, tmp_path: Path) -> None:
         storage = make_storage(tmp_path)
-        storage.save_chat_message("Trạm A", "Chùm tia hồng ngoại 880nm ổn định", "12:00:00", 7, False)
+        storage.save_chat_message(
+            "Trạm A", "Chùm tia hồng ngoại 880nm ổn định", "12:00:00", 7, False
+        )
         history = storage.get_chat_history()
         assert history[0]["text"] == "Chùm tia hồng ngoại 880nm ổn định"
 
@@ -136,19 +138,25 @@ class TestFileTransferPersistence:
     def test_newest_first_and_limit(self, tmp_path: Path) -> None:
         storage = make_storage(tmp_path)
         for i in range(4):
-            storage.save_file_transfer(f"f{i}.bin", f"/tmp/f{i}.bin", "RX", 10, "0x0", 1.0, 0.1, "SUCCESS")
+            storage.save_file_transfer(
+                f"f{i}.bin", f"/tmp/f{i}.bin", "RX", 10, "0x0", 1.0, 0.1, "SUCCESS"
+            )
 
         transfers = storage.get_file_transfers(limit=2)
         assert [t["filename"] for t in transfers] == ["f3.bin", "f2.bin"]
 
     def test_persistence_across_instances(self, tmp_path: Path) -> None:
-        make_storage(tmp_path).save_file_transfer("p.bin", "/tmp/p.bin", "RX", 8, "0x1", 2.0, 0.2, "FAILED")
+        make_storage(tmp_path).save_file_transfer(
+            "p.bin", "/tmp/p.bin", "RX", 8, "0x1", 2.0, 0.2, "FAILED"
+        )
         second = StorageService(data_dir=tmp_path / "data")
         assert second.get_file_transfers()[0]["status"] == "FAILED"
 
     def test_transfers_csv_export(self, tmp_path: Path) -> None:
         storage = make_storage(tmp_path)
-        storage.save_file_transfer("data.bin", "/tmp/data.bin", "TX", 1024, "0x12345678", 10.0, 0.1, "SUCCESS")
+        storage.save_file_transfer(
+            "data.bin", "/tmp/data.bin", "TX", 1024, "0x12345678", 10.0, 0.1, "SUCCESS"
+        )
         csv_path = tmp_path / "transfers_out.csv"
         csv_text = storage.export_transfers_csv(csv_path)
         assert "Filename" in csv_text
@@ -196,7 +204,9 @@ class TestTelemetryPersistence:
         samples = storage.get_telemetry_history(limit=2)
         assert [s["timestamp_epoch"] for s in samples] == [3.0, 4.0]
 
-    def test_sample_cap_bounds_disk_usage(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_sample_cap_bounds_disk_usage(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(storage_module, "_MAX_TELEMETRY_SAMPLES", 3)
         storage = make_storage(tmp_path)
         for i in range(5):

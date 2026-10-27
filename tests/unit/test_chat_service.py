@@ -96,7 +96,6 @@ class TestChatService:
         manager = SerialManager()
         chat_service = ChatService(manager)
 
-        # Invalid UTF-8 byte sequence
         invalid_utf8 = b"\x80\x81\xff\xfe"
         header = Header(
             sof=SOF_MAGIC,
@@ -128,11 +127,9 @@ class TestChatService:
         received_events: list[object] = []
         chat_service.message_received.connect(lambda *args: received_events.append(args))
 
-        # Pass non-packet object
         chat_service.handle_packet("NOT_A_PACKET")
         assert len(received_events) == 0
 
-        # Pass PING packet
         header = Header(sof=SOF_MAGIC, seq=1, opcode=Opcode.PING, length=4)
         ping_pkt = Packet(header=header, payload=b"PING", crc32=0, eof=EOF_MAGIC)
         chat_service.handle_packet(ping_pkt)

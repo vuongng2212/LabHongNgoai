@@ -1,4 +1,3 @@
-// Main Application Router & Controller
 document.addEventListener('DOMContentLoaded', () => {
   const navItems = document.querySelectorAll('.nav-item');
   const viewPanels = document.querySelectorAll('.view-panel');

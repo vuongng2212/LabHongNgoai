@@ -33,8 +33,6 @@ _LOG_FORMAT = (
 )
 _LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
-# Maximum bytes rendered inline in a hex preview. Full frames can be 524B;
-# previews keep per-packet logs single-line while still showing SOF/SEQ/CMD/LEN.
 MAX_HEX_PREVIEW_BYTES: int = 32
 
 _OPCODE_NAMES: dict[int, str] = {
@@ -108,9 +106,7 @@ def format_hex_preview(
     return f"{hex_part} (len={total}B)"
 
 
-def format_frame_summary(
-    seq: int, opcode: int, payload_len: int, crc32: int | None = None
-) -> str:
+def format_frame_summary(seq: int, opcode: int, payload_len: int, crc32: int | None = None) -> str:
     """Formats a compact frame descriptor for consistent cross-layer log correlation.
 
     Args:
@@ -198,7 +194,6 @@ def _retarget_file_handler(logger: logging.Logger, log_dir: Path) -> None:
     _add_file_handler(logger, log_dir)
 
 
-
 def setup_logger(
     log_dir: Path | None = None,
     log_level: int = logging.INFO,
@@ -220,20 +215,16 @@ def setup_logger(
     logger.propagate = False
 
     if logger.handlers:
-        # Already configured (e.g. an earlier call in this process). Make sure
-        # the rotating file handler targets the requested instance log dir.
         if log_dir is not None:
             _retarget_file_handler(logger, log_dir)
         return logger, _qt_log_emitter
 
     formatter = logging.Formatter(fmt=_LOG_FORMAT, datefmt=_LOG_DATEFMT)
 
-    # 1. Console Stream Handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    # 2. File Handler (Rotating)
     if log_dir is None:
         from ir_terminal.utils.path_helpers import get_logs_dir
 
@@ -250,7 +241,6 @@ def setup_logger(
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
-    # 3. Qt Signal Handler for UI Console
     qt_handler = QtSignalLogHandler(_qt_log_emitter)
     qt_handler.setFormatter(formatter)
     logger.addHandler(qt_handler)

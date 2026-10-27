@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Windows launchers copied next to the .exe so clients can double-click them.
 LAUNCHER_SCRIPTS: tuple[str, ...] = ("Start_Dual_Demo.cmd", "Start_Com_Pair.cmd")
 
 

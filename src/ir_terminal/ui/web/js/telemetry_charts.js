@@ -1,6 +1,3 @@
-// Telemetry canvas charts (pure helpers, no bridge/DOM lookup).
-// State (speedHistory/rttHistory) stays in telemetry_controller.js;
-// this module only draws. Depends on: nothing.
 (function () {
   'use strict';
 
@@ -9,7 +6,6 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Handle high DPI
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
@@ -23,7 +19,6 @@
     const h = rect.height;
     ctx.clearRect(0, 0, w, h);
 
-    // Draw Gridlines
     ctx.strokeStyle = '#D3E4FE';
     ctx.lineWidth = 0.8;
     ctx.setLineDash([3, 3]);
@@ -35,7 +30,6 @@
     }
     ctx.setLineDash([]);
 
-    // Draw Spline / Line
     if (data.length < 2) return;
     const step = w / (data.length - 1);
 
@@ -59,7 +53,6 @@
     ctx.lineCap = 'round';
     ctx.stroke();
 
-    // Area gradient
     ctx.lineTo(w, h);
     ctx.lineTo(0, h);
     ctx.closePath();
@@ -69,7 +62,6 @@
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Last point pulse marker
     const last = pts[pts.length - 1];
     ctx.beginPath();
     ctx.arc(last.x, last.y, 4, 0, Math.PI * 2);

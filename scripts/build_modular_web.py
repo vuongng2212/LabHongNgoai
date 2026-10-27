@@ -8,7 +8,6 @@ WEB_DIR = PROJECT_ROOT / "src" / "ir_terminal" / "ui" / "web"
 COMPONENTS_DIR = WEB_DIR / "components"
 
 EXPLICIT_REPLACEMENTS = [
-    # Corrupted BER formulas
     ("10—»—¹", "10<sup>-9</sup>"),
     ("10—»—¶", "10<sup>-6</sup>"),
     ("10—»Â¹—°", "10<sup>-10</sup>"),
@@ -23,17 +22,14 @@ EXPLICIT_REPLACEMENTS = [
     ("BER &lt; 10—»—¹", "BER &lt; 10<sup>-9</sup>"),
     ("BER > 10—»—¶", "BER &gt; 10<sup>-6</sup>"),
     ("BER &gt; 10—»—¶", "BER &gt; 10<sup>-6</sup>"),
-    # Corrupted bullets
     ("—¢", "•"),
     ("â¢", "•"),
     ("â€¢", "•"),
     ("—€¢", "•"),
-    # Corrupted dashes
     ("—€—", "—"),
     ("â€”", "—"),
     ("â—", "—"),
     ("â€“", "–"),
-    # Corrupted greek and math symbols
     ("Î»:", "λ:"),
     ("Î»", "λ"),
     ("Â°C", "°C"),
@@ -50,15 +46,12 @@ def sanitize(text: str) -> str:
     for old, new in EXPLICIT_REPLACEMENTS:
         res = res.replace(old, new)
 
-    # General regex cleanup for any remaining patterns
     res = re.sub(r"10[—â»⁻]+[¹⁹]", "10<sup>-9</sup>", res)
     res = re.sub(r"10[—â»⁻]+[¶⁶]", "10<sup>-6</sup>", res)
     res = re.sub(r"10[—â»⁻]+[⁰°]", "10<sup>-10</sup>", res)
     res = re.sub(r"[—â€]+¢", "•", res)
     res = re.sub(r"[\x80-\x9F]", "", res)
 
-    # Ensure all select dropdowns have appearance-none for clean custom caret
-    # (idempotent: skip selects that already carry the class).
     def _add_appearance(match: re.Match[str]) -> str:
         classes = match.group(1)
         if "appearance-none" in classes:
@@ -72,7 +65,6 @@ def sanitize(text: str) -> str:
 def build_modular_components() -> None:
     COMPONENTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load required view components directly from the project component directory.
     def load_component(filename: str) -> str:
         dest_path = COMPONENTS_DIR / filename
         if not dest_path.exists():
@@ -96,7 +88,6 @@ def build_modular_components() -> None:
     if feedback_path.exists():
         with open(feedback_path, encoding="utf-8") as f:
             raw_feedback = f.read()
-        # Keep only the mounts (toast stack + modal overlay); drop the header comment.
         body_start = raw_feedback.find("<div")
         feedback_mounts = sanitize(raw_feedback[body_start:] if body_start >= 0 else raw_feedback)
     else:
@@ -222,7 +213,6 @@ def build_modular_components() -> None:
 """
         sidebar_path.write_text(sidebar_nav, encoding="utf-8")
 
-    # 5. Assemble index.html
     full_index = f"""<!DOCTYPE html>
 <html lang="en">
 <head>

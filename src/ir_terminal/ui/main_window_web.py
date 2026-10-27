@@ -70,8 +70,7 @@ class WebMainWindow(QMainWindow):
         self._profile: QWebEngineProfile | None = None
         if bridge is None:
             logger.warning(
-                "%s WebMainWindow without injected bridge; creating default "
-                "(port=%s connected=%s)",
+                "%s WebMainWindow without injected bridge; creating default (port=%s connected=%s)",
                 LogTag.IPC_BRIDGE,
                 serial_manager.current_port,
                 serial_manager.is_connected,
@@ -89,7 +88,9 @@ class WebMainWindow(QMainWindow):
 
     def closeEvent(self, event: object) -> None:
         """Ensures worker thread and timers stop on window close (no QThread leak)."""
-        logger.info("%s WebMainWindow close requested; shutting down bridge+serial", LogTag.IPC_BRIDGE)
+        logger.info(
+            "%s WebMainWindow close requested; shutting down bridge+serial", LogTag.IPC_BRIDGE
+        )
         try:
             self._bridge.shutdown()
         except Exception as exc:
@@ -154,22 +155,18 @@ class WebMainWindow(QMainWindow):
         self._page = self._create_page()
         self._view.setPage(self._page)
 
-        # Enable local storage and JS (least privilege: file URLs only).
         settings = self._view.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
 
-        # Setup QWebChannel
         self._channel = QWebChannel(self._page)
         self._channel.registerObject("bridge", self._bridge)
         self._page.setWebChannel(self._channel)
 
-        # Wire Bridge Window Controls
         self._bridge.closeWindowRequested.connect(self.close)
         self._bridge.minimizeWindowRequested.connect(self.showMinimized)
         self._bridge.maximizeWindowRequested.connect(self._toggle_maximize)
 
-        # Load HTML index
         try:
             index_path = get_web_index_path()
         except FileNotFoundError as exc:

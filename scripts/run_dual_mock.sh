@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Dual-node launcher (development): Node A embeds the in-app link broker and
-# Node B joins it over TCP loopback. No external broker process is required.
-#
-# Usage: ./scripts/run_dual_mock.sh [extra Node A flags]
-#   e.g. ./scripts/run_dual_mock.sh --loss 0.05 --latency-ms 10
-#
-# Both nodes auto-connect and keep data isolated under data/instances/A|B.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

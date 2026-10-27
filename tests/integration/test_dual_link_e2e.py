@@ -39,7 +39,6 @@ def _free_ports(count: int) -> list[int]:
     return ports
 
 
-
 def test_dual_link_file_transfer_via_broker(qtbot: QtBot, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """App A (LINK_A) transmits a file through the broker to App B (LINK_B)."""
     broker = VirtualOpticalLink(port_a=6011, port_b=6012, latency_ms=1.0)
@@ -103,12 +102,8 @@ def test_configured_link_endpoints_relay_chat(qtbot: QtBot, tmp_path: Path) -> N
         "LINK_A": ("127.0.0.1", port_a),
         "LINK_B": ("127.0.0.1", port_b),
     }
-    mgr_a = SerialManager(
-        link_endpoints=endpoints, include_link=True, link_connect_retries=5
-    )
-    mgr_b = SerialManager(
-        link_endpoints=endpoints, include_link=True, link_connect_retries=5
-    )
+    mgr_a = SerialManager(link_endpoints=endpoints, include_link=True, link_connect_retries=5)
+    mgr_b = SerialManager(link_endpoints=endpoints, include_link=True, link_connect_retries=5)
     try:
         assert "LINK_A" in mgr_a.get_port_list()
         assert "LINK_B" in mgr_b.get_port_list()

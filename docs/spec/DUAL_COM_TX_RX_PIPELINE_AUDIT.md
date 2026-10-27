@@ -1,7 +1,7 @@
 # Engineering Audit & Verification Specification: Dual-Port TX/RX Unidirectional Pipeline
 
 **Document Reference:** `docs/spec/DUAL_COM_TX_RX_PIPELINE_AUDIT.md`  
-**System Version:** `v0.4.1` (Architecture: Asymmetric Dual COM / OWC Optical Link)  
+**System Version:** `v0.5.0` (Architecture: Asymmetric Dual COM / OWC Optical Link)  
 **Status:** `VERIFIED & APPROVED`  
 **Target Architecture:** STM32 Physical UART, Virtual COM (`com0com`), POSIX PTY, Dual-Socket TCP  
 

@@ -177,4 +177,3 @@ class PySerialTransport(ITransport):
         """Flushes the outgoing serial write buffer."""
         if self._serial and self._serial.is_open:
             self._serial.flush()
-

@@ -1,5 +1,3 @@
-// Shared UI utilities (classic script, no modules: file:// safe).
-// Loaded before all view controllers. No dependencies.
 (function () {
   'use strict';
 

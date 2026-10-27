@@ -76,7 +76,6 @@ class TestFilePayloads:
 
     def test_file_start_payload_truncated_filename_raises_error(self) -> None:
         """Verifies unpacking where fname_len indicates more bytes than present raises ValueError."""
-        # 13 bytes header indicating fname_len = 20, but no trailing filename bytes
         header = b"\x00\x00\x00\x00" + b"\x00\x00" + b"\x00\x00" + b"\x00\x00\x00\x00" + b"\x14"
         with pytest.raises(ValueError, match="Filename truncated"):
             FileStartPayload.unpack(header)
@@ -182,9 +181,7 @@ class TestLargeFilePayloads:
 
     def test_large_end_uses_u64_byte_count(self) -> None:
         """Verifies >4 GiB byte counts roundtrip in TRANSFER_END_LARGE."""
-        end = FileEndPayloadLarge(
-            file_crc32=0x12345678, total_bytes_sent=9 * 1024 * 1024 * 1024
-        )
+        end = FileEndPayloadLarge(file_crc32=0x12345678, total_bytes_sent=9 * 1024 * 1024 * 1024)
         packed = end.pack()
         assert len(packed) == 12
         assert FileEndPayloadLarge.unpack(packed) == end

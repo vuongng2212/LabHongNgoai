@@ -30,7 +30,6 @@ FORWARD_RECV_CHUNK: int = 4096
 IDLE_POLL_SEC: float = 0.02
 HANDSHAKE_TIMEOUT_SEC: float = 2.0
 
-# Optional token handshake: "<HELLO_PREFIX><token>\n" sent by the client.
 _HELLO_PREFIX: str = "IRLINK 1 "
 
 logger = logging.getLogger(__name__)
@@ -83,7 +82,6 @@ class LinkBroker:
         self._threads: list[threading.Thread] = []
         self._started = False
 
-    # ------------------------------------------------------------------ props
     @property
     def host(self) -> str:
         """Returns the bind host (loopback)."""
@@ -129,7 +127,6 @@ class LinkBroker:
             time.sleep(IDLE_POLL_SEC)
         return False
 
-    # --------------------------------------------------------------- lifecycle
     def start(self) -> None:
         """Binds both ports and spawns accept/forward daemon threads."""
         if self._started:
@@ -148,7 +145,6 @@ class LinkBroker:
                 accept.start()
                 self._threads.append(accept)
         except OSError:
-            # Do not leak the first listener if the second port is busy.
             self.stop()
             raise
         for src, dst in (("A", "B"), ("B", "A")):
@@ -201,7 +197,6 @@ class LinkBroker:
         finally:
             self.stop()
 
-    # ---------------------------------------------------------------- internals
     def _bind_server(self, tcp_port: int) -> socket.socket:
         """Binds one listening socket, exclusive on Windows to avoid hijack."""
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -297,7 +292,6 @@ class LinkBroker:
                 self._drop(dst, dst_conn)
 
 
-# Backward-compatible name used by scripts and existing tests.
 VirtualOpticalLink = LinkBroker
 
 

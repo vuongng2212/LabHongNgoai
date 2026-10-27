@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 class SerialManager(QObject):
     """Coordinates the background QThread and exposes high-level API to UI/Services."""
 
-    # UI facing signals
     connected: ClassVar[Signal] = Signal(str, int)  # (port, baud)
     ports_connected: ClassVar[Signal] = Signal(str, str, int)
     disconnected: ClassVar[Signal] = Signal()
@@ -45,7 +44,6 @@ class SerialManager(QObject):
     ports_changed: ClassVar[Signal] = Signal(list)
     framer_error: ClassVar[Signal] = Signal(str, int)
 
-    # Internal dispatch signals to worker thread
     _sig_open: ClassVar[Signal] = Signal(str, int)
     _sig_open_dual: ClassVar[Signal] = Signal(str, str, int)
     _sig_close: ClassVar[Signal] = Signal()
@@ -85,14 +83,12 @@ class SerialManager(QObject):
         )
         self._worker.moveToThread(self._thread)
 
-        # Connect internal dispatch signals
         self._sig_open.connect(self._worker.open_port)
         self._sig_open_dual.connect(self._worker.open_ports)
         self._sig_close.connect(self._worker.close_port)
         self._sig_send.connect(self._worker.send_bytes)
         self._sig_inject.connect(self._worker.inject_rx_data)
 
-        # Forward worker signals to manager subscribers
         self._worker.connected.connect(self.connected)
         self._worker.ports_connected.connect(self.ports_connected)
         self._worker.disconnected.connect(self.disconnected)
@@ -274,8 +270,7 @@ class SerialManager(QObject):
             self._thread.quit()
             if not self._thread.wait(SHUTDOWN_WAIT_MS):
                 logger.warning(
-                    "%s SerialManager thread did not stop in %d ms "
-                    "(thread_running=%s, port=%s)",
+                    "%s SerialManager thread did not stop in %d ms (thread_running=%s, port=%s)",
                     LogTag.HW_SERIAL,
                     SHUTDOWN_WAIT_MS,
                     self._thread.isRunning(),

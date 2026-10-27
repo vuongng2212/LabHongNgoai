@@ -18,10 +18,8 @@ import re
 import sys
 from pathlib import Path
 
-# Environment override for the writable data root (absolute or relative).
 DATA_DIR_ENV = "IR_DATA_DIR"
 
-# Safe filesystem label for a dual-mock instance (kept short and portable).
 INSTANCE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,16}$"
 _INSTANCE_ID_RE = re.compile(INSTANCE_ID_PATTERN)
 
@@ -52,8 +50,7 @@ def normalize_instance_id(value: str | None) -> str | None:
         return None
     if not _INSTANCE_ID_RE.match(candidate):
         raise InvalidInstanceIdError(
-            f"Invalid instance id {value!r}: expected 1-16 chars matching "
-            f"{INSTANCE_ID_PATTERN}"
+            f"Invalid instance id {value!r}: expected 1-16 chars matching {INSTANCE_ID_PATTERN}"
         )
     return candidate.upper()
 
@@ -116,7 +113,6 @@ def get_assets_dir() -> Path:
     """Returns the directory containing static UI assets and stylesheets."""
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
-        # PyInstaller layout (see ir_terminal.spec): datas -> ir_terminal/ui/web.
         bundled = Path(str(meipass)) / "ir_terminal" / "ui" / "web" / "assets"
         if bundled.exists():
             return bundled

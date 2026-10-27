@@ -50,20 +50,14 @@ from ir_terminal.utils.path_helpers import get_transfers_dir
 
 logger = logging.getLogger(__name__)
 
-# Persistent settings keys for dynamic transfer configuration (via StorageService).
 SETTING_MAX_FILE_SIZE_BYTES = "max_file_size_bytes"
 SETTING_TRANSFERS_DIR = "transfers_dir"
 
-# 0 means unlimited: the client asked for no application-level file cap in
-# order to measure real optical throughput. Positive values remain available
-# as an optional operator safety cap.
 MIN_FILE_SIZE_BYTES: int = 0
 MAX_CONFIGURABLE_FILE_SIZE_BYTES: int = PROTOCOL_MAX_FILE_SIZE_BYTES
 
-# Cancellation reason carried by TRANSFER_PAUSE (ASCII, per PROTOCOL.md).
 CANCEL_REASON: bytes = b"ABORT"
 
-# Streaming CRC read size (bytes). Keeps the pre-transfer checksum pass at O(1) RAM.
 CRC_STREAM_BUFFER_SIZE: int = 1024 * 1024
 
 
@@ -91,15 +85,11 @@ class FileTransferService(QObject):
         self._chunk_size = chunk_size
         self._storage = storage_service or StorageService()
         self._transfers_dir = transfers_dir or get_transfers_dir()
-        # Immutable default used by the Web UI "Reset to default" action. It is
-        # resolved once from the injected path (instance-aware) and never
-        # changed by set_transfers_dir/load_settings.
         self._default_transfers_dir = self._transfers_dir
         self._max_file_size_bytes = MAX_FILE_SIZE_BYTES
 
         self._state_coordinator = StateCoordinator()
 
-        # TX Session State (streaming: only the current chunk is held in RAM)
         self._tx_active: bool = False
         self._current_file_path: Path | None = None
         self._tx_file: BinaryIO | None = None
@@ -115,7 +105,6 @@ class FileTransferService(QObject):
         self._last_chunk_time: float = 0.0
         self._bytes_transferred: int = 0
 
-        # RX Session State (streaming: chunks are written straight to a .part file)
         self._rx_filename: str = ""
         self._rx_file_size: int = 0
         self._rx_chunk_size: int = 0
@@ -123,10 +112,6 @@ class FileTransferService(QObject):
         self._rx_file_crc32: int = 0
         self._rx_file_handle: BinaryIO | None = None
         self._rx_temp_path: Path | None = None
-        # Directory locked for the current RX session, captured at TRANSFER_START.
-        # Both the .part temp file and the final publish resolve against this, so
-        # changing the setting mid-transfer cannot move data across filesystems
-        # (which would make os.replace fail with EXDEV).
         self._rx_dest_dir: Path | None = None
         self._rx_expected_chunk: int = 0
         self._rx_crc32: int = 0
@@ -134,15 +119,10 @@ class FileTransferService(QObject):
         self._rx_bytes_received: int = 0
         self._rx_received_count: int = 0
         self._rx_extended: bool = False
-        # Last accepted RX session IDs: lets a retransmitted START/END (sent
-        # because the peer lost our ACK) be re-acknowledged instead of being
-        # rejected as a new/busy session.
         self._rx_start_seq: int = -1
         self._rx_end_seq: int = -1
         self._rx_end_status: int = AckStatus.OK
 
-        # TX retransmit caches (identical bytes reused, no repack).
-        # Invalidated on every new start_transfer/abort.
         self._cached_start_payload: bytes | None = None
         self._cached_chunk_key: int = -1
         self._cached_chunk_payload: bytes | None = None
@@ -150,24 +130,17 @@ class FileTransferService(QObject):
         self._cached_end_key: int = -1
         self._cached_end_payload: bytes | None = None
 
-        # ARQ Timeout Timer
         self._ack_timer = QTimer(self)
         self._ack_timer.setSingleShot(True)
         self._ack_timer.setInterval(int(DEFAULT_ACK_TIMEOUT_SEC * 1000))
         self._ack_timer.timeout.connect(self._on_ack_timeout)
 
-        # Connect packet reception
         self._serial_manager.packet_received.connect(self._handle_packet)
 
-        # Persisted user settings override injected defaults when present;
-        # explicit transfers_dir acts as the fallback default (tests/dual-mock
-        # use fresh storage, so injected paths are preserved there).
         self._tx_manager = TxManager(self)
         self._rx_manager = RxManager(self)
         self.load_settings()
 
-    # Manager methods remain behind the façade so callers and Qt signal wiring
-    # keep the same API while transfer behavior lives in focused collaborators.
     def start_transfer(self, file_path_str: str) -> None:
         """Starts a file transfer through the TX manager."""
         self._tx_manager.start_transfer(file_path_str)
@@ -437,21 +410,9 @@ class FileTransferService(QObject):
             self._seq,
         )
 
-    # =========================================================================
-    # TX session helpers
-    # =========================================================================
-
     def _compute_file_crc(self, file_path: Path) -> int:
         """Computes whole-file CRC-32 with a bounded-memory streaming read."""
         return IntegrityVerifier.file_crc32(file_path, CRC_STREAM_BUFFER_SIZE)
-
-    # =========================================================================
-    # RX session helpers
-    # =========================================================================
-
-    # =========================================================================
-    # TX public flow
-    # =========================================================================
 
     def abort_transfer(self) -> None:
         """Aborts the current transmission or reception and notifies the peer.
@@ -559,9 +520,6 @@ class FileTransferService(QObject):
                 reason,
             )
 
-    # =========================================================================
-    # Packet dispatch
-    # =========================================================================
     def _handle_packet(self, pkt: object) -> None:
         """Processes incoming ACK/NACK frames or incoming file transfer packets (RX)."""
         if not isinstance(pkt, Packet):

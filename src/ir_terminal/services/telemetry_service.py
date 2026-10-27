@@ -20,13 +20,10 @@ from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
 
-# Carrier label shown in sniffer (single source; TFDU4101 peak per PROTOCOL.md).
 CARRIER_LABEL = "880nm NIR"
 
-# In-memory sniffer cap (live view only; totals tracked separately).
 SNIFFER_MAX_RECORDS = 200
 
-# Minimum interval between JSON telemetry persists (s) to avoid rewrite-per-tick.
 TELEMETRY_PERSIST_SEC = 5.0
 
 
@@ -88,14 +85,11 @@ class TelemetryService(QObject):
         self._storage = storage_service or StorageService()
         self._window_sec = window_sec
 
-        # Traffic sliding window: list of (timestamp_epoch, byte_count)
         self._tx_byte_events: deque[tuple[float, int]] = deque()
         self._rx_byte_events: deque[tuple[float, int]] = deque()
-        # Running sums mirror the deques (refactor: avoids sum() scan each tick)
         self._tx_window_bytes: int = 0
         self._rx_window_bytes: int = 0
 
-        # Cumulative counters
         self._total_bytes_sent: int = 0
         self._total_bytes_received: int = 0
         self._total_packets_sent: int = 0
@@ -103,7 +97,6 @@ class TelemetryService(QObject):
         self._total_packets_lost: int = 0
         self._total_chunks_transferred: int = 0
 
-        # Physical link metrics (0.0 = no measurement yet; never seed fake RTT).
         self._current_throughput_kbps: float = 0.0
         self._current_tx_kbps: float = 0.0
         self._current_rx_kbps: float = 0.0
@@ -114,10 +107,8 @@ class TelemetryService(QObject):
         self._framer_eof_errors: int = 0
         self._last_persist_time: float = 0.0
 
-        # Sniffer frame trace ring buffer (live view; totals tracked separately)
         self._sniffer_records: deque[SnifferRecord] = deque(maxlen=SNIFFER_MAX_RECORDS)
 
-        # Periodic ticker
         self._timer = QTimer(self)
         self._timer.setInterval(sample_interval_ms)
         self._timer.timeout.connect(self._on_tick)
@@ -477,7 +468,6 @@ class TelemetryService(QObject):
         now = time.time()
         cutoff = now - self._window_sec
 
-        # Prune old traffic events, keeping running sums in sync (same cutoff rule)
         while self._tx_byte_events and self._tx_byte_events[0][0] < cutoff:
             _, pruned = self._tx_byte_events.popleft()
             self._tx_window_bytes -= pruned
@@ -485,12 +475,13 @@ class TelemetryService(QObject):
             _, pruned = self._rx_byte_events.popleft()
             self._rx_window_bytes -= pruned
 
-        # Actual span (not fixed window) so idle gaps don't dilute throughput.
         oldest: float | None = None
         if self._tx_byte_events:
             oldest = self._tx_byte_events[0][0]
         if self._rx_byte_events:
-            oldest = min(oldest, self._rx_byte_events[0][0]) if oldest else self._rx_byte_events[0][0]
+            oldest = (
+                min(oldest, self._rx_byte_events[0][0]) if oldest else self._rx_byte_events[0][0]
+            )
         span = max(now - oldest, 0.1) if oldest is not None else max(self._window_sec, 0.1)
         span = min(span, max(self._window_sec, 0.1))
 
@@ -506,8 +497,6 @@ class TelemetryService(QObject):
         else:
             self._current_loss_rate = 0.0
 
-        # Batch JSON persist (at most every TELEMETRY_PERSIST_SEC) to avoid
-        # rewriting the whole store on every 1s tick.
         if (total_bytes > 0 or self._total_packets_sent > 0) and (
             now - self._last_persist_time >= TELEMETRY_PERSIST_SEC
         ):

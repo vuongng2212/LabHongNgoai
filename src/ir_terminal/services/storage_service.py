@@ -27,10 +27,8 @@ _TRANSFERS_FILE = "file_transfers.json"
 _TELEMETRY_FILE = "telemetry_samples.json"
 _SETTINGS_FILE = "settings.json"
 
-# Upper bound for periodic telemetry samples kept on disk.
 _MAX_TELEMETRY_SAMPLES = 5000
 
-# Upper bounds for chat / transfer histories (prevents unbounded JSON growth).
 _MAX_CHAT_MESSAGES = 2000
 _MAX_TRANSFER_RECORDS = 5000
 
@@ -181,7 +179,6 @@ class StorageService:
 
         path = self._store_path(filename)
         tmp_path = path.with_suffix(path.suffix + ".tmp")
-        # Compact separators: identical parsed data, ~20-30% fewer bytes written.
         with open(tmp_path, "w", encoding="utf-8") as f:
             f.write(json.dumps(records, ensure_ascii=False, separators=(",", ":")))
             f.flush()
@@ -578,7 +575,9 @@ class StorageService:
             settings[key] = value
             path = self._store_path(_SETTINGS_FILE)
             tmp_path = path.with_suffix(path.suffix + ".tmp")
-            tmp_path.write_text(json.dumps(settings, ensure_ascii=False, indent=1), encoding="utf-8")
+            tmp_path.write_text(
+                json.dumps(settings, ensure_ascii=False, indent=1), encoding="utf-8"
+            )
             tmp_path.replace(path)
 
     def get_setting(self, key: str, default: str = "") -> str:

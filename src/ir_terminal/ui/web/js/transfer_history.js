@@ -1,6 +1,3 @@
-// File transfer history table (extracted from file_controller.js).
-// Owns cache + filter + render + row actions. Depends on:
-// window.SpectraLinkUtils.escapeHtml, window.bridge (async), window.UIFeedback (optional).
 (function () {
   'use strict';
 
@@ -40,8 +37,6 @@
     function pushSuccess(rec) {
       cache.unshift(rec);
       render();
-      // Re-sync from hard-drive store so the new row gains its recorded file_path
-      // (used by the open-location row action) without changing signals.
       reload();
     }
 
@@ -77,7 +72,6 @@
         return;
       }
 
-      // Batch all rows into a DocumentFragment: identical DOM, one reflow.
       const fragment = document.createDocumentFragment();
       items.forEach(item => {
         const row = document.createElement('tr');

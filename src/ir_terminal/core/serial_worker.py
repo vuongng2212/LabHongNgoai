@@ -46,7 +46,6 @@ def _windows_registry_ports() -> list[str]:
     try:
         winreg = importlib.import_module("winreg")
     except ImportError:
-        # winreg does not exist on non-Windows hosts.
         return []
     ports: list[str] = []
     try:
@@ -122,7 +121,6 @@ def _virtual_port_info(device: str, description: str) -> PortInfo:
 class SerialWorker(QObject):
     """Background worker managing serial port I/O and emitting parsed packets."""
 
-    # Qt Signals
     connected: ClassVar[Signal] = Signal(str, int)
     ports_connected: ClassVar[Signal] = Signal(str, str, int)
     disconnected: ClassVar[Signal] = Signal()
@@ -257,9 +255,6 @@ class SerialWorker(QObject):
             self._current_rx_port = rx_name
             self._current_baud = baudrate
 
-            # Setup periodic non-blocking poll timer on worker thread event loop.
-            # Mock loopback simulation polls faster (2ms) so file-transfer demos
-            # stay snappy; real UART hardware keeps the conservative 10ms tick.
             from ir_terminal.core.mock_serial import MockSerialPort
 
             poll_ms = MOCK_POLL_MS if isinstance(self._transport, MockSerialPort) else HW_POLL_MS
@@ -326,10 +321,6 @@ class SerialWorker(QObject):
         self._link_lost_pending = False
         self._current_tx_port = ""
         self._current_rx_port = ""
-        # Only emit on a real connected->disconnected transition. open_port()
-        # calls close_port() as cleanup, and emitting here would fake a
-        # disconnect that wipes pending-connect UI state before the real
-        # connected/error signal arrives.
         if was_open:
             logger.info(
                 "%s Port CLOSED (%s): buffered=%dB dropped=%dB frames_ok=%d "
@@ -391,9 +382,6 @@ class SerialWorker(QObject):
         pending_len = len(pending)
         packets, remaining = parse_frames_with_stats(pending, self._framer_stats)[:2]
         pending.release()
-        # Release the view export before any compaction: resizing
-        # a bytearray with live exports raises BufferError, which
-        # would kill polling and stall the ARQ session.
         self._rx_consumed = len(self._rx_accumulation) - len(remaining)
         if self._rx_consumed >= RX_COMPACT_THRESHOLD:
             del self._rx_accumulation[: self._rx_consumed]
@@ -479,8 +467,6 @@ class SerialWorker(QObject):
             )
             self.error_occurred.emit("Link lost: peer or broker disconnected")
             self.close_port()
-            # close_port() sees is_open already False and stays silent, so the
-            # UI disconnect transition is emitted explicitly here.
             self.disconnected.emit()
             return
         if not self._transport.is_open:
@@ -500,9 +486,6 @@ class SerialWorker(QObject):
                             format_hex_preview(chunk),
                         )
                     self.raw_data_received.emit(chunk)
-                    # Extend bytearray (amortized, no full copy) and parse a
-                    # memoryview over the unconsumed tail. Compaction only when
-                    # the consumed prefix grows large, avoiding memmove per poll.
                     self._append_rx_chunk(chunk)
                     self._drain_rx_buffer(emit_raw=False)
 

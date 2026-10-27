@@ -89,7 +89,6 @@ class TestFramer:
         payload = b"Sensor Data 12345"
         frame = bytearray(pack_frame(seq=1, opcode=Opcode.DATA_CHUNK, payload=payload))
 
-        # Corrupt 1 byte in payload
         frame[8] ^= 0xFF
 
         packets, remaining = parse_frames_from_buffer(bytes(frame))
@@ -98,7 +97,6 @@ class TestFramer:
     def test_corrupted_eof_is_rejected(self) -> None:
         """Verifies that EOF delimiter mismatch causes packet rejection."""
         frame = bytearray(pack_frame(seq=1, opcode=Opcode.DATA_CHUNK, payload=b"test"))
-        # Tamper with EOF byte
         frame[-1] = 0x00
 
         packets, remaining = parse_frames_from_buffer(bytes(frame))
@@ -138,16 +136,13 @@ class TestFramer:
         """Verifies that incomplete fragmented frames are preserved in remaining buffer."""
         full_frame = pack_frame(seq=7, opcode=Opcode.DATA_TEXT, payload=b"Long message payload")
 
-        # Split into two halves
         part1 = full_frame[:12]
         part2 = full_frame[12:]
 
-        # Feed part 1
         packets1, rem1 = parse_frames_from_buffer(part1)
         assert len(packets1) == 0
         assert rem1 == part1
 
-        # Feed part 2 appended to part 1
         packets2, rem2 = parse_frames_from_buffer(rem1 + part2)
         assert len(packets2) == 1
         assert packets2[0].seq == 7
@@ -169,7 +164,6 @@ class TestFramer:
 
     def test_corrupted_header_payload_length_exceeds_max(self) -> None:
         """Verifies false-positive SOF with payload_len > MAX_PAYLOAD_SIZE is skipped."""
-        # Header with payload_len = 1000 (> 512)
         fake_header = struct.pack("<HBBH", SOF_MAGIC, 1, Opcode.DATA_CHUNK, 1000)
         valid_frame = pack_frame(seq=2, opcode=Opcode.PING, payload=b"")
 
@@ -187,19 +181,16 @@ class TestFramer:
 
     def test_stm32_c_firmware_ack_frame_exact_binary_match(self) -> None:
         """Verifies python packed frame matches the exact byte layout sent by STM32 firmware C routine."""
-        # Equivalent to STM32 IR_Send_ACK(huart, 42)
         acked_seq = 42
         ack_payload = struct.pack("<BB", acked_seq, 0)  # [acked_seq, status=0]
         py_frame = pack_frame(seq=acked_seq, opcode=Opcode.ACK, payload=ack_payload)
 
-        # Build exact manual frame as defined in docs/PROTOCOL.md Section 5.2
         c_body = bytes([acked_seq, Opcode.ACK, 2, 0, acked_seq, 0])
         c_crc = compute_crc32(c_body)
         c_frame = bytes([0x55, 0xAA]) + c_body + struct.pack("<IH", c_crc, EOF_MAGIC)
 
         assert py_frame == c_frame
 
-        # And verify it parses back
         packets, remaining = parse_frames_from_buffer(c_frame)
         assert len(packets) == 1
         assert packets[0].seq == acked_seq

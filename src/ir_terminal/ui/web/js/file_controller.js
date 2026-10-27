@@ -1,5 +1,3 @@
-// File Transfer Viewport Controller with dynamic telemetry updates & hard-drive history loading
-// History table rendering/filtering lives in transfer_history.js (window.TransferHistory).
 let selectedFilePath = '';
 
 function initFileController() {
@@ -33,7 +31,6 @@ function initFileController() {
     ? window.TransferHistory.create({ table: historyTable, searchInput: searchInput })
     : null;
 
-  // Wire Dropzone & Browse Click
   document.addEventListener('click', (e) => {
     const dropzone = e.target.closest('#view-file .border-dashed');
     const btn = e.target.closest('button');
@@ -53,11 +50,8 @@ function initFileController() {
 
     if (!btn) return;
 
-    // Global feedback layer (confirm modal / toasts) owns its buttons —
-    // ignore them here so modal actions like Cancel/Abort can't retrigger.
     if (btn.closest('#modal-overlay, #toast-container, #settings-overlay')) return;
 
-    // Row-level icon actions (e.g. open storage location) carry data-action.
     const actionBtn = btn.closest('[data-action]');
     if (actionBtn) {
       if (history) history.handleRowAction(actionBtn);
@@ -123,7 +117,6 @@ function initFileController() {
     console.log('Selected file for optical transmission:', path);
   }
 
-  // Bridge connects asynchronously (QWebChannel); shared helper wires once ready.
   function tryWireBridge() {
     if (window.SpectraLinkBridge) window.SpectraLinkBridge.onReady('file', wireBridgeSignals);
     else if (!window.bridge) setTimeout(tryWireBridge, 300);
@@ -181,7 +174,6 @@ function initFileController() {
       }
     });
 
-    // Load persisted file history from local hard-drive store
     if (history) history.reload();
   }
 

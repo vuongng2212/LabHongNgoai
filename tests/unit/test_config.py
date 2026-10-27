@@ -54,8 +54,14 @@ class TestParseLaunchArgs:
         assert config.preferred_port == "LINK_B"
 
     def test_auto_role_follows_instance(self) -> None:
-        assert parse_launch_args(["--instance", "A", "--link-role", "auto"]).effective_link_role == "host"
-        assert parse_launch_args(["--instance", "B", "--link-role", "auto"]).effective_link_role == "join"
+        assert (
+            parse_launch_args(["--instance", "A", "--link-role", "auto"]).effective_link_role
+            == "host"
+        )
+        assert (
+            parse_launch_args(["--instance", "B", "--link-role", "auto"]).effective_link_role
+            == "join"
+        )
 
     def test_explicit_port_and_flags(self) -> None:
         config = parse_launch_args(
@@ -96,9 +102,7 @@ class TestParseLaunchArgs:
         assert config.effective_rx_port == "COM9"
 
     def test_explicit_ports_override_legacy_port(self) -> None:
-        config = parse_launch_args(
-            ["--port", "COM9", "--tx-port", "COM3", "--rx-port", "COM4"]
-        )
+        config = parse_launch_args(["--port", "COM9", "--tx-port", "COM3", "--rx-port", "COM4"])
         assert config.effective_tx_port == "COM3"
         assert config.effective_rx_port == "COM4"
 
@@ -121,7 +125,9 @@ class TestParseLaunchArgs:
         )
 
     def test_link_endpoints_use_base_port(self) -> None:
-        config = parse_launch_args(["--instance", "A", "--link-role", "host", "--link-base-port", "7100"])
+        config = parse_launch_args(
+            ["--instance", "A", "--link-role", "host", "--link-base-port", "7100"]
+        )
         assert config.link_endpoints == {
             "LINK_A": ("127.0.0.1", 7100),
             "LINK_B": ("127.0.0.1", 7101),

@@ -26,7 +26,6 @@ class TestConcurrentChatAndFileTransfer:
         chat_service = ChatService(manager)
         file_service = FileTransferService(manager, chunk_size=64)
 
-        # Create multi-chunk test file
         test_content = b"Concurrent Chat and File Transfer Optical Test\n" * 20
         with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as tmp:
             tmp.write(test_content)
@@ -38,14 +37,11 @@ class TestConcurrentChatAndFileTransfer:
         )
 
         try:
-            # Start file transfer
             file_service.start_transfer(tmp_path)
 
-            # Send multiple chat messages concurrently
             chat_service.send_message("Chat message 1 during file transfer")
             chat_service.send_message("Chat message 2 during file transfer")
 
-            # Wait for file transfer to complete
             with qtbot.waitSignal(file_service.transfer_completed, timeout=10000) as blocker:
                 pass
 
@@ -54,7 +50,6 @@ class TestConcurrentChatAndFileTransfer:
             assert bytes_sent == len(test_content)
             assert file_service.state == TransferState.COMPLETED
 
-            # Verify chat messages were sent and recorded
             assert "Chat message 1 during file transfer" in chat_received_messages
             assert "Chat message 2 during file transfer" in chat_received_messages
 

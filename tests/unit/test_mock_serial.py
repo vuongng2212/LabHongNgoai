@@ -36,12 +36,9 @@ class TestMockSerial:
         port = MockSerialPort(simulated_latency_ms=10.0)
         port.open()
 
-        # Send PING packet to mock device
         ping_frame = pack_frame(seq=99, opcode=Opcode.PING, payload=b"OPTICAL_TEST")
         port.write(ping_frame)
 
-        # Non-blocking mock: response is delivered after latency; force-flush
-        # for a deterministic unit test without sleeping the worker thread.
         port.flush_due(force=True)
         assert port.in_waiting > 0
         rx_data = port.read(port.in_waiting)
@@ -57,9 +54,7 @@ class TestMockSerial:
         port.open()
         port.set_los_blocked(True)
 
-        # Send PING while beam is blocked
         ping_frame = pack_frame(seq=1, opcode=Opcode.PING, payload=b"TEST")
         port.write(ping_frame)
 
-        # No PONG should be generated
         assert port.in_waiting == 0

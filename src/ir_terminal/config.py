@@ -28,7 +28,6 @@ from ir_terminal.utils.path_helpers import (
     normalize_instance_id,
 )
 
-# Link/transport defaults shared by the CLI, broker and launcher scripts.
 DEFAULT_BAUD: int = 115200
 DEFAULT_LINK_HOST: str = "127.0.0.1"
 DEFAULT_LINK_BASE_PORT: int = 6001
@@ -40,8 +39,6 @@ TRANSPORT_MODES: tuple[str, ...] = ("auto", "serial", "link", "mock")
 LINK_ROLES: tuple[str, ...] = ("off", "host", "join", "auto")
 WINDOW_POSITIONS: tuple[str, ...] = ("normal", "left", "right")
 
-# Connect budget for LINK_* ports: whichever node starts first keeps retrying
-# until the host's in-app broker is listening. Runs on the worker thread only.
 LINK_CONNECT_RETRIES: int = 20
 LINK_CONNECT_RETRY_INTERVAL_SEC: float = 0.25
 LINK_CONNECT_ATTEMPT_TIMEOUT_SEC: float = 0.5
@@ -318,18 +315,14 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
     if args.link_role is not None:
         link_role: str = str(args.link_role)
     elif args.transport == "link":
-        # `--transport link` is enough; derive host/join from the instance.
         link_role = "auto"
     elif args.transport in ("serial", "mock"):
-        # Explicit hardware/mock transport wins over an ambient dual-mock env.
         link_role = "off"
     elif is_dual_mock_enabled():
-        # Backward compatibility: IR_ENABLE_DUAL_MOCK=1 implies the in-app link.
         link_role = "auto"
     else:
         link_role = "off"
 
-    # Let the two Windows launchers omit --instance when the role implies it.
     if instance is None and link_role in ("host", "join", "auto"):
         instance = "B" if link_role == "join" else "A"
 

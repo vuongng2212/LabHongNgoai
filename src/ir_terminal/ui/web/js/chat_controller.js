@@ -1,4 +1,3 @@
-// Realtime Optical Chat Viewport Controller with persistent hard-drive history loading
 function initChatController() {
   const chatInput = document.querySelector('#view-chat input');
   const sendBtn = document.querySelector('#view-chat button.bg-primary-container, #view-chat button:has(span[data-icon="send"])');
@@ -54,7 +53,6 @@ function initChatController() {
     `;
   }
 
-  // Bridge connects asynchronously (QWebChannel); shared helper wires once ready.
   function tryWireBridge() {
     if (window.SpectraLinkBridge) window.SpectraLinkBridge.onReady('chat', wireBridgeSignals);
     else if (!window.bridge) setTimeout(tryWireBridge, 300);
@@ -72,14 +70,12 @@ function initChatController() {
       }
     });
 
-    // Load persisted chat history from local hard-drive store
     if (typeof window.bridge.getChatHistory === 'function') {
       window.bridge.getChatHistory((historyJson) => {
         try {
           const messages = JSON.parse(historyJson);
           if (Array.isArray(messages) && messages.length > 0 && chatContainer) {
             chatContainer.innerHTML = '';
-            // Batch into a fragment: identical DOM, one reflow + one scroll.
             const fragment = document.createDocumentFragment();
             messages.forEach(msg => {
               appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing, fragment);
@@ -148,8 +144,6 @@ function initChatController() {
     }
 
     container.appendChild(wrapper);
-    // Skip per-message forced layout when batch-loading into a fragment;
-    // the caller scrolls once after the batch append.
     if (!target) {
       chatContainer.scrollTop = chatContainer.scrollHeight;
     }

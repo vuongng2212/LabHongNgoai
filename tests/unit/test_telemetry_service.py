@@ -22,7 +22,6 @@ class TestTelemetryService:
             storage = StorageService(data_dir=Path(tmpdir) / "data")
             telemetry = TelemetryService(storage_service=storage, window_sec=1.0)
 
-            # Register traffic
             telemetry.record_bytes_sent(1024)
             telemetry.record_bytes_received(512)
             assert telemetry.total_packets_sent == 0
@@ -30,18 +29,15 @@ class TestTelemetryService:
             telemetry.record_packet_sent(seq=1, opcode=Opcode.DATA_CHUNK, length=256)
             assert telemetry.total_packets_sent == 1
 
-            # Register incoming packet
             hdr = Header(sof=0xAA55, seq=1, opcode=Opcode.ACK, length=2)
             pkt = Packet(header=hdr, payload=b"\x01\x00", crc32=0x12345678, eof=0x55AA)
             telemetry.record_packet_received(pkt, latency_ms=28.5)
             assert telemetry.total_packets_received == 1
             assert telemetry.last_rtt_ms == 28.5
 
-            # Register chunk transfer
             telemetry.record_chunk_transferred()
             assert telemetry.total_chunks_transferred == 1
 
-            # Trigger tick calculation
             telemetry._on_tick()
             app.processEvents()
 
@@ -66,7 +62,6 @@ class TestTelemetryService:
             assert records[0]["type_str"] == "LINK_PING"
             assert records[1]["type_str"] == "LINK_PONG"
 
-            # Export sniffer CSV
             csv_path = Path(tmpdir) / "sniffer_test.csv"
             csv_text = telemetry.export_sniffer_csv(csv_path)
             assert "LINK_PING" in csv_text

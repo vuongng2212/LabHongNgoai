@@ -1,14 +1,3 @@
-// Reusable UI Feedback System — Toasts + Centered Modal + Button loading.
-// No dependencies. Theme-matched to SpectraLink Apple Modern Precision Light.
-// Public API on window.UIFeedback:
-//   showToast(type, title, message, opts {durationMs})
-//     type: 'success' | 'info' | 'warning' | 'error'
-//   showModal({variant, icon, title, message, details, actions})
-//     variant: 'success' | 'error' | 'info' | 'confirm'
-//     actions: [{id, label, kind: 'primary'|'secondary'|'danger', onClick(close)}]
-//     returns close()
-//   confirmModal({title, message, confirmLabel, cancelLabel, danger}) -> Promise<boolean>
-//   setButtonLoading(btn, loading, loadingText?) -> restores original content
 (function () {
   'use strict';
 
@@ -77,7 +66,6 @@
     }
     el.querySelector('.toast-close').addEventListener('click', close);
     c.toasts.appendChild(el);
-    // Cap stack at 4
     while (c.toasts.children.length > 4) c.toasts.firstChild.remove();
     if (duration > 0) setTimeout(close, duration);
     return close;

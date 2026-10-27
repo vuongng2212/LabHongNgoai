@@ -85,7 +85,7 @@ class TestLogHelpers:
         assert format_hex_preview(b"") == "<empty>"
 
     def test_format_hex_preview_short(self) -> None:
-        assert format_hex_preview(b"\x55\xAA\x02") == "55 AA 02 (len=3B)"
+        assert format_hex_preview(b"\x55\xaa\x02") == "55 AA 02 (len=3B)"
 
     def test_format_hex_preview_truncated(self) -> None:
         data = bytes(range(50))
@@ -96,7 +96,7 @@ class TestLogHelpers:
 
     def test_format_hex_preview_accepts_bytearray_and_memoryview(self) -> None:
         assert format_hex_preview(bytearray(b"\x01\x02")) == "01 02 (len=2B)"
-        assert format_hex_preview(memoryview(b"\x0A\x0B")) == "0A 0B (len=2B)"
+        assert format_hex_preview(memoryview(b"\x0a\x0b")) == "0A 0B (len=2B)"
 
     def test_format_hex_preview_custom_max_bytes(self) -> None:
         preview = format_hex_preview(b"\x01\x02\x03\x04", max_bytes=2)
@@ -148,9 +148,7 @@ class TestLoggerSetup:
 class TestFramerLogging:
     """Tests framer validation logs and parse error counters."""
 
-    def test_pack_rejects_oversize_payload_with_error_log(
-        self, caplog: LogCaptureFixture
-    ) -> None:
+    def test_pack_rejects_oversize_payload_with_error_log(self, caplog: LogCaptureFixture) -> None:
         with caplog.at_level(logging.ERROR):
             with pytest.raises(ValueError):
                 pack_frame(seq=1, opcode=Opcode.DATA_TEXT, payload=b"X" * (MAX_PAYLOAD_SIZE + 1))
@@ -200,13 +198,11 @@ class TestFramerLogging:
         assert "crc_error" in caplog.text
         assert "expected=0x" in caplog.text
 
-    def test_noise_bytes_counted_and_valid_frame_recovers(
-        self, caplog: LogCaptureFixture
-    ) -> None:
+    def test_noise_bytes_counted_and_valid_frame_recovers(self, caplog: LogCaptureFixture) -> None:
         frame = pack_frame(seq=11, opcode=Opcode.PONG, payload=b"ok")
         stats = FramerStats()
         with caplog.at_level(logging.DEBUG, logger="ir_terminal"):
-            packets, _remaining, out = parse_frames_with_stats(b"\x00\xFF\x00" + frame, stats)
+            packets, _remaining, out = parse_frames_with_stats(b"\x00\xff\x00" + frame, stats)
         assert len(packets) == 1
         assert packets[0].seq == 11
         assert out.noise_bytes == 3
@@ -229,9 +225,7 @@ class TestPayloadLogging:
             FileStartPayload.unpack(payload[:-2])
         assert "truncated" in caplog.text.lower()
 
-    def test_file_start_long_filename_warns_and_truncates(
-        self, caplog: LogCaptureFixture
-    ) -> None:
+    def test_file_start_long_filename_warns_and_truncates(self, caplog: LogCaptureFixture) -> None:
         payload = FileStartPayload(
             file_size=10, chunk_size=240, total_chunks=1, file_crc32=1, filename="n" * 300
         ).pack()
@@ -276,7 +270,7 @@ class TestSerialWorkerLogging:
         errors: list[str] = []
         worker.error_occurred.connect(errors.append)
         with caplog.at_level(logging.WARNING):
-            worker.send_bytes(b"\x55\xAA\x00")
+            worker.send_bytes(b"\x55\xaa\x00")
         assert errors == ["Cannot send data: Serial port is not connected"]
         assert "not connected" in caplog.text
 
@@ -341,7 +335,9 @@ class TestChatLogging:
 class TestFileTransferLogging:
     """Tests ARQ state transition and dispatch logs."""
 
-    def _service(self) -> tuple[SerialManager, FileTransferService, tempfile.TemporaryDirectory[str]]:
+    def _service(
+        self,
+    ) -> tuple[SerialManager, FileTransferService, tempfile.TemporaryDirectory[str]]:
         _ensure_app()
         manager = SerialManager()
         tmp = tempfile.TemporaryDirectory()
@@ -451,9 +447,7 @@ class TestTelemetryLogging:
 class TestStorageLogging:
     """Tests storage diagnostics for corrupt and missing stores."""
 
-    def test_missing_store_logs_debug_and_returns_empty(
-        self, caplog: LogCaptureFixture
-    ) -> None:
+    def test_missing_store_logs_debug_and_returns_empty(self, caplog: LogCaptureFixture) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             storage = StorageService(data_dir=Path(tmpdir) / "data")
             with caplog.at_level(logging.DEBUG, logger="ir_terminal"):

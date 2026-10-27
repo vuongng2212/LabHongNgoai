@@ -182,7 +182,6 @@ class TxManager:
         service._use_extended = extended
         service._start_time = time.time()
         service._last_chunk_time = service._start_time
-        # Invalidate retransmit caches for the new session
         service._cached_start_payload = None
         service._cached_chunk_key = -1
         service._cached_chunk_payload = None
@@ -230,9 +229,6 @@ class TxManager:
                 False to reuse the current sequence number for retransmission.
         """
         service: FileTransferService = self._service
-        # Retransmission of the same chunk reuses the identical packed payload
-        # (only the outer frame seq is reused); new chunks read one chunk from
-        # the open file, so RAM usage stays O(chunk_size).
         if (
             not new_seq
             and service._cached_chunk_payload is not None
@@ -299,8 +295,6 @@ class TxManager:
         """
         service: FileTransferService = self._service
         service._set_state(TransferState.FINALIZING)
-        # TRANSFER_END payload depends only on (crc, bytes_transferred), both
-        # frozen once FINALIZING is entered, so retransmits reuse packed bytes.
         packed_end: bytes
         if (
             not new_seq
@@ -453,7 +447,6 @@ class TxManager:
             bytes_transferred = service._bytes_transferred
             service._set_state(TransferState.COMPLETED)
 
-            # Persist transfer record into hard drive JSON store
             rec_id = service._storage.save_file_transfer(
                 filename=fname,
                 file_path=fpath,
@@ -508,8 +501,6 @@ class TxManager:
                 format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
             )
             return
-        # A late NACK for an older frame must not retransmit the current one or
-        # consume its retry budget.
         if nack_info.acked_seq != service._seq:
             logger.warning(
                 "%s Stale NACK ignored: expected seq=%d got acked_seq=%d state=%s frame=%s",
@@ -584,7 +575,6 @@ class TxManager:
             service._total_chunks,
         )
         if service._state == TransferState.HANDSHAKING:
-            # Reuse the packed START bytes from start_transfer (identical content).
             if service._cached_start_payload is None and service._current_file_path:
                 service._cached_start_payload = ProtocolAdapter.start_payload(
                     extended=service._use_extended,

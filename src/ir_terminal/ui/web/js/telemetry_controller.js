@@ -1,4 +1,3 @@
-// Telemetry & Diagnostics Viewport Controller with live telemetry updates, sniffer filtering, dynamic canvas charts, and CSV export
 let snifferRecordsCache = [];
 let activeFilter = 'ALL';
 let speedHistory = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -25,7 +24,6 @@ function initTelemetryController() {
   const collapseBtn = viewTelemetry.querySelector('button[title*="Collapse"]');
   const snifferTableContainer = document.getElementById('sniffer-table-container');
 
-  // Canvas Chart Elements
   const speedCanvas = document.getElementById('live-speed-chart');
   const rttCanvas = document.getElementById('live-rtt-chart');
 
@@ -35,11 +33,9 @@ function initTelemetryController() {
     }
   }
 
-  // Draw initial blank charts
   setTimeout(drawCanvasCharts, 50);
   window.addEventListener('resize', drawCanvasCharts);
 
-  // Wire Collapse / Expand Drawer
   if (collapseBtn && snifferTableContainer) {
     collapseBtn.addEventListener('click', () => {
       if (snifferTableContainer.style.display === 'none') {
@@ -52,12 +48,10 @@ function initTelemetryController() {
     });
   }
 
-  // Wire Export CSV and Reset buttons
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
 
-    // Global feedback layer (confirm modal / toasts) owns its buttons.
     if (btn.closest('#modal-overlay, #toast-container, #settings-overlay')) return;
 
     if (btn.innerText.includes('Export CSV')) {
@@ -79,7 +73,6 @@ function initTelemetryController() {
             });
           }
         }
-        // Empty path = user cancelled native save dialog: stay silent.
       });
     } else if (btn.innerText.includes('Reset Counters')) {
       if (!window.bridge) {
@@ -109,7 +102,6 @@ function initTelemetryController() {
     }
   });
 
-  // Filter chips click handling
   if (filterButtons) {
     filterButtons.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -123,7 +115,6 @@ function initTelemetryController() {
     });
   }
 
-  // Search filter
   if (searchInput) {
     searchInput.addEventListener('input', () => {
       renderFilteredSnifferTable();
@@ -144,7 +135,6 @@ function initTelemetryController() {
     if (chunksValueElem) chunksValueElem.innerText = chunksCount.toLocaleString();
     if (frameCountBadge) frameCountBadge.innerText = `${framesCount.toLocaleString()} frames captured`;
 
-    // Append to chart history
     speedHistory.push(speedKbps);
     if (speedHistory.length > 20) speedHistory.shift();
     if (rttMs > 0) {
@@ -161,7 +151,6 @@ function initTelemetryController() {
     if (!matchesFilter(rec)) return;
     if (!snifferTableBody) return;
 
-    // Remove empty placeholder if present
     const emptyRow = snifferTableBody.querySelector('td[colspan="7"]');
     if (emptyRow) {
       snifferTableBody.innerHTML = '';
@@ -170,7 +159,6 @@ function initTelemetryController() {
     const row = createSnifferRowElement(rec);
     snifferTableBody.prepend(row);
 
-    // Limit displayed rows in DOM
     while (snifferTableBody.children.length > 100) {
       snifferTableBody.removeChild(snifferTableBody.lastChild);
     }
@@ -239,7 +227,6 @@ function initTelemetryController() {
       return;
     }
 
-    // Batch into a fragment: identical DOM, one reflow.
     const fragment = document.createDocumentFragment();
     filtered.slice(-100).reverse().forEach(rec => {
       fragment.appendChild(createSnifferRowElement(rec));
@@ -253,7 +240,6 @@ function initTelemetryController() {
     return String(str);
   }
 
-  // Connect WebChannel signals (bridge arrives async; shared helper wires once).
   function tryWireBridge() {
     if (window.SpectraLinkBridge) window.SpectraLinkBridge.onReady('telemetry', wireBridgeSignals);
     else if (!window.bridge) setTimeout(tryWireBridge, 300);
@@ -278,7 +264,6 @@ function initTelemetryController() {
       });
     });
 
-    // Initial stats fetch
     if (typeof window.bridge.getTelemetryStats === 'function') {
       window.bridge.getTelemetryStats((statsJson) => {
         try {
@@ -319,7 +304,6 @@ function initTelemetryController() {
   }
 
   tryWireBridge();
-  // Render empty state immediately so the table is never blank pre-bridge.
   renderFilteredSnifferTable();
 }
 

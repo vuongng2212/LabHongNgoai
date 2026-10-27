@@ -1,13 +1,4 @@
-// Transfer Settings Modal Controller (Apple Modern Precision Light)
-//
-// Opens via header #btn-top-settings, loads JSON via bridge.getSettings,
-// saves the receive directory via bridge.saveSettings, browses via
-// bridge.browseTransfersDir and resets to the app default via
-// default_transfers_dir. The path field accepts typed/pasted paths (validated
-// by the backend). File transfers are unlimited by design (the service streams
-// chunks to disk), so there is no max-size field anymore.
 (function () {
-  // Backend-provided default receive folder (used by "Reset to default").
   let defaultDir = '';
 
   function $(id) { return document.getElementById(id); }
@@ -78,8 +69,6 @@
     if (dirInput) dirInput.focus();
   }
 
-  // Persists a receive directory through the bridge; the backend validates,
-  // creates and stores it, and returns an error string when it is unusable.
   function persistDir(dir, successTitle) {
     if (!window.bridge || typeof window.bridge.saveSettings !== 'function') {
       showError('Backend not connected.');
@@ -164,7 +153,6 @@
         if (active && active.id === 'settings-dir') saveSettings();
       }
     });
-    // Refresh the hint once the bridge is ready (QWebChannel async).
     function refreshHintWhenReady() {
       if (window.bridge && typeof window.bridge.getSettings === 'function') {
         window.bridge.getSettings((raw) => {

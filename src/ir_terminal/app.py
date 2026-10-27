@@ -32,8 +32,6 @@ from ir_terminal.utils.path_helpers import (
     is_dual_mock_enabled,
 )
 
-# Keep process-lifetime references: QLockFile must not be garbage-collected
-# (which would release the lock), and the host broker owns relay threads.
 _HELD_LOCK: QLockFile | None = None
 _HELD_BROKER: LinkBroker | None = None
 
@@ -114,8 +112,6 @@ def create_app(
         QMessageBox.critical(None, "Invalid instance id", str(exc))
         raise
 
-    # Logging is configured with the instance log dir BEFORE any handler opens
-    # a file, so two nodes never share data/logs/app.log.
     logger, _ = setup_logger(log_dir=ctx.logs_dir)
     logger.info(
         "Initializing IR-OWC Lab Terminal: instance=%s role=%s transport=%s port=%s "
@@ -131,13 +127,10 @@ def create_app(
         ctx.logs_dir,
     )
 
-    # One process per instance data dir (A and B have different lock files).
     global _HELD_LOCK
     if acquire_lock:
         try:
-            _HELD_LOCK = acquire_instance_lock(
-                ctx.lock_path, allow_multiple=config.allow_multiple
-            )
+            _HELD_LOCK = acquire_instance_lock(ctx.lock_path, allow_multiple=config.allow_multiple)
         except InstanceLockError as exc:
             logger.error("%s", exc)
             QMessageBox.warning(
@@ -147,7 +140,6 @@ def create_app(
             )
             raise
 
-    # Host node embeds the link broker so no external Python process is needed.
     global _HELD_BROKER
     if config.link_active and config.effective_link_role == "host":
         broker = LinkBroker(
@@ -188,7 +180,6 @@ def create_app(
             broker.port_b,
         )
 
-    # Dependency Injection Container & Composition Root
     storage_service = StorageService(data_dir=ctx.data_dir)
     serial_manager = _build_serial_manager(config)
     chat_service = _build_chat_service(config, ctx, serial_manager, storage_service)
@@ -199,8 +190,6 @@ def create_app(
     )
     telemetry_service = TelemetryService(storage_service=storage_service)
 
-    # Restore persisted transfer settings (max size / receive dir); defaults
-    # apply on first run when no settings.json keys exist yet.
     file_service.load_settings()
 
     bridge = BackendBridge(

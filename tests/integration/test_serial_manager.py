@@ -22,7 +22,6 @@ class TestSerialManagerIntegration:
         assert blocker.args == ["MOCK_COM1", 115200]
         assert manager.is_connected
 
-        # Send PING and wait for PONG packet via packet_received signal
         received_packets: list[Packet] = []
 
         def on_packet(pkt: object) -> None:
@@ -40,7 +39,6 @@ class TestSerialManagerIntegration:
         assert pong_pkt.seq == 15
         assert pong_pkt.payload == b"ECHO_P2P"
 
-        # Disconnect
         with qtbot.waitSignal(manager.disconnected, timeout=2000):
             manager.disconnect_port()
 
@@ -64,10 +62,8 @@ class TestSerialManagerIntegration:
 
             from ir_terminal.protocol.framer import pack_frame
 
-            # >600 frames x ~19B forces multiple 4096-byte compactions
             blob = b"".join(
-                pack_frame(seq=i % 256, opcode=Opcode.PING, payload=b"X" * 7)
-                for i in range(600)
+                pack_frame(seq=i % 256, opcode=Opcode.PING, payload=b"X" * 7) for i in range(600)
             )
             worker._transport.inject_rx_data(blob)  # type: ignore[union-attr]
             qtbot.waitUntil(lambda: len(received) >= 600, timeout=10000)

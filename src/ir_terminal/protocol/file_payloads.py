@@ -64,14 +64,6 @@ class FileStartPayload:
             )
             fname_bytes = fname_bytes[:255]
 
-        # =========================================================================
-        # FILE_START METADATA STRUCTURE (Total: 13 bytes header)
-        # Offset 0-3  : file_size    -> uint32 (Little-Endian, bytes)
-        # Offset 4-5  : chunk_size   -> uint16 (Little-Endian, bytes)
-        # Offset 6-7  : total_chunks -> uint16 (Little-Endian, count)
-        # Offset 8-11 : file_crc32   -> uint32 (Little-Endian, IEEE 802.3 CRC-32)
-        # Offset 12   : fname_len    -> uint8  (filename length in bytes)
-        # =========================================================================
         header_bytes = struct.pack(
             "<IHHIB",
             self.file_size,
@@ -104,14 +96,6 @@ class FileStartPayload:
             )
             raise ValueError(f"Payload too short for FileStartPayload: {len(data)} < 13 bytes")
 
-        # =========================================================================
-        # FILE_START METADATA UNPACK (Total: 13 bytes header)
-        # Offset 0-3  : file_size    -> uint32 (Little-Endian, bytes)
-        # Offset 4-5  : chunk_size   -> uint16 (Little-Endian, bytes)
-        # Offset 6-7  : total_chunks -> uint16 (Little-Endian, count)
-        # Offset 8-11 : file_crc32   -> uint32 (Little-Endian, IEEE 802.3 CRC-32)
-        # Offset 12   : fname_len    -> uint8  (filename length in bytes)
-        # =========================================================================
         file_size, chunk_size, total_chunks, file_crc32, fname_len = struct.unpack(
             "<IHHIB", data[:13]
         )
@@ -157,10 +141,6 @@ class FileChunkPayload:
         Returns:
             Serialized 2-byte chunk ID prefix followed by raw payload bytes.
         """
-        # =========================================================================
-        # FILE_CHUNK HEADER STRUCTURE (Total: 2 bytes prefix)
-        # Offset 0-1: chunk_id -> uint16 (Little-Endian, 0-based chunk index)
-        # =========================================================================
         prefix = struct.pack("<H", self.chunk_id)
         return prefix + self.chunk_data
 
@@ -184,10 +164,6 @@ class FileChunkPayload:
                 len(data),
             )
             raise ValueError("Data too short for FileChunkPayload")
-        # =========================================================================
-        # FILE_CHUNK HEADER UNPACK (Total: 2 bytes prefix)
-        # Offset 0-1: chunk_id -> uint16 (Little-Endian, 0-based chunk index)
-        # =========================================================================
         (chunk_id,) = struct.unpack("<H", data[:2])
         return cls(chunk_id=chunk_id, chunk_data=data[2:])
 
@@ -214,11 +190,6 @@ class FileEndPayload:
         Returns:
             Serialized 8-byte binary completion frame.
         """
-        # =========================================================================
-        # FILE_END STRUCTURE (Total: 8 bytes)
-        # Offset 0-3: file_crc32       -> uint32 (Little-Endian, IEEE 802.3 CRC-32)
-        # Offset 4-7: total_bytes_sent -> uint32 (Little-Endian, total payload bytes)
-        # =========================================================================
         return struct.pack("<II", self.file_crc32, self.total_bytes_sent)
 
     @classmethod
@@ -242,11 +213,6 @@ class FileEndPayload:
                 format_hex_preview(data),
             )
             raise ValueError("Data too short for FileEndPayload")
-        # =========================================================================
-        # FILE_END UNPACK (Total: 8 bytes)
-        # Offset 0-3: file_crc32       -> uint32 (Little-Endian, IEEE 802.3 CRC-32)
-        # Offset 4-7: total_bytes_sent -> uint32 (Little-Endian, total payload bytes)
-        # =========================================================================
         file_crc32, bytes_sent = struct.unpack("<II", data[:8])
         return cls(file_crc32=file_crc32, total_bytes_sent=bytes_sent)
 
@@ -422,11 +388,6 @@ class AckPayload:
         Returns:
             Serialized 2-byte ACK payload.
         """
-        # =========================================================================
-        # ACK/NACK PAYLOAD STRUCTURE (Total: 2 bytes)
-        # Offset 0: acked_seq -> uint8 (0..255 sequence number being acknowledged)
-        # Offset 1: status    -> uint8 (0=OK, 1=CRC_ERROR, 2=OUT_OF_ORDER, 3=TIMEOUT)
-        # =========================================================================
         return struct.pack("<BB", self.acked_seq, self.status)
 
     @classmethod
@@ -450,10 +411,5 @@ class AckPayload:
                 format_hex_preview(data),
             )
             raise ValueError("Data too short for AckPayload")
-        # =========================================================================
-        # ACK/NACK PAYLOAD UNPACK (Total: 2 bytes)
-        # Offset 0: acked_seq -> uint8 (0..255 sequence number being acknowledged)
-        # Offset 1: status    -> uint8 (0=OK, 1=CRC_ERROR, 2=OUT_OF_ORDER, 3=TIMEOUT)
-        # =========================================================================
         acked_seq, status = struct.unpack("<BB", data[:2])
         return cls(acked_seq=acked_seq, status=status)
