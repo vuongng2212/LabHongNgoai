@@ -28,7 +28,7 @@ from ir_terminal.utils.path_helpers import (
     normalize_instance_id,
 )
 
-DEFAULT_BAUD: int = 115200
+DEFAULT_BAUD: int = 9600
 DEFAULT_LINK_HOST: str = "127.0.0.1"
 DEFAULT_LINK_BASE_PORT: int = 6001
 DEFAULT_LINK_A_PORT_NAME: str = "LINK_A"

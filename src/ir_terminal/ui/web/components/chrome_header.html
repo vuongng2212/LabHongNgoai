@@ -1,6 +1,6 @@
-<header class="h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none">
-  <div class="flex items-center gap-space-md">
-    <div class="flex items-center gap-2 pr-2">
+<header class="app-header h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none min-w-0">
+  <div class="app-header__left flex items-center gap-space-md min-w-0">
+    <div class="flex items-center gap-2 pr-2 shrink-0">
       <button aria-label="Close" class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">×</span>
       </button>
@@ -11,19 +11,19 @@
         <span class="text-[7px] text-black font-bold opacity-0 transition-opacity">+</span>
       </button>
     </div>
-    <div class="h-4 w-px bg-outline-variant/40"></div>
-    <div class="flex items-center gap-space-xs bg-surface-container-low px-2 py-0.5 rounded-md border border-outline-variant/50">
-      <span id="ribbon-dot" class="w-2 h-2 rounded-full bg-outline"></span>
-      <span id="ribbon-text" class="font-mono-data text-mono-data text-on-surface font-medium">STM32 Optical Bridge • Disconnected</span>
+    <div class="h-4 w-px bg-outline-variant/40 shrink-0"></div>
+    <div id="ribbon-badge" class="app-ribbon flex items-center gap-space-xs px-2 py-0.5 rounded-md border min-w-0" data-tone="neutral">
+      <span id="ribbon-dot" class="ui-badge__dot"></span>
+      <span id="ribbon-text" class="app-ribbon__text font-mono-data text-mono-data text-on-surface font-medium" title="STM32 Optical Bridge • Disconnected">STM32 Optical Bridge • Disconnected</span>
     </div>
   </div>
 
-  <div class="flex items-center gap-2">
-    <span class="material-symbols-outlined text-primary text-[16px]">terminal</span>
-    <span id="window-center-title" class="font-title-sm text-title-sm text-on-surface font-semibold">SpectraLink IR-OWC — Hardware & Optical Link Setup</span>
+  <div class="app-header__center flex items-center gap-2 min-w-0">
+    <span class="material-symbols-outlined text-primary text-[16px] shrink-0">terminal</span>
+    <span id="window-center-title" class="app-header__title font-title-sm text-title-sm text-on-surface font-semibold">SpectraLink IR-OWC — Hardware &amp; Optical Link Setup</span>
   </div>
 
-  <div class="flex items-center gap-space-xs">
+  <div class="app-header__right flex items-center gap-space-xs">
     <span id="chrome-instance-label" class="font-mono-caption text-mono-caption text-on-surface-variant border border-outline-variant/50 px-2 py-0.5 rounded">IR-OWC</span>
     <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Refresh Port List">
       <span class="material-symbols-outlined text-[16px]">refresh</span>

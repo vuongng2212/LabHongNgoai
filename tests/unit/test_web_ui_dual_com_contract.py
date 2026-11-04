@@ -51,6 +51,8 @@ class TestHardwareDualComUi:
             "[BURST_TX]",
             "animate-ping",
             "status-pulse",
+            "backdrop-blur",
+            "modal-pop-in",
             "Port Standby",
             "Port Active",
             "Link Standby",
@@ -79,9 +81,9 @@ class TestBridgeClientContract:
 
     def test_default_baudrates_are_common_values(self) -> None:
         """Backend and browser fallbacks expose only the four common rates."""
-        assert SUPPORTED_BAUDRATES == (9600, 38400, 57600, 115200)
+        assert SUPPORTED_BAUDRATES == (2400, 4800, 9600, 19200)
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
-        assert "const DEFAULT_BAUDRATES = [9600, 38400, 57600, 115200];" in script
+        assert "const DEFAULT_BAUDRATES = [2400, 4800, 9600, 19200];" in script
 
     def test_refresh_port_list_preserves_configured_launch_ports(self) -> None:
         """Configured launch ports are injected into entries if missing from scan."""

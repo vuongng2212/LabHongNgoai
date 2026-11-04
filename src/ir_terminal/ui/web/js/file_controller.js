@@ -13,18 +13,48 @@ function initFileController() {
   const etaLabel = document.getElementById('file-eta');
   const packetsLabel = document.getElementById('file-packets');
 
-  function setActiveStatus(label, tone) {
-    if (!activeStatusBadge) return;
-    const palette = {
-      idle: ['text-outline', 'bg-outline'],
-      ready: ['text-primary', 'bg-primary'],
-      active: ['text-primary', 'bg-primary'],
-      success: ['text-secondary', 'bg-secondary'],
-      error: ['text-error', 'bg-error'],
+  function arqLabel(state) {
+    const key = String(state || '').toUpperCase();
+    if (key.startsWith('ARQ ')) return key;
+    const map = {
+      IDLE: 'ARQ IDLE',
+      HANDSHAKING: 'ARQ SYNC',
+      SYNC: 'ARQ SYNC',
+      TRANSFERRING: 'ARQ TX',
+      STREAMING: 'ARQ TX',
+      TX: 'ARQ TX',
+      RECEIVING: 'ARQ RX',
+      RX: 'ARQ RX',
+      FINALIZING: 'ARQ FINALIZE',
+      COMPLETED: 'ARQ COMPLETE',
+      COMPLETE: 'ARQ COMPLETE',
+      FAILED: 'ARQ FAILED',
+      ABORTED: 'ARQ ABORTED',
+      READY: 'ARQ READY'
     };
-    const [textClass, dotClass] = palette[tone] || palette.idle;
-    activeStatusBadge.className = 'flex items-center gap-1.5 ' + textClass;
-    activeStatusBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full ' + dotClass + '"></span><span>' + label + '</span>';
+    return map[key] || 'ARQ ' + key;
+  }
+
+  function arqTone(state) {
+    const key = String(state || '').toUpperCase();
+    if (key === 'COMPLETED' || key === 'COMPLETE') return 'success';
+    if (key === 'FAILED') return 'error';
+    if (key === 'ABORTED' || key === 'IDLE') return 'neutral';
+    if (key === 'FINALIZING') return 'warning';
+    return 'info';
+  }
+
+  function setActiveStatus(label, tone) {
+    const resolvedTone = tone || arqTone(label);
+    const resolvedLabel = arqLabel(label);
+    if (window.UIBadge) {
+      window.UIBadge.set('file-active-status', { tone: resolvedTone, label: resolvedLabel });
+      return;
+    }
+    if (!activeStatusBadge) return;
+    activeStatusBadge.dataset.tone = resolvedTone;
+    const labelElem = activeStatusBadge.querySelector('.ui-badge__label');
+    if (labelElem) labelElem.textContent = resolvedLabel;
   }
 
   const history = window.TransferHistory
@@ -89,7 +119,7 @@ function initFileController() {
       if (window.bridge) {
         const doAbort = () => {
           window.bridge.abortFileTransfer();
-          setActiveStatus('ABORTED', 'error');
+          setActiveStatus('ABORTED');
           if (window.UIFeedback) window.UIFeedback.showToast('info', 'Transfer aborted', 'Optical transmission cancelled by user.');
         };
         if (window.UIFeedback) {
@@ -110,7 +140,7 @@ function initFileController() {
     selectedFilePath = path;
     const fname = path.split('/').pop().split('\\').pop();
     if (activeFileName) activeFileName.innerText = fname;
-    setActiveStatus('READY', 'ready');
+    setActiveStatus('READY');
     if (progressBar) progressBar.style.width = '0%';
     if (progressPct) progressPct.innerText = '0%';
     if (window.UIFeedback) window.UIFeedback.showToast('info', 'File selected', fname + ' ready for optical transmission.');
@@ -124,13 +154,27 @@ function initFileController() {
   }
 
   function wireBridgeSignals() {
-    window.bridge.transferProgress.connect((pct, speedKbps, etaSec, curChunk, totalChunks) => {
+    let progressFrame = null;
+    let pendingProgress = null;
+
+    function renderProgress(pct, speedKbps, etaSec, curChunk, totalChunks) {
       if (progressBar) progressBar.style.width = `${pct}%`;
       if (progressPct) progressPct.innerText = `${pct}%`;
       if (speedLabel) speedLabel.innerHTML = `${speedKbps.toFixed(1)} <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span>`;
       if (etaLabel) etaLabel.innerText = `${Math.ceil(etaSec)}s`;
       if (packetsLabel) packetsLabel.innerHTML = `${curChunk}<span class="text-label-sm font-label-sm font-normal text-outline">/${totalChunks}</span>`;
-      setActiveStatus(pct >= 100 ? 'COMPLETED' : 'STREAMING', pct >= 100 ? 'success' : 'active');
+      setActiveStatus(pct >= 100 ? 'COMPLETED' : 'TRANSFERRING');
+    }
+
+    window.bridge.transferProgress.connect((pct, speedKbps, etaSec, curChunk, totalChunks) => {
+      pendingProgress = [pct, speedKbps, etaSec, curChunk, totalChunks];
+      if (progressFrame !== null) return;
+      progressFrame = requestAnimationFrame(() => {
+        progressFrame = null;
+        const next = pendingProgress;
+        pendingProgress = null;
+        if (next) renderProgress(next[0], next[1], next[2], next[3], next[4]);
+      });
     });
 
     window.bridge.transferCompleted.connect((filename, bytesSent, elapsedSec, crcHex) => {
@@ -144,19 +188,20 @@ function initFileController() {
         timestamp: 'Just now'
       };
       if (history) history.pushSuccess(newRec);
+      setActiveStatus('COMPLETED');
       if (window.UIFeedback) {
-        window.UIFeedback.showModal({
-          variant: 'success',
-          title: 'Transfer complete',
-          message: `${filename} verified over optical link in ${elapsedSec.toFixed(1)}s.`,
-          details: `CRC-32 ${crcHex} • ${bytesSent} bytes`,
-        });
+        window.UIFeedback.showToast(
+          'success',
+          'Transfer complete',
+          `${filename} verified over optical link in ${elapsedSec.toFixed(1)}s • CRC-32 ${crcHex}`,
+          { durationMs: 2800 }
+        );
       }
     });
 
     window.bridge.transferFailed.connect((reason) => {
       console.error(`File Transfer Failed: ${reason}`);
-      setActiveStatus('FAILED', 'error');
+      setActiveStatus('FAILED');
       if (window.UIFeedback) {
         window.UIFeedback.showModal({
           variant: 'error',
@@ -172,6 +217,10 @@ function initFileController() {
           ],
         });
       }
+    });
+
+    window.bridge.transferStateChanged.connect((state) => {
+      setActiveStatus(state);
     });
 
     if (history) history.reload();

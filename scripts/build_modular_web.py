@@ -98,41 +98,35 @@ def build_modular_components() -> None:
         with open(header_path, encoding="utf-8") as f:
             chrome_header = f.read()
     else:
-        chrome_header = """<!-- macOS Window Chrome Header -->
-<header class="h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none">
-  <!-- Traffic Lights & Ribbon Badge -->
-  <div class="flex items-center gap-space-md">
-    <div class="flex items-center gap-2 pr-2">
-      <button aria-label="Close" class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none">
+        chrome_header = """<header class="app-header h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none min-w-0">
+  <div class="app-header__left flex items-center gap-space-md min-w-0">
+    <div class="flex items-center gap-2 pr-2 shrink-0">
+      <button aria-label="Close" class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">×</span>
       </button>
-      <button aria-label="Minimize" class="traffic-dot w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] flex items-center justify-center group focus:outline-none">
+      <button aria-label="Minimize" class="traffic-dot w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">-</span>
       </button>
-      <button aria-label="Zoom" class="traffic-dot w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] flex items-center justify-center group focus:outline-none">
+      <button aria-label="Zoom" class="traffic-dot w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] flex items-center justify-center group focus:outline-none cursor-pointer">
         <span class="text-[7px] text-black font-bold opacity-0 transition-opacity">+</span>
       </button>
     </div>
-    <div class="h-4 w-px bg-outline-variant/40"></div>
-    <div class="flex items-center gap-space-xs bg-surface-container-low px-2 py-0.5 rounded-md border border-outline-variant/50">
-      <span id="ribbon-dot" class="w-2 h-2 rounded-full bg-outline"></span>
-      <span id="ribbon-text" class="font-mono-data text-mono-data text-on-surface font-medium">STM32 Optical Bridge • Disconnected</span>
+    <div class="h-4 w-px bg-outline-variant/40 shrink-0"></div>
+    <div id="ribbon-badge" class="app-ribbon flex items-center gap-space-xs px-2 py-0.5 rounded-md border min-w-0" data-tone="neutral">
+      <span id="ribbon-dot" class="ui-badge__dot"></span>
+      <span id="ribbon-text" class="app-ribbon__text font-mono-data text-mono-data text-on-surface font-medium" title="STM32 Optical Bridge • Disconnected">STM32 Optical Bridge • Disconnected</span>
     </div>
   </div>
-
-  <!-- Center Title with Icon -->
-  <div class="flex items-center gap-2">
-    <span class="material-symbols-outlined text-primary text-[16px]">terminal</span>
-    <span id="window-center-title" class="font-title-sm text-title-sm text-on-surface font-semibold">SpectraLink IR-OWC — Hardware & Optical Link Setup</span>
+  <div class="app-header__center flex items-center gap-2 min-w-0">
+    <span class="material-symbols-outlined text-primary text-[16px] shrink-0">terminal</span>
+    <span id="window-center-title" class="app-header__title font-title-sm text-title-sm text-on-surface font-semibold">SpectraLink IR-OWC — Hardware &amp; Optical Link Setup</span>
   </div>
-
-  <!-- Right Actions -->
-  <div class="flex items-center gap-space-xs">
+  <div class="app-header__right flex items-center gap-space-xs">
     <span id="chrome-instance-label" class="font-mono-caption text-mono-caption text-on-surface-variant border border-outline-variant/50 px-2 py-0.5 rounded">IR-OWC</span>
-    <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Refresh Telemetry">
+    <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Refresh Port List">
       <span class="material-symbols-outlined text-[16px]">refresh</span>
     </button>
-    <button id="btn-top-settings" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Transfer Settings">
+    <button id="btn-top-settings" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Transfer Settings">
       <span class="material-symbols-outlined text-[16px]">settings</span>
     </button>
   </div>
@@ -145,56 +139,50 @@ def build_modular_components() -> None:
         with open(sidebar_path, encoding="utf-8") as f:
             sidebar_nav = f.read()
     else:
-        sidebar_nav = """<!-- Left Navigation Sidebar -->
-<aside class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0">
+        sidebar_nav = """<aside id="app-sidebar" class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0">
   <div class="space-y-space-md">
-    <!-- Brand Block -->
-    <div class="flex items-center gap-space-sm px-1 py-1">
-      <div class="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center shadow-sm">
+    <div class="sidebar-brand flex items-center gap-space-sm px-1 py-1">
+      <div class="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center shadow-sm shrink-0">
         <span class="material-symbols-outlined text-[20px] text-white">radar</span>
       </div>
-      <div class="leading-tight">
-        <div class="font-title-sm text-title-sm font-bold text-on-surface">SpectraLink IR-OWC</div>
-        <div class="font-mono-caption text-mono-caption text-on-surface-variant">Workstation v2.4.1</div>
+      <div class="sidebar-brand-text leading-tight min-w-0">
+        <div class="font-title-sm text-title-sm font-bold text-on-surface truncate">SpectraLink IR-OWC</div>
+        <div class="font-mono-caption text-mono-caption text-on-surface-variant truncate">Lab Terminal v1.0</div>
       </div>
     </div>
-
-    <!-- Section Navigation Group -->
     <div class="space-y-1">
-      <div class="px-space-xs py-1 text-mono-caption font-mono-caption text-outline font-semibold tracking-wider">
+      <div class="sidebar-section-title px-space-xs py-1 text-mono-caption font-mono-caption text-outline font-semibold tracking-wider">
         OPTICAL SUBSYSTEMS
       </div>
       <nav class="space-y-1" id="nav-menu">
-        <a data-target="view-hardware" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-primary-container text-white font-medium shadow-sm transition-all cursor-pointer">
-          <span class="material-symbols-outlined text-[18px]">tune</span>
-          <span class="font-label-md text-label-md">Hardware & Link</span>
+        <a data-target="view-hardware" title="Hardware &amp; Link" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-primary-container text-white font-medium shadow-sm transition-all cursor-pointer">
+          <span class="material-symbols-outlined text-[18px] shrink-0">tune</span>
+          <span class="sidebar-label font-label-md text-label-md truncate">Hardware &amp; Link</span>
         </a>
-        <a data-target="view-file" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
-          <span class="material-symbols-outlined text-[18px]">swap_horiz</span>
-          <span class="font-label-md text-label-md">File Transfer</span>
+        <a data-target="view-file" title="File Transfer" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[18px] shrink-0">swap_horiz</span>
+          <span class="sidebar-label font-label-md text-label-md truncate">File Transfer</span>
         </a>
-        <a data-target="view-chat" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
-          <span class="material-symbols-outlined text-[18px]">forum</span>
-          <span class="font-label-md text-label-md">Realtime Chat</span>
+        <a data-target="view-chat" title="Realtime Chat" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[18px] shrink-0">forum</span>
+          <span class="sidebar-label font-label-md text-label-md truncate">Realtime Chat</span>
         </a>
-        <a data-target="view-telemetry" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
-          <span class="material-symbols-outlined text-[18px]">terminal</span>
-          <span class="font-label-md text-label-md">Lab Diagnostics</span>
+        <a data-target="view-telemetry" title="Lab Diagnostics" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-[18px] shrink-0">terminal</span>
+          <span class="sidebar-label font-label-md text-label-md truncate">Lab Diagnostics</span>
         </a>
       </nav>
     </div>
   </div>
-
-  <!-- Sidebar Footer / Hardware Status Widget -->
-  <div class="bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.06] shadow-sm space-y-2">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-1.5">
-        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-medium text-outline">OFFLINE</span>
+  <div class="sidebar-footer bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-2">
+    <div class="flex items-center justify-between gap-1">
+      <div class="flex items-center gap-1.5 min-w-0">
+        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline shrink-0"></span>
+        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-medium text-outline truncate">OFFLINE</span>
       </div>
-      <span class="text-[10px] font-mono text-outline tracking-widest">UART</span>
+      <span class="sidebar-footer-detail text-[10px] font-mono text-outline tracking-widest">UART</span>
     </div>
-    <div class="text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1">
+    <div class="sidebar-footer-detail text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1">
       <div class="flex items-center justify-between gap-2">
         <span class="text-outline">Ports:</span>
         <span id="footer-port-label" class="font-medium text-on-surface truncate text-right">Disconnected</span>
@@ -204,9 +192,9 @@ def build_modular_components() -> None:
         <span id="footer-baud-label" class="font-medium text-on-surface">--</span>
       </div>
     </div>
-    <button id="btn-calibrate" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors">
-      <span class="material-symbols-outlined text-[14px]">adjust</span>
-      Calibrate Optics
+    <button id="btn-calibrate" title="Ping Link Test" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors cursor-pointer">
+      <span class="material-symbols-outlined text-[14px]">wifi_tethering</span>
+      <span class="sidebar-action-label">Ping Link Test</span>
     </button>
   </div>
 </aside>
@@ -316,6 +304,7 @@ def build_modular_components() -> None:
       }}
     }}
   </script>
+  <link rel="stylesheet" href="assets/css/app.css"/>
   <style>
     /* Sleek Native Scrollbar */
     ::-webkit-scrollbar {{
@@ -367,16 +356,6 @@ def build_modular_components() -> None:
       transform: translateX(16px);
       transition: opacity 0.18s ease, transform 0.18s ease;
     }}
-    @keyframes modal-pop-in {{
-      from {{ opacity: 0; transform: scale(0.96) translateY(6px); }}
-      to {{ opacity: 1; transform: scale(1) translateY(0); }}
-    }}
-    #modal-overlay.flex #modal-card {{
-      animation: modal-pop-in 0.16s ease-out;
-    }}
-    #settings-overlay.flex #settings-card {{
-      animation: modal-pop-in 0.16s ease-out;
-    }}
   </style>
   <script src="qwebchannel.js"></script>
 </head>
@@ -386,28 +365,28 @@ def build_modular_components() -> None:
     {chrome_header}
 
     <!-- App Body: Left Navigation + Primary Content Canvas -->
-    <div class="flex flex-1 overflow-hidden">
+    <div class="flex flex-1 overflow-hidden min-w-0">
       {sidebar_nav}
 
       <!-- Main Operational Viewports -->
-      <div class="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7]">
+      <div class="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7] min-w-0">
         <!-- View 1: Hardware Setup -->
-        <div id="view-hardware" class="view-panel active flex-1 overflow-y-auto p-space-lg flex-col gap-space-lg bg-[#F5F5F7]">
+        <div id="view-hardware" class="view-panel active flex-1 overflow-y-auto p-space-lg flex-col gap-space-lg bg-[#F5F5F7] min-w-0">
           {v1}
         </div>
 
         <!-- View 2: File Transfer -->
-        <div id="view-file" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-xl flex-col gap-space-lg">
+        <div id="view-file" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-xl flex-col gap-space-lg min-w-0">
           {v2}
         </div>
 
         <!-- View 3: Realtime Chat -->
-        <div id="view-chat" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-md">
+        <div id="view-chat" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-md min-w-0">
           {v3}
         </div>
 
         <!-- View 4: Lab Diagnostics -->
-        <div id="view-telemetry" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg">
+        <div id="view-telemetry" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg min-w-0">
           {v4}
         </div>
       </div>
@@ -421,6 +400,7 @@ def build_modular_components() -> None:
 
   <!-- Scripts -->
   <script src="js/ui_feedback.js"></script>
+  <script src="js/ui_badges.js"></script>
   <script src="js/shared/utils.js"></script>
   <script src="js/shared/bridge.js"></script>
   <script src="js/app.js"></script>

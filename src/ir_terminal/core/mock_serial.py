@@ -9,7 +9,7 @@ import time
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.ring_buffer import ByteRingBuffer
-from ir_terminal.protocol.constants import RING_BUFFER_CAPACITY, Opcode
+from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, RING_BUFFER_CAPACITY, Opcode
 from ir_terminal.protocol.framer import pack_frame, parse_frames_from_buffer
 from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
 
@@ -28,7 +28,7 @@ class MockSerialPort(ITransport):
     def __init__(
         self,
         port_name: str = "MOCK_COM1",
-        baudrate: int = 115200,
+        baudrate: int = DEFAULT_BAUDRATE,
         simulated_latency_ms: float = 30.0,
         simulated_loss_rate: float = 0.0,
         auto_respond: bool = True,

@@ -1,5 +1,5 @@
 # CHỈ MỤC SPEC THỐNG NHẤT (SPEC INDEX — SINGLE SOURCE OF TRUTH)
-**Dự án:** IR-OWC Lab Terminal — Desktop PC ↔ STM32F407 + MCP2122 + TFDU4101 @ 115200 8N1
+**Dự án:** IR-OWC Lab Terminal — Desktop PC ↔ STM32F407 + MCP2122 + TFDU4101 @ 9600 8N1
 **Ngày thống nhất:** 2026-10-19 — đối chiếu `LAB_BaoGia.xlsx` ↔ `codebase` ↔ `docs/` + `pytest 200 passed`.
 
 > Quy tắc: khi có mâu thuẫn, thứ tự ưu tiên là:

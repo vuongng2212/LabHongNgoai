@@ -89,7 +89,7 @@ def dual_bus(monkeypatch: pytest.MonkeyPatch) -> FakePortBus:
     return bus
 
 
-def open_node_pair(qtbot: QtBot, baud: int = 115200) -> tuple[SerialManager, SerialManager]:
+def open_node_pair(qtbot: QtBot, baud: int = 9600) -> tuple[SerialManager, SerialManager]:
     manager_a = SerialManager()
     manager_b = SerialManager()
     with qtbot.waitSignal(manager_a.ports_connected, timeout=5000) as connected_a:
@@ -102,21 +102,21 @@ def open_node_pair(qtbot: QtBot, baud: int = 115200) -> tuple[SerialManager, Ser
 
 
 def test_dual_com_opens_independent_tx_rx_handles(qtbot: QtBot, dual_bus: FakePortBus) -> None:
-    manager_a, manager_b = open_node_pair(qtbot, baud=57600)
+    manager_a, manager_b = open_node_pair(qtbot, baud=19200)
     try:
         assert manager_a.current_tx_port == "COM3"
         assert manager_a.current_rx_port == "COM4"
-        assert manager_a.current_baud == 57600
+        assert manager_a.current_baud == 19200
         assert manager_b.current_tx_port == "COM5"
         assert manager_b.current_rx_port == "COM6"
-        assert manager_b.current_baud == 57600
+        assert manager_b.current_baud == 19200
 
         opened = {handle.port: handle for handle in dual_bus.handles}
         assert {"COM3", "COM4", "COM5", "COM6"} <= set(opened)
         assert opened["COM3"] is not opened["COM4"]
         assert opened["COM5"] is not opened["COM6"]
         assert all(opened[name].is_open for name in ("COM3", "COM4", "COM5", "COM6"))
-        assert all(opened[name].baudrate == 57600 for name in ("COM3", "COM4", "COM5", "COM6"))
+        assert all(opened[name].baudrate == 19200 for name in ("COM3", "COM4", "COM5", "COM6"))
     finally:
         manager_a.shutdown()
         manager_b.shutdown()

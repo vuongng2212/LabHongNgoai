@@ -137,7 +137,7 @@ class TestBackendBridge:
         )
 
         baudrates = json.loads(bridge.getAvailableBaudrates())
-        assert baudrates == [9600, 38400, 57600, 115200]
+        assert baudrates == [2400, 4800, 9600, 19200]
 
         manager.shutdown()
 
@@ -168,7 +168,7 @@ class TestBackendBridge:
         assert launch["rx_port"] == "COM4"
         assert launch["default_baudrate"] == 57600
         assert launch["baud"] == 57600
-        assert launch["supported_baudrates"][-1] == 115200
+        assert launch["supported_baudrates"][-1] == 19200
 
         manager.shutdown()
 

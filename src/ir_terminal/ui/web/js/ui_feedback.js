@@ -132,7 +132,7 @@
     c.overlay.classList.remove('hidden');
     c.overlay.classList.add('flex');
     var firstBtn = actionsBox.querySelector('button');
-    if (firstBtn) firstBtn.focus();
+    if (firstBtn && variant !== 'success') firstBtn.focus();
     return close;
   }
 

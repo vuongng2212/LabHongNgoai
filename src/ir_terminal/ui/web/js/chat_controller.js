@@ -107,7 +107,7 @@ function initChatController() {
 
     const wrapper = document.createElement('div');
     if (isOutgoing) {
-      wrapper.className = 'flex flex-col items-end ml-auto max-w-xl group';
+      wrapper.className = 'chat-message-row flex flex-col items-end ml-auto group';
       wrapper.innerHTML = `
         <div class="flex items-center gap-2 mb-1 px-1">
           <span class="text-mono-caption font-mono-caption text-outline">${escapeHtml(timeStr)}</span>
@@ -123,7 +123,7 @@ function initChatController() {
         </div>
       `;
     } else {
-      wrapper.className = 'flex flex-col items-start max-w-xl group';
+      wrapper.className = 'chat-message-row flex flex-col items-start group';
       wrapper.innerHTML = `
         <div class="flex items-center gap-2 mb-1 px-1">
           <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>

@@ -37,7 +37,7 @@ class TestParseLaunchArgs:
         assert config.link_role == "off"
         assert config.link_active is False
         assert config.preferred_port is None
-        assert config.baud == 115200
+        assert config.baud == 9600
         assert config.auto_connect is False
 
     def test_host_role_defaults_to_node_a(self) -> None:
@@ -118,10 +118,10 @@ class TestParseLaunchArgs:
     def test_supported_baudrates_default_list(self) -> None:
         config = parse_launch_args([])
         assert config.supported_baudrates == (
+            2400,
+            4800,
             9600,
-            38400,
-            57600,
-            115200,
+            19200,
         )
 
     def test_link_endpoints_use_base_port(self) -> None:

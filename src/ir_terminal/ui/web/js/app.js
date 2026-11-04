@@ -31,6 +31,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (centerTitle) {
       centerTitle.innerText = titleMap[viewId] || 'SpectraLink IR-OWC';
     }
+
+    window.dispatchEvent(new CustomEvent('view-changed', { detail: { viewId: viewId } }));
   };
 
   navItems.forEach(item => {

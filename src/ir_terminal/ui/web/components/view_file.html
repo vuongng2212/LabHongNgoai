@@ -1,11 +1,11 @@
 <div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md pb-space-sm border-b border-black/[0.06]">
-<div class="flex flex-col gap-0.5">
-<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight">File &amp; Media Transfer Station</h1>
+<div class="flex flex-col gap-0.5 min-w-0">
+<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight break-words">File &amp; Media Transfer Station</h1>
 <p class="text-body-md font-body-md text-on-surface-variant">
               Transmit binary payloads, media packets, and documents over the optical link.
             </p>
 </div>
-<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
+<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant min-w-0">
 <span>CHUNK: <strong class="text-on-surface font-semibold">240 B</strong></span>
 <span class="text-outline-variant">•</span>
 <span>CRC-32: <strong class="text-on-surface font-semibold">IEEE 802.3</strong></span>
@@ -13,8 +13,8 @@
 <span>ARQ: <strong class="text-on-surface font-semibold">Stop-and-Wait</strong></span>
 </div>
 </div>
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-space-lg">
-<div id="file-dropzone" class="bg-surface-container-lowest rounded-xl border-2 border-dashed border-[#CBD5E1] p-space-xl flex flex-col items-center justify-center text-center hover:border-primary/60 transition-colors duration-150 group cursor-pointer min-h-[280px]">
+<div class="split-grid">
+<div id="file-dropzone" class="bg-surface-container-lowest rounded-xl border-2 border-dashed border-[#CBD5E1] p-space-xl flex flex-col items-center justify-center text-center hover:border-primary/60 transition-colors duration-150 group cursor-pointer min-h-[280px] min-w-0">
 <div class="w-12 h-12 rounded-lg border border-black/[0.08] bg-surface-container-low flex items-center justify-center text-on-surface-variant group-hover:text-primary transition-colors mb-space-md">
 <span class="material-symbols-outlined text-[26px]" data-icon="upload_file">upload_file</span>
 </div>
@@ -36,17 +36,17 @@
 <span>Automatically framed into 240-byte chunks with CRC-32</span>
 </div>
 </div>
-<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between">
+<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between min-w-0">
 <div>
-<div class="flex items-center justify-between pb-space-sm border-b border-black/[0.06] mb-space-md">
+<div class="flex flex-wrap items-center justify-between gap-2 pb-space-sm border-b border-black/[0.06] mb-space-md">
 <div class="flex items-center gap-2">
 <span class="text-title-sm font-title-sm font-semibold text-on-surface">Active Transmission</span>
 </div>
 <div class="flex items-center gap-2 font-mono-caption text-mono-caption text-on-surface-variant">
 <span>CH-A</span>
-<span id="file-active-status" class="flex items-center gap-1.5 text-outline">
-<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
-<span>IDLE</span>
+<span id="file-active-status" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
+<span class="ui-badge__dot"></span>
+<span class="ui-badge__label">ARQ IDLE</span>
 </span>
 </div>
 </div>
@@ -74,7 +74,7 @@
 <div id="file-progress-bar" class="h-full bg-primary rounded-full transition-all duration-300 w-0"></div>
 </div>
 </div>
-<div class="grid grid-cols-3 gap-2 p-space-sm rounded-lg bg-surface-container-low border border-black/[0.04] mb-space-md">
+<div class="file-stats p-space-sm rounded-lg bg-surface-container-low border border-black/[0.04] mb-space-md">
 <div class="flex flex-col">
 <span class="text-mono-caption font-mono-caption uppercase text-outline">Throughput</span>
 <span id="file-speed" class="text-headline-md font-headline-md text-on-surface font-semibold">0.0 <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span></span>
@@ -101,9 +101,9 @@
 </div>
 </div>
 </div>
-<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md">
-<div class="flex items-center justify-between gap-space-md">
-<div class="flex items-center gap-space-md">
+<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md min-w-0">
+<div class="flex flex-wrap items-center justify-between gap-space-md">
+<div class="flex flex-wrap items-center gap-space-md min-w-0">
 <div class="flex items-center gap-2">
 <span class="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="history">history</span>
 <h2 class="text-title-sm font-title-sm font-semibold text-on-surface">Recent Transfers</h2>
@@ -113,13 +113,13 @@
 <span>CRC-32 verified</span>
 </span>
 </div>
-<div class="relative">
+<div class="relative w-full sm:w-auto">
 <span class="material-symbols-outlined absolute left-2 top-1.5 text-[15px] text-outline" data-icon="search">search</span>
-<input class="h-[28px] pl-7 pr-2 text-label-sm font-label-sm rounded-lg bg-surface border border-black/[0.1] focus:border-primary focus:ring-1 focus:ring-primary outline-none w-48" placeholder="Filter transmissions..." type="text"/>
+<input class="h-[28px] pl-7 pr-2 text-label-sm font-label-sm rounded-lg bg-surface border border-black/[0.1] focus:border-primary focus:ring-1 focus:ring-primary outline-none w-full sm:w-48" placeholder="Filter transmissions..." type="text"/>
 </div>
 </div>
 <div class="overflow-x-auto border border-black/[0.08] rounded-lg">
-<table class="w-full text-left border-collapse">
+<table class="data-table w-full text-left border-collapse">
 <thead>
 <tr class="bg-surface-container-low border-b border-black/[0.08] text-mono-caption font-mono-caption text-outline uppercase tracking-wider h-8">
 <th class="px-space-md font-medium">File Payload</th>
@@ -144,8 +144,8 @@
 </tbody>
 </table>
 </div>
-<div class="flex items-center justify-between text-mono-caption font-mono-caption text-outline px-1">
-<div class="flex items-center gap-space-md">
+<div class="flex flex-wrap items-center justify-between gap-2 text-mono-caption font-mono-caption text-outline px-1">
+<div class="flex flex-wrap items-center gap-space-md">
 <span>Stop-and-Wait ARQ</span>
 <span>•</span>
 <span>CRC-32 IEEE 802.3</span>

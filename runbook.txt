@@ -19,13 +19,13 @@ Windows (PowerShell):
     uv run python -m ir_terminal
 
 3.2. Chạy với 1 cổng dùng chung cho TX và RX
-    uv run python -m ir_terminal --port COM11 --baud 115200 --auto-connect
+    uv run python -m ir_terminal --port COM11 --baud 9600 --auto-connect
 
 3.3. Chạy mock, không cần phần cứng (1 node)
     uv run python -m ir_terminal --port MOCK_COM_LOOPBACK
 
 3.4. Chạy với 2 cổng COM tách biệt (dual COM)
-    uv run python -m ir_terminal --tx-port COM3 --rx-port COM4 --baud 115200 --auto-connect
+    uv run python -m ir_terminal --tx-port COM3 --rx-port COM4 --baud 9600 --auto-connect
 
     --tx-port : cổng COM máy tính ghi dữ liệu xuống board để phát quang.
     --rx-port : cổng COM board đẩy dữ liệu thu quang lên máy tính.
@@ -34,10 +34,10 @@ Windows (PowerShell):
 
 3.5. Chạy 2 node trên cùng 1 máy (dual COM, 4 cổng)
     Node A:
-        uv run python -m ir_terminal --instance A --tx-port COM3 --rx-port COM4 --baud 115200 --auto-connect --window-pos left
+        uv run python -m ir_terminal --instance A --tx-port COM3 --rx-port COM4 --baud 9600 --auto-connect --window-pos left
 
     Node B:
-        uv run python -m ir_terminal --instance B --tx-port COM5 --rx-port COM6 --baud 115200 --auto-connect --window-pos right
+        uv run python -m ir_terminal --instance B --tx-port COM5 --rx-port COM6 --baud 9600 --auto-connect --window-pos right
 
 
 4. NỐI DÂY VÀ CHỌN CỔNG
@@ -54,7 +54,7 @@ Khi mở Hardware & Link:
     Connect                     : mở cả hai cổng.
 
 Kiểm tra nhanh sau khi Connect:
-    Ribbon header hiển thị: TX: COM3 • RX: COM4 (115200 bps)
+    Ribbon header hiển thị: TX: COM3 • RX: COM4 (9600 bps)
     Footer hiển thị ONLINE, Ports và Baud.
     Nhấn Ping Test: nhận PONG và RTT trong vòng 1.5 giây.
 
@@ -68,11 +68,11 @@ Nếu Ping timeout:
 5. DANH SÁCH BAUDRATE
 --------------------------------------------------------------------------------
 Mặc định:
-    9600, 38400, 57600, 115200
+    2400, 4800, 9600, 19200
 
 Danh sách này được nạp động từ data/settings.json:
-    "supported_baudrates": [9600, 38400, 57600, 115200],
-    "default_baudrate": 115200
+    "supported_baudrates": [2400, 4800, 9600, 19200],
+    "default_baudrate": 9600
 
 Có thể thêm tốc độ đặc thù của phòng lab vào mảng trên; UI sẽ tự hiển thị.
 Trên giao diện, giá trị đang chọn được đánh dấu trắng và dùng cho lần Connect kế tiếp.

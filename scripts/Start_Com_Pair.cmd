@@ -19,7 +19,7 @@ if "%RX_B%"=="" set "RX_B=COM12"
 
 echo Usage: Start_Com_Pair.cmd [TX_A] [RX_A] [TX_B] [RX_B]
 echo Starting dual-port COM pair: Node A=TX %TX_A% / RX %RX_A%  Node B=TX %TX_B% / RX %RX_B%
-start "IR-OWC Node A (TX %TX_A% / RX %RX_A%)" "%APP%" --instance A --tx-port %TX_A% --rx-port %RX_A% --baud 115200 --auto-connect --window-pos left
+start "IR-OWC Node A (TX %TX_A% / RX %RX_A%)" "%APP%" --instance A --tx-port %TX_A% --rx-port %RX_A% --baud 9600 --auto-connect --window-pos left
 timeout /t 1 /nobreak >nul
-start "IR-OWC Node B (TX %TX_B% / RX %RX_B%)" "%APP%" --instance B --tx-port %TX_B% --rx-port %RX_B% --baud 115200 --auto-connect --window-pos right
+start "IR-OWC Node B (TX %TX_B% / RX %RX_B%)" "%APP%" --instance B --tx-port %TX_B% --rx-port %RX_B% --baud 9600 --auto-connect --window-pos right
 endlocal

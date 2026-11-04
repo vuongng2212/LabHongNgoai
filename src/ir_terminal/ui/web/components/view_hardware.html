@@ -1,9 +1,10 @@
 <header class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-sm border-b border-black/[0.06]">
-<div>
-<div class="flex items-center gap-space-sm">
-<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Transceiver &amp; Link Configuration</h1>
-<span id="hw-header-link-badge" class="flex items-center gap-1.5 font-mono-caption text-mono-caption font-medium text-outline">
-<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> DISCONNECTED
+<div class="min-w-0">
+<div class="flex flex-wrap items-center gap-space-sm min-w-0">
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight break-words">Transceiver &amp; Link Configuration</h1>
+<span id="hw-header-link-badge" class="ui-badge" data-tone="neutral" data-size="compact" role="status" aria-live="polite">
+<span class="ui-badge__dot"></span>
+<span class="ui-badge__label">DISCONNECTED</span>
 </span>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
@@ -18,8 +19,8 @@
 <span>FRAME: <strong class="text-on-surface font-semibold">8-N-1</strong></span>
 </div>
 </header>
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-space-lg">
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+<div class="split-grid">
+<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0">
 <div class="space-y-space-md">
 <div class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm">
 <div class="p-1.5 bg-surface-container text-primary rounded-md">
@@ -30,8 +31,8 @@
 <span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL UART PHYSICAL BRIDGE</span>
 </div>
 </div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
-<div class="space-y-1.5">
+<div class="port-grid">
+<div class="space-y-1.5 min-w-0">
 <label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM TX (Transmitter - Gửi)</label>
 <div class="relative">
 <select id="select-port-tx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
@@ -42,7 +43,7 @@
 </div>
 </div>
 </div>
-<div class="space-y-1.5">
+<div class="space-y-1.5 min-w-0">
 <label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM RX (Receiver - Nhận)</label>
 <div class="relative">
 <select id="select-port-rx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
@@ -61,8 +62,8 @@
 </div>
 <div id="baudrate-selector-container" class="flex flex-wrap gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]"></div>
 </div>
-<div class="p-space-sm bg-surface-container-low rounded-lg border border-black/[0.04] flex items-center justify-between">
-<div class="flex items-center gap-space-md">
+<div class="p-space-sm bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+<div class="flex flex-wrap items-center gap-space-md">
 <div>
 <span class="font-mono-caption text-mono-caption text-outline block">FRAMING</span>
 <span class="font-mono-data text-mono-data text-on-surface font-semibold">8-N-1</span>
@@ -73,15 +74,15 @@
 <span class="font-mono-data text-mono-data text-on-surface font-semibold">None (Direct)</span>
 </div>
 </div>
-<div class="flex items-center gap-3">
-<div class="flex items-center gap-1.5">
-<span id="hw-tx-dot" class="w-2.5 h-2.5 rounded-full bg-primary/40 transition-colors"></span>
-<span class="font-mono-caption text-mono-caption text-on-surface font-medium">TX</span>
-</div>
-<div class="flex items-center gap-1.5">
-<span id="hw-rx-dot" class="w-2.5 h-2.5 rounded-full bg-secondary/40 transition-colors"></span>
-<span class="font-mono-caption text-mono-caption text-on-surface font-medium">RX</span>
-</div>
+<div class="flex flex-wrap items-center gap-3">
+<span id="hw-tx-status" class="ui-badge" data-tone="neutral" data-size="micro" title="TX port state">
+<span id="hw-tx-dot" class="ui-badge__dot"></span>
+<span class="ui-badge__label">TX IDLE</span>
+</span>
+<span id="hw-rx-status" class="ui-badge" data-tone="neutral" data-size="micro" title="RX port state">
+<span id="hw-rx-dot" class="ui-badge__dot"></span>
+<span class="ui-badge__label">RX IDLE</span>
+</span>
 </div>
 </div>
 </div>
@@ -96,9 +97,9 @@
               </button>
 </div>
 </section>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0">
 <div class="space-y-space-md">
-<div class="flex items-center justify-between border-b border-black/[0.06] pb-space-sm">
+<div class="flex flex-wrap items-center justify-between gap-2 border-b border-black/[0.06] pb-space-sm">
 <div class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm">
 <div class="p-1.5 bg-surface-container text-primary rounded-md">
 <span class="material-symbols-outlined text-[20px]" data-icon="radar">radar</span>
@@ -108,11 +109,14 @@
 <span class="font-mono-caption text-mono-caption text-on-surface-variant">ROUND-TRIP ECHO &amp; CARRIER HEALTH</span>
 </div>
 </div>
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-space-md items-stretch py-1">
+<div class="split-grid items-stretch py-1">
 <div class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
+<div class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant">
 <span>MEASURED RTT LATENCY</span>
-<span id="hw-rtt-state" class="text-outline font-semibold">IDLE</span>
+<span id="hw-rtt-state" class="ui-badge shrink-0" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
+<span class="ui-badge__dot"></span>
+<span class="ui-badge__label">IDLE</span>
+</span>
 </div>
 <div class="flex items-baseline gap-2 mt-2">
 <span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">-- ms</span>
@@ -152,7 +156,7 @@
 </div>
 </section>
 </div>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] min-w-0">
 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.06] pb-space-sm mb-space-md">
 <div class="flex items-center gap-space-sm">
 <div class="p-1.5 bg-surface-container text-primary rounded-md">
@@ -165,7 +169,7 @@
 </div>
 <span class="font-mono-caption text-mono-caption text-outline">READ-ONLY REFERENCE</span>
 </div>
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-px bg-black/[0.06] border border-black/[0.06] rounded-lg overflow-hidden">
+<div class="spec-grid gap-px bg-black/[0.06] border border-black/[0.06] rounded-lg overflow-hidden">
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">UART FRAMING</span>
 <span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">8-N-1</span>

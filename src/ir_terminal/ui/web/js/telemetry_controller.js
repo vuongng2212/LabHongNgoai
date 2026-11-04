@@ -14,6 +14,7 @@ function initTelemetryController() {
   const lossPktsElem = document.getElementById('kpi-loss-pkts');
 
   const rttValueElem = document.getElementById('kpi-rtt-value');
+  const rttBadgeElem = document.getElementById('kpi-rtt-badge');
 
   const chunksValueElem = document.getElementById('kpi-chunks-value');
 
@@ -34,7 +35,28 @@ function initTelemetryController() {
   }
 
   setTimeout(drawCanvasCharts, 50);
-  window.addEventListener('resize', drawCanvasCharts);
+
+  let chartResizeTimer = null;
+  function scheduleChartDraw() {
+    if (chartResizeTimer) clearTimeout(chartResizeTimer);
+    chartResizeTimer = setTimeout(() => {
+      chartResizeTimer = null;
+      if (viewTelemetry && viewTelemetry.classList.contains('active')) drawCanvasCharts();
+    }, 120);
+  }
+
+  if (typeof ResizeObserver !== 'undefined') {
+    const chartObserver = new ResizeObserver(scheduleChartDraw);
+    if (speedCanvas && speedCanvas.parentElement) chartObserver.observe(speedCanvas.parentElement);
+    if (rttCanvas && rttCanvas.parentElement) chartObserver.observe(rttCanvas.parentElement);
+  }
+
+  window.addEventListener('resize', scheduleChartDraw);
+  window.addEventListener('view-changed', (event) => {
+    if (!event.detail || event.detail.viewId === 'view-telemetry') {
+      requestAnimationFrame(drawCanvasCharts);
+    }
+  });
 
   if (collapseBtn && snifferTableContainer) {
     collapseBtn.addEventListener('click', () => {
@@ -65,12 +87,12 @@ function initTelemetryController() {
         if (savedPath) {
           console.log('Telemetry CSV exported successfully to:', savedPath);
           if (window.UIFeedback) {
-            window.UIFeedback.showModal({
-              variant: 'success',
-              title: 'Telemetry exported',
-              message: 'CSV report is ready for lab documentation.',
-              details: savedPath,
-            });
+            window.UIFeedback.showToast(
+              'success',
+              'Telemetry exported',
+              'CSV report ready • ' + savedPath,
+              { durationMs: 2800 }
+            );
           }
         }
       });
@@ -132,6 +154,11 @@ function initTelemetryController() {
     if (lossPktsElem) lossPktsElem.innerText = lossPct > 0 ? `(${lossPct.toFixed(1)}% drop)` : '(0 pkts)';
 
     if (rttValueElem) rttValueElem.innerText = rttMs > 0 ? Math.round(rttMs) : '--';
+    if (rttBadgeElem && window.UIBadge) {
+      const tone = window.UIBadge.toneForRtt(rttMs);
+      const label = tone === 'neutral' ? 'IDLE' : tone === 'success' ? 'GOOD' : tone === 'warning' ? 'FAIR' : 'SLOW';
+      window.UIBadge.set(rttBadgeElem, { tone: tone, label: label });
+    }
     if (chunksValueElem) chunksValueElem.innerText = chunksCount.toLocaleString();
     if (frameCountBadge) frameCountBadge.innerText = `${framesCount.toLocaleString()} frames captured`;
 
@@ -142,6 +169,20 @@ function initTelemetryController() {
       if (rttHistory.length > 20) rttHistory.shift();
     }
     drawCanvasCharts();
+  }
+
+  let telemetryFrame = null;
+  let pendingKpis = null;
+
+  function queueKpis(speedKbps, lossPct, rttMs, chunksCount, framesCount) {
+    pendingKpis = [speedKbps, lossPct, rttMs, chunksCount, framesCount];
+    if (telemetryFrame !== null) return;
+    telemetryFrame = requestAnimationFrame(() => {
+      telemetryFrame = null;
+      const next = pendingKpis;
+      pendingKpis = null;
+      if (next) updateKpis(next[0], next[1], next[2], next[3], next[4]);
+    });
   }
 
   function appendSnifferRow(rec) {
@@ -248,7 +289,7 @@ function initTelemetryController() {
 
   function wireBridgeSignals() {
     window.bridge.telemetryUpdated.connect((speedKbps, lossPct, rttMs, chunksCount, framesCount) => {
-      updateKpis(speedKbps, lossPct, rttMs, chunksCount, framesCount);
+      queueKpis(speedKbps, lossPct, rttMs, chunksCount, framesCount);
     });
 
     window.bridge.snifferFrameLogged.connect((timeStr, frameId, carrier, typeStr, payloadPreview, checksumStatus, latencyMs) => {

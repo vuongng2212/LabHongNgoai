@@ -8,9 +8,9 @@
 
 <!-- Modal overlay: centered dialog for success / error / confirm -->
 <div id="modal-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
-  <div id="modal-backdrop" class="absolute inset-0 bg-on-surface/30 backdrop-blur-[2px]"></div>
+  <div id="modal-backdrop" class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"></div>
   <div id="modal-card" role="dialog" aria-modal="true"
-    class="relative w-full max-w-sm bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2">
+    class="relative w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2">
     <div id="modal-icon-wrap" class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm">
       <span id="modal-icon" class="material-symbols-outlined text-[26px]">check_circle</span>
     </div>

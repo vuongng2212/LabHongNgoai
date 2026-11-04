@@ -120,7 +120,7 @@ class WebMainWindow(QMainWindow):
         )
         self.setWindowTitle(title)
         self.resize(1380, 880)
-        self.setMinimumSize(1100, 700)
+        self.setMinimumSize(720, 600)
 
     def _create_page(self) -> WebAppPage:
         """Creates the WebEngine page, isolating the profile per instance."""
@@ -197,7 +197,7 @@ class WebMainWindow(QMainWindow):
         screen = QGuiApplication.primaryScreen()
         geo = screen.availableGeometry()
         half_w = max(720, geo.width() // 2)
-        self.setMinimumSize(min(self.minimumWidth(), half_w), 700)
+        self.setMinimumSize(min(self.minimumWidth(), half_w), 600)
         self.resize(half_w, geo.height())
         x = geo.x() if position == "left" else geo.x() + geo.width() - half_w
         self.move(x, geo.y())

@@ -1,8 +1,8 @@
 let bridge = null;
-let selectedBaud = 115200;
+let selectedBaud = 9600;
 let portSelectionInitialized = false;
 
-const DEFAULT_BAUDRATES = [9600, 38400, 57600, 115200];
+const DEFAULT_BAUDRATES = [2400, 4800, 9600, 19200];
 
 if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
   try {
@@ -26,8 +26,8 @@ let connectFailTimer = null;
 let pendingPingBtns = [];
 let pingFailTimer = null;
 
-function toast(type, title, message) {
-  if (window.UIFeedback) window.UIFeedback.showToast(type, title, message);
+function toast(type, title, message, opts) {
+  if (window.UIFeedback) window.UIFeedback.showToast(type, title, message, opts);
 }
 
 function clearConnectLoading() {
@@ -56,7 +56,7 @@ function renderBaudrateSelector(baudrates, activeBaud) {
     .filter((value) => Number.isFinite(value) && value > 0);
   const options = parsed.length ? Array.from(new Set(parsed)) : DEFAULT_BAUDRATES.slice();
   const requested = parseInt(activeBaud, 10);
-  const active = options.includes(requested) ? requested : (options.includes(115200) ? 115200 : options[0]);
+  const active = options.includes(requested) ? requested : (options.includes(9600) ? 9600 : options[0]);
   selectedBaud = active;
   container.innerHTML = '';
   options.forEach((baud) => {
@@ -118,86 +118,84 @@ function fallbackEntries() {
   return [{ name: 'MOCK_COM_LOOPBACK', label: 'MOCK_COM_LOOPBACK (Virtual Loopback)' }];
 }
 
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el && el.textContent !== text) el.textContent = text;
+}
+
+function setTone(id, tone) {
+  const el = document.getElementById(id);
+  if (el && el.dataset.tone !== tone) el.dataset.tone = tone;
+}
+
+function setRibbonText(text) {
+  const el = document.getElementById('ribbon-text');
+  if (!el) return;
+  if (el.textContent !== text) el.textContent = text;
+  if (el.title !== text) el.title = text;
+}
+
 function setConnectedUi(txPort, rxPort, baud) {
   const summary = 'TX: ' + txPort + ' • RX: ' + rxPort;
-  const ribbonText = document.getElementById('ribbon-text');
-  if (ribbonText) ribbonText.innerText = 'STM32 Optical Bridge • ' + summary + ' (' + baud + ' bps)';
-  const ribbonDot = document.getElementById('ribbon-dot');
-  if (ribbonDot) ribbonDot.className = 'w-2 h-2 rounded-full bg-secondary';
+  setRibbonText('STM32 Optical Bridge • ' + summary + ' (' + baud + ' bps)');
+  setTone('ribbon-badge', 'success');
 
   const footerHealthDot = document.getElementById('footer-health-dot');
-  if (footerHealthDot) footerHealthDot.className = 'w-2 h-2 rounded-full bg-secondary';
+  if (footerHealthDot) footerHealthDot.className = 'w-2 h-2 rounded-full bg-secondary shrink-0';
+  setText('footer-health-text', 'ONLINE');
   const footerHealth = document.getElementById('footer-health-text');
-  if (footerHealth) {
-    footerHealth.innerText = 'ONLINE';
-    footerHealth.className = 'font-mono-caption text-mono-caption font-medium text-secondary';
-  }
-  const footerPortLabel = document.getElementById('footer-port-label');
-  if (footerPortLabel) footerPortLabel.innerText = summary;
-  const footerBaudLabel = document.getElementById('footer-baud-label');
-  if (footerBaudLabel) footerBaudLabel.innerText = baud + ' bps';
+  if (footerHealth) footerHealth.className = 'font-mono-caption text-mono-caption font-medium text-secondary truncate';
+  setText('footer-port-label', summary);
+  setText('footer-baud-label', baud + ' bps');
 
-  const headerLinkBadge = document.getElementById('hw-header-link-badge');
-  if (headerLinkBadge) {
-    headerLinkBadge.className = 'flex items-center gap-1.5 font-mono-caption text-mono-caption font-medium text-secondary';
-    headerLinkBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> LINK CONNECTED';
-  }
-  const rttState = document.getElementById('hw-rtt-state');
-  if (rttState) {
-    rttState.innerText = 'READY';
-    rttState.className = 'text-secondary font-semibold';
-  }
-  const chatLinkState = document.getElementById('chat-link-state');
-  if (chatLinkState) {
-    chatLinkState.innerText = 'LINK: CONNECTED';
-    chatLinkState.className = 'text-secondary font-medium';
+  if (window.UIBadge) {
+    window.UIBadge.set('hw-header-link-badge', { tone: 'success', label: 'LINK CONNECTED' });
+    window.UIBadge.set('hw-tx-status', { tone: 'success', label: 'TX OPEN' });
+    window.UIBadge.set('hw-rx-status', { tone: 'success', label: 'RX OPEN' });
+    window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'READY' });
+    window.UIBadge.set('chat-link-state', { tone: 'success', label: 'LINK CONNECTED' });
   }
 
   const connBtn = document.getElementById('btn-connect');
   if (connBtn) {
-    connBtn.innerText = 'Disconnect';
-    connBtn.className = 'flex-1 h-[32px] bg-error hover:bg-on-error-container text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer';
+    connBtn.dataset.state = 'connected';
+    if (connBtn.textContent !== 'Disconnect') connBtn.textContent = 'Disconnect';
+  }
+}
+
+function setConnectingUi(txPort, rxPort) {
+  setRibbonText('STM32 Optical Bridge • Opening ' + txPort + ' / ' + rxPort);
+  setTone('ribbon-badge', 'info');
+  if (window.UIBadge) {
+    window.UIBadge.set('hw-header-link-badge', { tone: 'info', label: 'CONNECTING' });
+    window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
   }
 }
 
 function setDisconnectedUi() {
-  const ribbonText = document.getElementById('ribbon-text');
-  if (ribbonText) ribbonText.innerText = 'STM32 Optical Bridge • Disconnected';
-  const ribbonDot = document.getElementById('ribbon-dot');
-  if (ribbonDot) ribbonDot.className = 'w-2 h-2 rounded-full bg-outline';
+  setRibbonText('STM32 Optical Bridge • Disconnected');
+  setTone('ribbon-badge', 'neutral');
 
   const footerHealthDot = document.getElementById('footer-health-dot');
-  if (footerHealthDot) footerHealthDot.className = 'w-2 h-2 rounded-full bg-outline';
+  if (footerHealthDot) footerHealthDot.className = 'w-2 h-2 rounded-full bg-outline shrink-0';
+  setText('footer-health-text', 'OFFLINE');
   const footerHealth = document.getElementById('footer-health-text');
-  if (footerHealth) {
-    footerHealth.innerText = 'OFFLINE';
-    footerHealth.className = 'font-mono-caption text-mono-caption font-medium text-outline';
-  }
-  const footerPortLabel = document.getElementById('footer-port-label');
-  if (footerPortLabel) footerPortLabel.innerText = 'Disconnected';
-  const footerBaudLabel = document.getElementById('footer-baud-label');
-  if (footerBaudLabel) footerBaudLabel.innerText = '--';
+  if (footerHealth) footerHealth.className = 'font-mono-caption text-mono-caption font-medium text-outline truncate';
+  setText('footer-port-label', 'Disconnected');
+  setText('footer-baud-label', '--');
 
-  const headerLinkBadge = document.getElementById('hw-header-link-badge');
-  if (headerLinkBadge) {
-    headerLinkBadge.className = 'flex items-center gap-1.5 font-mono-caption text-mono-caption font-medium text-outline';
-    headerLinkBadge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> DISCONNECTED';
-  }
-  const rttState = document.getElementById('hw-rtt-state');
-  if (rttState) {
-    rttState.innerText = 'IDLE';
-    rttState.className = 'text-outline font-semibold';
-  }
-  const chatLinkState = document.getElementById('chat-link-state');
-  if (chatLinkState) {
-    chatLinkState.innerText = 'LINK: STANDBY';
-    chatLinkState.className = 'text-outline font-medium';
+  if (window.UIBadge) {
+    window.UIBadge.set('hw-header-link-badge', { tone: 'neutral', label: 'DISCONNECTED' });
+    window.UIBadge.set('hw-tx-status', { tone: 'neutral', label: 'TX IDLE' });
+    window.UIBadge.set('hw-rx-status', { tone: 'neutral', label: 'RX IDLE' });
+    window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'IDLE' });
+    window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
   }
 
   const connBtn = document.getElementById('btn-connect');
   if (connBtn) {
-    connBtn.innerText = 'Connect';
-    connBtn.className = 'flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer';
+    connBtn.dataset.state = 'disconnected';
+    if (connBtn.textContent !== 'Connect') connBtn.textContent = 'Connect';
   }
 }
 
@@ -206,15 +204,15 @@ function initBridgeListeners() {
 
   bridge.portConnected.connect((txPort, rxPort, baud) => {
     clearConnectLoading();
-    setConnectedUi(txPort, rxPort, baud);
-    if (window.UIFeedback) {
-      window.UIFeedback.showModal({
-        variant: 'success',
-        title: 'Link connected',
-        message: 'STM32 optical bridge is ready for Ping / Chat / File transfer.',
-        details: 'TX: ' + txPort + ' • RX: ' + rxPort + ' @ ' + baud + ' bps • 8-N-1',
-      });
-    }
+    requestAnimationFrame(() => {
+      setConnectedUi(txPort, rxPort, baud);
+      toast(
+        'success',
+        'Link connected',
+        'TX: ' + txPort + ' • RX: ' + rxPort + ' @ ' + baud + ' bps • 8-N-1',
+        { durationMs: 2800 }
+      );
+    });
   });
 
   bridge.errorOccurred.connect((message) => {
@@ -223,6 +221,10 @@ function initBridgeListeners() {
     clearConnectLoading();
     clearPingLoading();
     console.error('Bridge error:', message);
+    if (wasConnecting) {
+      setTone('ribbon-badge', 'error');
+      if (window.UIBadge) window.UIBadge.set('hw-header-link-badge', { tone: 'error', label: 'ERROR' });
+    }
     if (wasConnecting && window.UIFeedback) {
       window.UIFeedback.showModal({
         variant: 'error',
@@ -248,45 +250,44 @@ function initBridgeListeners() {
 
   bridge.pingResult.connect((rtt, seq) => {
     clearPingLoading();
-    const rttElement = document.getElementById('hw-rtt-value');
-    if (rttElement) rttElement.innerText = rtt.toFixed(1) + ' ms';
-    const rttState = document.getElementById('hw-rtt-state');
-    if (rttState) {
-      rttState.innerText = 'MEASURED';
-      rttState.className = 'text-secondary font-semibold';
+    setText('hw-rtt-value', rtt.toFixed(1) + ' ms');
+    if (window.UIBadge) {
+      window.UIBadge.set('hw-rtt-state', {
+        tone: window.UIBadge.toneForRtt(rtt),
+        label: 'MEASURED'
+      });
     }
-    toast('success', 'Ping echo received', 'Seq #' + seq + ' • RTT ' + rtt.toFixed(1) + ' ms');
+    toast('success', 'Ping echo received', 'Seq #' + seq + ' • RTT ' + rtt.toFixed(1) + ' ms', { durationMs: 2800 });
     console.log('Ping Echo Received: seq #' + seq + ' | RTT: ' + rtt.toFixed(1) + ' ms');
   });
 
   bridge.healthResult.connect((rtt) => {
-    const rttElement = document.getElementById('hw-rtt-value');
-    if (rttElement) rttElement.innerText = rtt.toFixed(1) + ' ms';
+    setText('hw-rtt-value', rtt.toFixed(1) + ' ms');
+    if (window.UIBadge) {
+      window.UIBadge.set('hw-rtt-state', {
+        tone: window.UIBadge.toneForRtt(rtt),
+        label: 'MEASURED'
+      });
+    }
   });
 
   let txTimeout = null;
   let rxTimeout = null;
-  const txDot = document.getElementById('hw-tx-dot');
-  const rxDot = document.getElementById('hw-rx-dot');
 
   bridge.rawTxData.connect(() => {
-    if (txDot) {
-      txDot.className = 'w-2.5 h-2.5 rounded-full bg-primary shadow-sm ring-2 ring-primary/30';
-      if (txTimeout) clearTimeout(txTimeout);
-      txTimeout = setTimeout(() => {
-        txDot.className = 'w-2.5 h-2.5 rounded-full bg-primary/40';
-      }, 120);
-    }
+    if (window.UIBadge) window.UIBadge.setActive('hw-tx-status', true);
+    if (txTimeout) clearTimeout(txTimeout);
+    txTimeout = setTimeout(() => {
+      if (window.UIBadge) window.UIBadge.setActive('hw-tx-status', false);
+    }, 120);
   });
 
   bridge.rawRxData.connect(() => {
-    if (rxDot) {
-      rxDot.className = 'w-2.5 h-2.5 rounded-full bg-secondary shadow-sm ring-2 ring-secondary/30';
-      if (rxTimeout) clearTimeout(rxTimeout);
-      rxTimeout = setTimeout(() => {
-        rxDot.className = 'w-2.5 h-2.5 rounded-full bg-secondary/40';
-      }, 120);
-    }
+    if (window.UIBadge) window.UIBadge.setActive('hw-rx-status', true);
+    if (rxTimeout) clearTimeout(rxTimeout);
+    rxTimeout = setTimeout(() => {
+      if (window.UIBadge) window.UIBadge.setActive('hw-rx-status', false);
+    }, 120);
   });
 
   if (typeof bridge.portsChanged !== 'undefined' && bridge.portsChanged) {
@@ -312,8 +313,9 @@ function applyLaunchConfig() {
     const ribbon = document.getElementById('ribbon-text');
     if (ribbon && cfg.display_name) {
       const role = cfg.role ? ' • ' + cfg.role : '';
-      ribbon.innerText = cfg.display_name + role + ' • Waiting for link';
+      setRibbonText(cfg.display_name + role + ' • Waiting for link');
     }
+    setTone('ribbon-badge', 'neutral');
     const baudList = Array.isArray(cfg.supported_baudrates) ? cfg.supported_baudrates : DEFAULT_BAUDRATES;
     loadBaudrateOptions(baudList, cfg.default_baudrate || cfg.baud || selectedBaud);
     refreshPortList(null, cfg.tx_port || cfg.preferred_port || null, cfg.rx_port || null);
@@ -431,6 +433,8 @@ document.addEventListener('click', (e) => {
         if (pendingConnectBtn) {
           const ports = pendingConnectPort;
           clearConnectLoading();
+          setTone('ribbon-badge', 'error');
+          if (window.UIBadge) window.UIBadge.set('hw-header-link-badge', { tone: 'error', label: 'ERROR' });
           window.UIFeedback.showModal({
             variant: 'error',
             title: 'Connection timeout',
@@ -440,6 +444,7 @@ document.addEventListener('click', (e) => {
         }
       }, 6000);
     }
+    setConnectingUi(txPort, rxPort);
     bridge.connectDualPorts(txPort, rxPort, selectedBaud);
   } else if (btn.innerText.includes('Disconnect')) {
     if (!bridge) return;
