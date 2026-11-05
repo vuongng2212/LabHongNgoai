@@ -21,8 +21,10 @@ from ir_terminal.protocol.constants import (
     RX_COMPACT_THRESHOLD,
     SOCKET_CONNECT_TIMEOUT_SEC,
 )
+from ir_terminal.protocol.control_channel import ControlMessage
 from ir_terminal.protocol.framer import FramerStats, parse_frames_with_stats
 from ir_terminal.protocol.packet import Packet
+from ir_terminal.protocol.stream_demux import demux_stream
 from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
 from ir_terminal.utils.path_helpers import is_dual_mock_enabled
 
@@ -128,6 +130,7 @@ class SerialWorker(QObject):
     raw_data_received: ClassVar[Signal] = Signal(bytes)
     raw_data_sent: ClassVar[Signal] = Signal(bytes)
     packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
+    control_message_received: ClassVar[Signal] = Signal(str)
     ports_changed: ClassVar[Signal] = Signal(list)
     framer_error: ClassVar[Signal] = Signal(str, int)  # (kind, count delta)
 
@@ -380,7 +383,19 @@ class SerialWorker(QObject):
         before = self._framer_stats.snapshot()
         pending = memoryview(self._rx_accumulation)[self._rx_consumed :]
         pending_len = len(pending)
-        packets, remaining = parse_frames_with_stats(pending, self._framer_stats)[:2]
+        try:
+            demux_result = demux_stream(pending, self._framer_stats)
+            packets = demux_result.packets
+            remaining = demux_result.remaining
+            events = demux_result.events
+        except Exception:
+            logger.exception(
+                "%s RX demux failed; falling back to frame-only parser (scanned=%dB)",
+                LogTag.PROTO_FRAME,
+                pending_len,
+            )
+            packets, remaining = parse_frames_with_stats(pending, self._framer_stats)[:2]
+            events = list(packets)
         pending.release()
         self._rx_consumed = len(self._rx_accumulation) - len(remaining)
         if self._rx_consumed >= RX_COMPACT_THRESHOLD:
@@ -409,7 +424,12 @@ class SerialWorker(QObject):
                     after["noise_bytes"] - before["noise_bytes"],
                     pending_len,
                 )
-        for pkt in packets:
+        for event in events:
+            if isinstance(event, ControlMessage):
+                logger.info("%s RX control line=%s", LogTag.BAUD_CTRL, event.raw)
+                self.control_message_received.emit(event.raw)
+                continue
+            pkt = event
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     "%s RX packet %s crc=0x%08X payload_hex=%s",

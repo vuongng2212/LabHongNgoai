@@ -18,7 +18,11 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ir_terminal.protocol.constants import SUPPORTED_BAUDRATES
+from ir_terminal.protocol.constants import (
+    DEFAULT_OPTICAL_BAUDRATE,
+    PHYSICAL_BAUDRATE,
+    SUPPORTED_BAUDRATES,
+)
 from ir_terminal.utils.path_helpers import (
     get_app_data_dir,
     get_logs_dir,
@@ -28,7 +32,8 @@ from ir_terminal.utils.path_helpers import (
     normalize_instance_id,
 )
 
-DEFAULT_BAUD: int = 9600
+DEFAULT_BAUD: int = DEFAULT_OPTICAL_BAUDRATE
+DEFAULT_PHYSICAL_BAUD: int = PHYSICAL_BAUDRATE
 DEFAULT_LINK_HOST: str = "127.0.0.1"
 DEFAULT_LINK_BASE_PORT: int = 6001
 DEFAULT_LINK_A_PORT_NAME: str = "LINK_A"
@@ -264,7 +269,12 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         default=None,
         help="Explicit RX port name (overrides --port for incoming bytes).",
     )
-    parser.add_argument("--baud", type=int, default=DEFAULT_BAUD, help="Baud rate.")
+    parser.add_argument(
+        "--baud",
+        type=int,
+        default=DEFAULT_BAUD,
+        help="Initial optical/IR baudrate (physical UART stays at 115200).",
+    )
     parser.add_argument(
         "--link-role",
         choices=LINK_ROLES,

@@ -11,8 +11,14 @@ from pytestqt.qtbot import QtBot
 
 from ir_terminal.config import LaunchConfig
 from ir_terminal.core.serial_manager import SerialManager
-from ir_terminal.protocol.constants import EOF_MAGIC, SOF_MAGIC, Opcode
+from ir_terminal.protocol.constants import (
+    EOF_MAGIC,
+    PHYSICAL_BAUDRATE,
+    SOF_MAGIC,
+    Opcode,
+)
 from ir_terminal.protocol.packet import Header, Packet
+from ir_terminal.services.file_transfer_service import TransferState
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.ui.backend_bridge import BackendBridge
 
@@ -79,12 +85,12 @@ class TestBackendBridge:
         bridge = BackendBridge(manager)
 
         with qtbot.waitSignal(bridge.portConnected, timeout=2000) as blocker:
-            bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+            bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
 
         assert blocker.args == [
             "MOCK_COM_LOOPBACK",
             "MOCK_COM_LOOPBACK",
-            115200,
+            9600,
         ]
 
         with qtbot.waitSignal(bridge.portDisconnected, timeout=2000):
@@ -92,28 +98,33 @@ class TestBackendBridge:
 
         manager.shutdown()
 
-    def test_connect_dual_ports_emits_tx_rx_baud(self, qtbot: QtBot) -> None:
-        """Verifies connectDualPorts forwards both ports and the baudrate."""
+    def test_connect_dual_ports_emits_optical_baud(self, qtbot: QtBot) -> None:
+        """Verifies the bridge reports the optical rate and opens UART at 115200."""
         manager = SerialManager()
         bridge = BackendBridge(manager)
+        physical_requests: list[tuple[str, str, int]] = []
+        manager.ports_connected.connect(
+            lambda tx, rx, baud: physical_requests.append((tx, rx, baud))
+        )
 
         try:
             with qtbot.waitSignal(bridge.portConnected, timeout=2000) as blocker:
-                bridge.connectDualPorts("MOCK_NODE_A", "MOCK_NODE_B", 57600)
+                bridge.connectDualPorts("MOCK_NODE_A", "MOCK_NODE_B", 19200)
 
-            assert blocker.args == ["MOCK_NODE_A", "MOCK_NODE_B", 57600]
+            assert blocker.args == ["MOCK_NODE_A", "MOCK_NODE_B", 19200]
             qtbot.waitUntil(lambda: manager.current_rx_port == "MOCK_NODE_B", timeout=1000)
+            assert manager.current_baud == PHYSICAL_BAUDRATE
+            assert physical_requests == [("MOCK_NODE_A", "MOCK_NODE_B", PHYSICAL_BAUDRATE)]
             connected = json.loads(bridge.getConnectedPorts())
-            assert connected == {
-                "tx_port": "MOCK_NODE_A",
-                "rx_port": "MOCK_NODE_B",
-                "baudrate": 57600,
-            }
+            assert connected["tx_port"] == "MOCK_NODE_A"
+            assert connected["rx_port"] == "MOCK_NODE_B"
+            assert connected["physical_baudrate"] == PHYSICAL_BAUDRATE
+            assert connected["baudrate"] == 19200
         finally:
             manager.shutdown()
 
     def test_connect_dual_ports_rejects_invalid_input(self, qtbot: QtBot) -> None:
-        """Verifies empty TX port and non-positive baudrate are rejected."""
+        """Verifies empty TX port, non-positive and unsupported rates are rejected."""
         manager = SerialManager()
         bridge = BackendBridge(manager)
 
@@ -125,6 +136,10 @@ class TestBackendBridge:
             with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as blocker:
                 bridge.connectDualPorts("MOCK_COM_LOOPBACK", "MOCK_COM_LOOPBACK", 0)
             assert "invalid baudrate" in blocker.args[0]
+
+            with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as blocker:
+                bridge.connectDualPorts("MOCK_COM_LOOPBACK", "MOCK_COM_LOOPBACK", 38400)
+            assert "unsupported optical baudrate" in blocker.args[0]
         finally:
             manager.shutdown()
 
@@ -145,12 +160,15 @@ class TestBackendBridge:
         """Verifies a custom JSON list in settings overrides the defaults."""
         manager = SerialManager()
         storage = StorageService(data_dir=tmp_path / "data")
-        storage.save_setting("supported_baudrates", json.dumps([9600, 14400, 28800]))
+        storage.save_setting("supported_baudrates", json.dumps([2400, 4800, 9600]))
         bridge = BackendBridge(manager, storage_service=storage)
 
-        assert json.loads(bridge.getAvailableBaudrates()) == [9600, 14400, 28800]
+        assert json.loads(bridge.getAvailableBaudrates()) == [2400, 4800, 9600]
         launch = json.loads(bridge.getLaunchConfig())
-        assert launch["supported_baudrates"] == [9600, 14400, 28800]
+        assert launch["supported_baudrates"] == [2400, 4800, 9600]
+
+        storage.save_setting("supported_baudrates", json.dumps([38400, 14400]))
+        assert json.loads(bridge.getAvailableBaudrates()) == [2400, 4800, 9600, 19200]
 
         manager.shutdown()
 
@@ -168,6 +186,8 @@ class TestBackendBridge:
         assert launch["rx_port"] == "COM4"
         assert launch["default_baudrate"] == 57600
         assert launch["baud"] == 57600
+        assert launch["physical_baudrate"] == PHYSICAL_BAUDRATE
+        assert launch["default_optical_baudrate"] == 9600
         assert launch["supported_baudrates"][-1] == 19200
 
         manager.shutdown()
@@ -178,7 +198,7 @@ class TestBackendBridge:
         bridge = BackendBridge(manager)
 
         with qtbot.waitSignal(bridge.portConnected, timeout=2000):
-            bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+            bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
 
         with qtbot.waitSignal(bridge.pingResult, timeout=2000) as blocker:
             bridge.sendPing()
@@ -195,7 +215,7 @@ class TestBackendBridge:
         bridge = BackendBridge(manager)
 
         with qtbot.waitSignal(bridge.portConnected, timeout=2000):
-            bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+            bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
 
         with qtbot.waitSignal(bridge.chatMessageReceived, timeout=1000) as blocker:
             bridge.sendChat("Bridge Chat Test")
@@ -237,7 +257,7 @@ class TestBackendBridge:
         bridge = BackendBridge(manager)
 
         with qtbot.waitSignal(bridge.portConnected, timeout=2000):
-            bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+            bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
 
         with qtbot.waitSignal(bridge.rawTxData, timeout=1000) as blocker:
             manager.send_packet(seq=1, opcode=Opcode.PING, payload=b"RAW")
@@ -269,7 +289,7 @@ class TestBackendBridge:
         bridge.pingResult.connect(lambda *args: manual_pongs.append(args))
 
         with qtbot.waitSignal(bridge.portConnected, timeout=2000):
-            bridge.connectPort("MOCK_COM_LOOPBACK", 115200)
+            bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
 
         bridge.setAutoPingInterval(0.2)
         with qtbot.waitSignal(bridge.healthResult, timeout=2000):
@@ -355,3 +375,259 @@ class TestBackendBridge:
         assert "/dev/ttyUSB0" in devices
 
         manager.shutdown()
+
+
+class TestOpticalBaudControl:
+    """Verifies optical baud switching never reopens the physical UART."""
+
+    def test_set_optical_baud_sends_control_line_without_reconnect(
+        self, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        sent: list[str] = []
+        reconnect_calls: list[tuple[object, ...]] = []
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+            qtbot.wait(100)
+
+            monkeypatch.setattr(manager, "send_control_line", sent.append)
+            monkeypatch.setattr(
+                manager, "connect_ports", lambda *args: reconnect_calls.append(args)
+            )
+            monkeypatch.setattr(
+                manager, "disconnect_port", lambda *args: reconnect_calls.append(args)
+            )
+            pending: list[int] = []
+            bridge.opticalBaudPending.connect(pending.append)
+
+            result = json.loads(bridge.setOpticalBaud(19200))
+
+            assert result["ok"] is True
+            assert result["pending"] is True
+            assert sent == ["SET_BAUD:19200"]
+            assert pending == [19200]
+            assert reconnect_calls == []
+            assert manager.is_connected is True
+        finally:
+            manager.shutdown()
+
+    def test_set_optical_baud_while_disconnected_updates_next_connect(
+        self, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        sent: list[str] = []
+
+        try:
+            monkeypatch.setattr(manager, "send_control_line", sent.append)
+            result = json.loads(bridge.setOpticalBaud(19200))
+
+            assert result == {"ok": True, "connected": False, "baudrate": 19200}
+            assert sent == []
+
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000) as blocker:
+                bridge.connectPort("MOCK_COM_LOOPBACK", 19200)
+
+            assert blocker.args == ["MOCK_COM_LOOPBACK", "MOCK_COM_LOOPBACK", 19200]
+        finally:
+            manager.shutdown()
+
+    def test_set_optical_baud_rejects_unsupported_rate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        sent: list[str] = []
+
+        try:
+            monkeypatch.setattr(manager, "send_control_line", sent.append)
+            result = json.loads(bridge.setOpticalBaud(14400))
+
+            assert result["ok"] is False
+            assert "Unsupported optical baudrate" in result["error"]
+            assert sent == []
+        finally:
+            manager.shutdown()
+
+    def test_set_optical_baud_rejected_during_transfer(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            bridge.file_service._state_coordinator.transition(TransferState.TRANSFERRING)
+            result = json.loads(bridge.setOpticalBaud(19200))
+
+            assert result["ok"] is False
+            assert "active transfer" in result["error"]
+            assert bridge._pending_optical_baud is None
+            assert manager.is_connected is True
+            bridge.file_service._state_coordinator.transition(TransferState.IDLE)
+        finally:
+            manager.shutdown()
+
+    def test_baud_ok_updates_authoritative_rate(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        changed: list[int] = []
+        statuses: list[tuple[str, str]] = []
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            bridge.opticalBaudChanged.connect(changed.append)
+            bridge.baudControlStatus.connect(lambda status, detail: statuses.append((status, detail)))
+            bridge.setOpticalBaud(19200)
+            bridge._on_control_message("BAUD_OK:19200")
+
+            assert bridge._optical_baud == 19200
+            assert bridge._pending_optical_baud is None
+            assert changed[-1] == 19200
+            assert statuses[-1][0] == "ok"
+        finally:
+            manager.shutdown()
+
+    def test_stale_baud_ok_ignored_after_notify(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            bridge.setOpticalBaud(19200)
+            bridge._on_control_message("NOTIFY_BAUD:4800")
+            bridge._on_control_message("BAUD_OK:19200")
+
+            assert bridge._optical_baud == 4800
+            assert bridge._pending_optical_baud is None
+        finally:
+            manager.shutdown()
+
+    def test_notify_baud_updates_without_echo(
+        self, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        sent: list[str] = []
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+            qtbot.wait(100)
+
+            monkeypatch.setattr(manager, "send_control_line", sent.append)
+            changed: list[int] = []
+            bridge.opticalBaudChanged.connect(changed.append)
+
+            bridge._on_control_message("NOTIFY_BAUD:4800")
+
+            assert bridge._optical_baud == 4800
+            assert changed[-1] == 4800
+            assert sent == []
+        finally:
+            manager.shutdown()
+
+    def test_baud_err_keeps_previous_rate(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        statuses: list[tuple[str, str]] = []
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            bridge.baudControlStatus.connect(
+                lambda status, detail: statuses.append((status, detail))
+            )
+            bridge.setOpticalBaud(19200)
+            bridge._on_control_message("BAUD_ERR:unsupported")
+
+            assert bridge._optical_baud == 9600
+            assert bridge._pending_optical_baud is None
+            assert statuses[-1] == ("error", "unsupported")
+        finally:
+            manager.shutdown()
+
+    def test_health_tick_skips_while_baud_request_pending(
+        self, qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+        pings: list[tuple[int, int, bytes]] = []
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+            qtbot.wait(100)
+
+            monkeypatch.setattr(
+                manager,
+                "send_packet",
+                lambda seq, opcode, payload=b"": pings.append((seq, opcode, payload)),
+            )
+            bridge._pending_optical_baud = 19200
+            bridge._on_health_tick()
+
+            assert pings == []
+            bridge._pending_optical_baud = None
+        finally:
+            manager.shutdown()
+
+    def test_unknown_control_line_does_not_change_state(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            bridge._on_control_message("HELLO:WORLD")
+
+            assert bridge._optical_baud == 9600
+            assert bridge._pending_optical_baud is None
+        finally:
+            manager.shutdown()
+
+    def test_mock_ack_updates_state_without_reconnect(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+            qtbot.wait(100)
+
+            with qtbot.waitSignal(bridge.opticalBaudChanged, timeout=2000) as blocker:
+                bridge.setOpticalBaud(19200)
+
+            assert blocker.args == [19200]
+            assert bridge._optical_baud == 19200
+            assert manager.is_connected is True
+            assert manager.current_baud == PHYSICAL_BAUDRATE
+        finally:
+            manager.shutdown()
+
+    def test_injected_notify_updates_ui_state(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+            qtbot.wait(100)
+
+            with qtbot.waitSignal(bridge.opticalBaudChanged, timeout=2000) as blocker:
+                manager.inject_raw_rx(b"NOTIFY_BAUD:4800\n")
+
+            assert blocker.args == [4800]
+            assert bridge._optical_baud == 4800
+            assert manager.is_connected is True
+        finally:
+            manager.shutdown()

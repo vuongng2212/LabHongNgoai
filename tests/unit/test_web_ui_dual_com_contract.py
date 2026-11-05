@@ -79,11 +79,25 @@ class TestBridgeClientContract:
         assert "portConnected.connect((txPort, rxPort, baud)" in script
         assert "TX: ' + txPort + ' • RX: ' + rxPort" in script
 
-    def test_default_baudrates_are_common_values(self) -> None:
-        """Backend and browser fallbacks expose only the four common rates."""
+    def test_default_baudrates_are_optical_values(self) -> None:
+        """Backend and browser fallbacks expose only the four optical rates."""
         assert SUPPORTED_BAUDRATES == (2400, 4800, 9600, 19200)
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
         assert "const DEFAULT_BAUDRATES = [2400, 4800, 9600, 19200];" in script
+
+    def test_baud_click_uses_optical_control_channel(self) -> None:
+        """Clicking a baud button sends SET_BAUD instead of reconnecting."""
+        script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
+        assert "setOpticalBaud(" in script
+        assert "opticalBaudChanged.connect" in script
+        assert "pendingBaud" in script
+
+    def test_hardware_view_shows_fixed_physical_uart(self) -> None:
+        """The hardware card labels the optical selector and the fixed UART."""
+        hardware_html = (COMPONENTS_DIR / "view_hardware.html").read_text(encoding="utf-8")
+        assert "Optical Baudrate (bps)" in hardware_html
+        assert 'id="hw-physical-baud"' in hardware_html
+        assert "115200 bps FIXED" in hardware_html
 
     def test_refresh_port_list_preserves_configured_launch_ports(self) -> None:
         """Configured launch ports are injected into entries if missing from scan."""

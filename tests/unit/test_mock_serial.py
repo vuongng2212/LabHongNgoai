@@ -58,3 +58,52 @@ class TestMockSerial:
         port.write(ping_frame)
 
         assert port.in_waiting == 0
+
+
+class TestMockBaudControl:
+    """Verifies the mock STM32 answers SET_BAUD and can emit NOTIFY_BAUD."""
+
+    def test_set_baud_gets_baud_ok_reply(self) -> None:
+        from ir_terminal.protocol.control_channel import parse_control_line
+
+        port = MockSerialPort(simulated_latency_ms=0.0)
+        port.open()
+        port.write(b"SET_BAUD:19200\n")
+
+        port.flush_due(force=True)
+        reply = port.read(port.in_waiting)
+
+        message = parse_control_line(reply)
+        assert message is not None
+        assert message.kind == "BAUD_OK"
+        assert message.baudrate == 19200
+        assert port.simulated_optical_baud == 19200
+
+    def test_notify_baud_injects_hardware_event(self) -> None:
+        from ir_terminal.protocol.control_channel import parse_control_line
+
+        port = MockSerialPort()
+        port.open()
+        port.notify_baud(4800)
+
+        message = parse_control_line(port.read(port.in_waiting))
+        assert message is not None
+        assert message.kind == "NOTIFY_BAUD"
+        assert message.baudrate == 4800
+        assert port.simulated_optical_baud == 4800
+
+    def test_frame_handling_still_works_after_control_traffic(self) -> None:
+        port = MockSerialPort(simulated_latency_ms=0.0)
+        port.open()
+        port.write(b"SET_BAUD:9600\n")
+        port.flush_due(force=True)
+        port.read(port.in_waiting)
+
+        ping_frame = pack_frame(seq=21, opcode=Opcode.PING, payload=b"AFTER_CTRL")
+        port.write(ping_frame)
+        port.flush_due(force=True)
+        packets, _ = parse_frames_from_buffer(port.read(port.in_waiting))
+
+        assert len(packets) == 1
+        assert packets[0].opcode == Opcode.PONG
+        assert packets[0].payload == b"AFTER_CTRL"

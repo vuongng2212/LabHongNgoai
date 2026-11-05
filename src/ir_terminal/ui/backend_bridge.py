@@ -22,9 +22,17 @@ from ir_terminal.config import (
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.core.serial_worker import PortInfo
 from ir_terminal.protocol.constants import (
+    BAUD_ACK_TIMEOUT_MS,
     DEFAULT_HEALTH_CHECK_SEC,
+    DEFAULT_OPTICAL_BAUDRATE,
+    PHYSICAL_BAUDRATE,
     SUPPORTED_BAUDRATES,
     Opcode,
+)
+from ir_terminal.protocol.control_channel import (
+    ControlKind,
+    format_set_baud,
+    parse_control_line,
 )
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.services.chat_service import ChatService
@@ -66,6 +74,10 @@ class BackendBridge(QObject):
     )  # (filename, bytes_sent, elapsed_sec, crc_hex)
     transferFailed: ClassVar[Signal] = Signal(str)  # (reason)
     transferStateChanged: ClassVar[Signal] = Signal(str)  # (state)
+
+    opticalBaudChanged: ClassVar[Signal] = Signal(int)
+    opticalBaudPending: ClassVar[Signal] = Signal(int)
+    baudControlStatus: ClassVar[Signal] = Signal(str, str)
 
     telemetryUpdated: ClassVar[Signal] = Signal(
         float, float, float, int, int
@@ -112,6 +124,15 @@ class BackendBridge(QObject):
         self._last_ping_time: float = 0.0
         self._ping_seq: int = 1
 
+        requested_optical = launch_config.baud if launch_config else DEFAULT_OPTICAL_BAUDRATE
+        self._optical_baud: int = (
+            int(requested_optical)
+            if requested_optical in SUPPORTED_BAUDRATES
+            else DEFAULT_OPTICAL_BAUDRATE
+        )
+        self._pending_optical_baud: int | None = None
+        self._baud_request_generation: int = 0
+
         self._is_connected = False
         self._health_interval_sec = DEFAULT_HEALTH_CHECK_SEC
         self._health_timer = QTimer(self)
@@ -119,11 +140,15 @@ class BackendBridge(QObject):
         self._health_timer.setInterval(int(self._health_interval_sec * 1000))
         self._health_timer.timeout.connect(self._on_health_tick)
 
+        self._baud_ack_timer = QTimer(self)
+        self._baud_ack_timer.setSingleShot(True)
+        self._baud_ack_timer.setInterval(BAUD_ACK_TIMEOUT_MS)
+        self._baud_ack_timer.timeout.connect(self._on_baud_ack_timeout)
+
         self._wire_signals()
 
     def _wire_signals(self) -> None:
         """Connects underlying core services to bridge signals and telemetry listeners."""
-        self._serial_manager.ports_connected.connect(self.portConnected)
         self._serial_manager.ports_connected.connect(self._on_link_up)
         self._serial_manager.disconnected.connect(self.portDisconnected)
         self._serial_manager.disconnected.connect(self._on_link_down)
@@ -131,6 +156,7 @@ class BackendBridge(QObject):
         self._serial_manager.raw_rx.connect(self._on_raw_rx)
         self._serial_manager.raw_tx.connect(self._on_raw_tx)
         self._serial_manager.packet_received.connect(self._on_packet_received)
+        self._serial_manager.control_message_received.connect(self._on_control_message)
         try:
             self._serial_manager.ports_changed.connect(self._on_ports_changed)
             self._serial_manager.framer_error.connect(self._on_framer_error)
@@ -152,31 +178,151 @@ class BackendBridge(QObject):
         self._telemetry.telemetry_updated.connect(self.telemetryUpdated)
         self._telemetry.sniffer_frame_logged.connect(self.snifferFrameLogged)
 
-    def _on_link_up(self, tx_port: str, rx_port: str, baud: int) -> None:
-        """Starts periodic health checks once the optical link is connected."""
+    def _on_link_up(self, tx_port: str, rx_port: str, physical_baud: int) -> None:
+        """Starts health checks and announces the optical rate once linked."""
+        if physical_baud != PHYSICAL_BAUDRATE:
+            logger.warning(
+                "%s Bridge link UP with unexpected physical baudrate=%d expected=%d",
+                LogTag.HW_SERIAL,
+                physical_baud,
+                PHYSICAL_BAUDRATE,
+            )
         self._is_connected = True
         if self._health_interval_sec > 0:
             self._health_timer.start()
         logger.info(
-            "%s Bridge link UP: tx=%s rx=%s baud=%d health_every=%.1fs auto_ping=%s",
+            "%s Bridge link UP: tx=%s rx=%s physical=%d optical=%d "
+            "health_every=%.1fs auto_ping=%s",
             LogTag.IPC_BRIDGE,
             tx_port,
             rx_port,
-            baud,
+            physical_baud,
+            self._optical_baud,
             self._health_interval_sec,
             self._health_timer.isActive(),
         )
+        self.portConnected.emit(tx_port, rx_port, self._optical_baud)
+        self.opticalBaudChanged.emit(self._optical_baud)
+        QTimer.singleShot(0, self._sync_optical_baud)
 
     def _on_link_down(self) -> None:
         """Stops periodic health checks once the optical link is closed."""
         was_connected = self._is_connected
         self._is_connected = False
         self._health_timer.stop()
+        self._baud_ack_timer.stop()
+        self._pending_optical_baud = None
         logger.info(
             "%s Bridge link DOWN (was_connected=%s) health_timer_stopped",
             LogTag.IPC_BRIDGE,
             was_connected,
         )
+
+    def _sync_optical_baud(self) -> None:
+        """Sends the desired optical rate after the physical link is open."""
+        if not self._is_connected:
+            return
+        if self._optical_baud not in SUPPORTED_BAUDRATES:
+            logger.warning(
+                "%s Skipping SET_BAUD for unsupported optical rate %d",
+                LogTag.BAUD_CTRL,
+                self._optical_baud,
+            )
+            return
+        self._pending_optical_baud = self._optical_baud
+        self._baud_request_generation += 1
+        self.opticalBaudPending.emit(self._optical_baud)
+        self._baud_ack_timer.start()
+        logger.info(
+            "%s Sync optical baudrate on link-up: %d",
+            LogTag.BAUD_CTRL,
+            self._optical_baud,
+        )
+        self._serial_manager.send_control_line(format_set_baud(self._optical_baud))
+
+    def _on_baud_ack_timeout(self) -> None:
+        """Clears a pending request without touching the physical link."""
+        pending = self._pending_optical_baud
+        if pending is None:
+            return
+        self._pending_optical_baud = None
+        logger.warning(
+            "%s No BAUD_OK for pending optical rate %d; keeping %d",
+            LogTag.BAUD_CTRL,
+            pending,
+            self._optical_baud,
+        )
+        self.baudControlStatus.emit("timeout", f"No BAUD_OK for {pending} bps")
+
+    def _on_control_message(self, message: str) -> None:
+        """Applies a validated baud-control line received from the STM32."""
+        parsed = parse_control_line(message)
+        if parsed is None:
+            logger.debug("%s Ignored control line=%r", LogTag.BAUD_CTRL, message)
+            return
+
+        if parsed.kind == ControlKind.BAUD_OK:
+            value = parsed.baudrate
+            if value is None:
+                return
+            if self._pending_optical_baud is None:
+                if value != self._optical_baud:
+                    logger.debug(
+                        "%s Ignored stale BAUD_OK=%d active=%d",
+                        LogTag.BAUD_CTRL,
+                        value,
+                        self._optical_baud,
+                    )
+                    return
+            elif value != self._pending_optical_baud:
+                logger.debug(
+                    "%s Ignored mismatched BAUD_OK=%d pending=%d",
+                    LogTag.BAUD_CTRL,
+                    value,
+                    self._pending_optical_baud,
+                )
+                return
+            self._apply_optical_baud(value, "ok")
+            return
+
+        if parsed.kind == ControlKind.NOTIFY_BAUD:
+            value = parsed.baudrate
+            if value is None:
+                return
+            self._baud_request_generation += 1
+            self._apply_optical_baud(value, "notify")
+            return
+
+        if parsed.kind == ControlKind.BAUD_ERR:
+            self._pending_optical_baud = None
+            self._baud_ack_timer.stop()
+            logger.warning(
+                "%s Baud change rejected by STM32: %s (keeping %d)",
+                LogTag.BAUD_CTRL,
+                parsed.reason,
+                self._optical_baud,
+            )
+            self.baudControlStatus.emit("error", parsed.reason)
+            return
+
+        if parsed.kind == ControlKind.SET_BAUD:
+            logger.debug("%s Ignored SET_BAUD echo=%r", LogTag.BAUD_CTRL, message)
+
+    def _apply_optical_baud(self, baudrate: int, status: str) -> None:
+        """Stores a confirmed optical rate and notifies the UI."""
+        previous = self._optical_baud
+        self._optical_baud = int(baudrate)
+        self._pending_optical_baud = None
+        self._baud_ack_timer.stop()
+        logger.info(
+            "%s Optical baudrate %s: %d -> %d",
+            LogTag.BAUD_CTRL,
+            status,
+            previous,
+            self._optical_baud,
+        )
+        self.opticalBaudChanged.emit(self._optical_baud)
+        self.baudControlStatus.emit(status, f"{self._optical_baud} bps")
 
     def _on_ports_changed(self, ports: list[PortInfo]) -> None:
         """Forwards hotplug port-list changes to the Web UI."""
@@ -233,12 +379,15 @@ class BackendBridge(QObject):
         """Stops health timer (called on window close / app quit)."""
         try:
             self._health_timer.stop()
+            self._baud_ack_timer.stop()
         except Exception:
             pass
 
     def _on_health_tick(self) -> None:
         """Transmits one silent link health-check ping when the channel is idle."""
         if not self._is_connected:
+            return
+        if self._pending_optical_baud is not None:
             return
         if self._file_service.state in (
             TransferState.HANDSHAKING,
@@ -392,6 +541,8 @@ class BackendBridge(QObject):
             "rx_port": cfg.effective_rx_port if cfg else None,
             "baud": cfg.baud if cfg else DEFAULT_BAUD,
             "default_baudrate": cfg.baud if cfg else DEFAULT_BAUD,
+            "physical_baudrate": PHYSICAL_BAUDRATE,
+            "default_optical_baudrate": self._optical_baud,
             "supported_baudrates": self._configured_baudrates(),
             "transport": cfg.transport if cfg else "auto",
             "link_role": cfg.effective_link_role if cfg else "off",
@@ -416,7 +567,7 @@ class BackendBridge(QObject):
                         value = int(item)
                     except (TypeError, ValueError):
                         continue
-                    if value > 0:
+                    if value in SUPPORTED_BAUDRATES:
                         values.append(value)
                 if values:
                     return values
@@ -444,11 +595,13 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def getConnectedPorts(self) -> str:
-        """Returns the active TX/RX ports and baud rate as a JSON object."""
+        """Returns active ports plus physical and optical baudrates as JSON."""
         payload = {
             "tx_port": self._serial_manager.current_tx_port,
             "rx_port": self._serial_manager.current_rx_port,
-            "baudrate": self._serial_manager.current_baud,
+            "physical_baudrate": PHYSICAL_BAUDRATE,
+            "baudrate": self._optical_baud,
+            "pending_baudrate": self._pending_optical_baud,
         }
         return json.dumps(payload)
 
@@ -464,12 +617,12 @@ class BackendBridge(QObject):
 
     @Slot(str, str, int)
     def connectDualPorts(self, tx_port: str, rx_port: str, baudrate: int) -> None:
-        """Connects independent TX and RX serial ports.
+        """Connects independent TX/RX ports at the fixed physical UART rate.
 
         Args:
             tx_port: Target serial port device name used for writes.
             rx_port: Target serial port device name used for reads.
-            baudrate: Baud rate integer.
+            baudrate: Desired optical/IR baudrate; never applied to the UART.
         """
         try:
             tx_name = (tx_port or "").strip()
@@ -492,15 +645,31 @@ class BackendBridge(QObject):
                 )
                 self.errorOccurred.emit(f"Connect failed: invalid baudrate {baudrate}")
                 return
+            if baudrate not in SUPPORTED_BAUDRATES:
+                logger.warning(
+                    "%s Connect rejected: unsupported optical baudrate=%d tx=%s rx=%s",
+                    LogTag.BAUD_CTRL,
+                    baudrate,
+                    tx_name,
+                    rx_name,
+                )
+                self.errorOccurred.emit(
+                    f"Connect failed: unsupported optical baudrate {baudrate}"
+                )
+                return
+            self._optical_baud = int(baudrate)
+            self._pending_optical_baud = None
+            self._baud_ack_timer.stop()
             logger.info(
-                "%s UI dual connect requested: tx=%s rx=%s baud=%d connected=%s",
+                "%s UI dual connect requested: tx=%s rx=%s physical=%d optical=%d connected=%s",
                 LogTag.HW_SERIAL,
                 tx_name,
                 rx_name,
-                baudrate,
+                PHYSICAL_BAUDRATE,
+                self._optical_baud,
                 self._is_connected,
             )
-            self._serial_manager.connect_ports(tx_name, rx_name, baudrate)
+            self._serial_manager.connect_ports(tx_name, rx_name, PHYSICAL_BAUDRATE)
         except Exception as exc:
             logger.exception(
                 "%s connectDualPorts slot FAILED (%s: %s) tx=%s rx=%s baud=%d",
@@ -512,6 +681,73 @@ class BackendBridge(QObject):
                 baudrate,
             )
             self.errorOccurred.emit(f"Connect failed: {exc}")
+
+    @Slot(int, result=str)
+    def setOpticalBaud(self, baudrate: int) -> str:
+        """Requests a new optical rate without touching the physical UART.
+
+        Args:
+            baudrate: One of the supported optical rates.
+
+        Returns:
+            JSON object with ``ok`` plus connection and baudrate state.
+        """
+        try:
+            request = int(baudrate)
+        except (TypeError, ValueError):
+            return json.dumps({"ok": False, "error": f"Invalid baudrate {baudrate!r}"})
+        if request not in SUPPORTED_BAUDRATES:
+            logger.warning(
+                "%s setOpticalBaud rejected: unsupported rate=%d",
+                LogTag.BAUD_CTRL,
+                request,
+            )
+            return json.dumps(
+                {"ok": False, "error": f"Unsupported optical baudrate {request}"}
+            )
+        if not self._is_connected:
+            self._optical_baud = request
+            logger.info(
+                "%s setOpticalBaud while disconnected: storing desired=%d",
+                LogTag.BAUD_CTRL,
+                request,
+            )
+            return json.dumps({"ok": True, "connected": False, "baudrate": request})
+        if self._file_service.state in (
+            TransferState.HANDSHAKING,
+            TransferState.TRANSFERRING,
+            TransferState.FINALIZING,
+        ):
+            logger.warning(
+                "%s setOpticalBaud rejected during transfer: state=%s requested=%d",
+                LogTag.BAUD_CTRL,
+                self._file_service.state.name,
+                request,
+            )
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "Cannot change optical baudrate during an active transfer",
+                    "state": self._file_service.state.name,
+                }
+            )
+        if request == self._optical_baud and self._pending_optical_baud is None:
+            return json.dumps({"ok": True, "connected": True, "baudrate": request})
+        self._pending_optical_baud = request
+        self._baud_request_generation += 1
+        self._baud_ack_timer.start()
+        self.opticalBaudPending.emit(request)
+        logger.info(
+            "%s UI optical baudrate request=%d active=%d generation=%d",
+            LogTag.BAUD_CTRL,
+            request,
+            self._optical_baud,
+            self._baud_request_generation,
+        )
+        self._serial_manager.send_control_line(format_set_baud(request))
+        return json.dumps(
+            {"ok": True, "connected": True, "baudrate": request, "pending": True}
+        )
 
     @Slot()
     def disconnectPort(self) -> None:

@@ -25,6 +25,7 @@ class LogTag(StrEnum):
     FILE_SVC = "[FILE_SVC]"  # Binary file chunking, disk I/O, hash verification
     STORAGE = "[STORAGE]"  # File-store persistence, CRUD, history load
     IPC_BRIDGE = "[IPC_BRIDGE]"  # QWebChannel Chromium-Python IPC dispatch
+    BAUD_CTRL = "[BAUD_CTRL]"
 
 
 _LOG_FORMAT = (

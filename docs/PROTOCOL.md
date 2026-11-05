@@ -260,3 +260,60 @@ void IR_Send_ACK(UART_HandleTypeDef *huart, uint8_t acked_seq) {
 
 * MVP đã chốt: `chunk mặc định 240B` (legacy tối đa `510B`, large tối đa `508B`, do payload frame tối đa `512B` đã gồm prefix `chunk_id`), `ACK timeout 250ms`, `retry tối đa 5 → FAILED + gửi lại tay`, toàn vẹn `CRC-32`, **streaming TX/RX không giới hạn dung lượng**, extension `0x34/0x35/0x36` cho file > 65.535 chunk, `TRANSFER_PAUSE` payload `ABORT` hủy được từ cả hai phía, `TRANSFER_RESUME (0x33)` mới chỉ định nghĩa chưa dùng.
 * Post-MVP (báo riêng, chưa implement): `0x33 resume` + ping định kỳ để tự phục hồi sau chắn tia; `SHA-256` song song CRC-32; `BER` chỉ bật khi firmware cung cấp counter; hotplug/auto-reconnect; priority queue `Control > Text > File`.
+
+---
+
+## 8. KÊNH ĐIỀU KHIỂN ASCII CHO BAUDRATE QUANG (CONTROL CHANNEL)
+
+### 8.1. Hai khái niệm baudrate tách biệt
+
+| Khái niệm | Giá trị | Ghi chú |
+| :--- | :--- | :--- |
+| UART vật lý PC ↔ STM32 | **115200 8-N-1 cố định** | Không bao giờ thay đổi khi người dùng chọn tốc độ quang |
+| Baudrate quang/IR | `2400`, `4800`, `9600`, `19200` | Do UI chọn hoặc do DIP switch SW1/SW2 trên STM32 quyết định |
+
+Chọn tốc độ quang **không** đóng/mở lại cổng COM. Lệnh được gửi qua chính transport đang mở.
+
+### 8.2. Cú pháp
+
+```text
+CONTROL_LINE := PREFIX ":" ARGUMENT "\n"
+PREFIX       := "SET_BAUD" | "BAUD_OK" | "NOTIFY_BAUD" | "BAUD_ERR"
+BAUD_VALUE   := 1*6 DIGIT
+REASON_TEXT  := 1*48 printable ASCII
+```
+
+* Ký tự kết thúc khi gửi là `\n` (`0x0A`); phía nhận chấp nhận cả `\r\n`.
+* Độ dài tối đa một dòng điều khiển là 64 byte.
+* Giá trị baud hợp lệ chỉ nằm trong `(2400, 4800, 9600, 19200)`.
+* Dòng điều khiển **không** được bọc trong frame nhị phân, **không** dùng CRC-32, **không** tiêu tốn sequence number của ARQ.
+* Dòng điều khiển chỉ xuất hiện tại ranh giới frame: trước khi một frame bắt đầu hoặc sau khi một frame kết thúc.
+
+### 8.3. Thông điệp
+
+| Hướng | Thông điệp | Ý nghĩa |
+| :--- | :--- | :--- |
+| PC → STM32 | `SET_BAUD:<baud>\n` | Yêu cầu đổi tốc độ quang |
+| STM32 → PC | `BAUD_OK:<baud>\n` | Đã áp dụng tốc độ mới |
+| STM32 → PC | `NOTIFY_BAUD:<baud>\n` | DIP switch đổi tốc độ; đây là trạng thái authoritative |
+| STM32 → PC | `BAUD_ERR:<reason>\n` | Từ chối; app giữ tốc độ cũ |
+
+Ví dụ:
+
+```text
+PC  -> STM32 : SET_BAUD:19200\n
+STM32 -> PC  : BAUD_OK:19200\n
+
+Người dùng gạt SW1/SW2:
+STM32 -> PC  : NOTIFY_BAUD:4800\n
+```
+
+### 8.4. Quy tắc phía nhận
+
+1. Chỉ tìm dòng điều khiển **bên ngoài** các frame nhị phân đã được xác thực CRC-32/EOF. Chuỗi ASCII tình cờ nằm trong payload không được hiểu là lệnh.
+2. Dòng điều khiển có thể bị chia nhỏ qua nhiều lần `read()`; bộ đệm từng phần phải được giữ lại cho đến khi gặp `\n`.
+3. Dòng hợp lệ không được tính vào `crc_errors`, `eof_errors`, `len_errors` hay `noise_bytes`.
+4. `BAUD_OK` chỉ được chấp nhận nếu khớp yêu cầu đang chờ; nếu không có yêu cầu, chỉ chấp nhận khi giá trị trùng tốc độ hiện tại.
+5. `NOTIFY_BAUD` luôn thắng và vô hiệu hóa các `BAUD_OK` cũ.
+6. `SET_BAUD` do STM32 echo lại chỉ được ghi log và bỏ qua.
+7. Timeout chờ `BAUD_OK` (khuyến nghị 1000 ms) chỉ hiện cảnh báo trên UI; tuyệt đối không đóng/mở lại cổng.

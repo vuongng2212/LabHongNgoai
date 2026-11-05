@@ -1,8 +1,11 @@
 let bridge = null;
 let selectedBaud = 9600;
+let pendingBaud = null;
+let currentBaudOptions = [2400, 4800, 9600, 19200];
 let portSelectionInitialized = false;
 
 const DEFAULT_BAUDRATES = [2400, 4800, 9600, 19200];
+const FIXED_PHYSICAL_BAUD = 115200;
 
 if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
   try {
@@ -42,44 +45,57 @@ function clearPingLoading() {
   if (pingFailTimer) { clearTimeout(pingFailTimer); pingFailTimer = null; }
 }
 
-function baudButtonClass(isActive) {
+function baudButtonClass(isActive, isPending) {
   const base = 'flex-1 min-w-[64px] py-1 text-center font-mono-data text-mono-data rounded-md cursor-pointer';
   if (isActive) return base + ' bg-white text-primary font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.08)]';
+  if (isPending) return base + ' bg-[#E0F2FE] text-primary font-semibold ring-1 ring-primary/30';
   return base + ' text-on-surface-variant hover:text-on-surface hover:bg-white/50 transition-colors';
 }
 
-function renderBaudrateSelector(baudrates, activeBaud) {
+function renderBaudrateSelector(baudrates, activeBaud, pendingValue) {
   const container = document.getElementById('baudrate-selector-container');
   if (!container) return;
   const parsed = (Array.isArray(baudrates) ? baudrates : [])
     .map((value) => parseInt(value, 10))
     .filter((value) => Number.isFinite(value) && value > 0);
   const options = parsed.length ? Array.from(new Set(parsed)) : DEFAULT_BAUDRATES.slice();
+  currentBaudOptions = options;
   const requested = parseInt(activeBaud, 10);
   const active = options.includes(requested) ? requested : (options.includes(9600) ? 9600 : options[0]);
+  const requestedPending = parseInt(pendingValue, 10);
+  const pending = options.includes(requestedPending) && requestedPending !== active ? requestedPending : null;
   selectedBaud = active;
+  pendingBaud = pending;
   container.innerHTML = '';
   options.forEach((baud) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.dataset.baud = String(baud);
     btn.innerText = String(baud);
-    btn.className = baudButtonClass(baud === active);
+    btn.className = baudButtonClass(baud === active, baud === pending);
+    if (baud === pending) btn.dataset.pending = 'true';
     container.appendChild(btn);
   });
   const source = document.getElementById('baudrate-source-label');
-  if (source) source.innerText = options.length + ' RATES • DIP SWITCH';
+  if (source) source.innerText = options.length + ' OPTICAL RATES • DIP SWITCH';
+  updateBaudrateDisplays(active);
+}
+
+function updateBaudrateDisplays(baud) {
+  setText('footer-baud-label', baud ? baud + ' bps' : '--');
+  const physical = document.getElementById('hw-physical-baud');
+  if (physical) physical.innerText = FIXED_PHYSICAL_BAUD + ' bps FIXED';
 }
 
 function loadBaudrateOptions(fallbackList, activeBaud) {
   if (!bridge || typeof bridge.getAvailableBaudrates !== 'function') {
-    renderBaudrateSelector(fallbackList, activeBaud);
+    renderBaudrateSelector(fallbackList, activeBaud, pendingBaud);
     return;
   }
   bridge.getAvailableBaudrates((baudratesJson) => {
     let values = [];
     try { values = JSON.parse(baudratesJson); } catch (e) { values = []; }
-    renderBaudrateSelector(Array.isArray(values) && values.length ? values : fallbackList, activeBaud);
+    renderBaudrateSelector(Array.isArray(values) && values.length ? values : fallbackList, activeBaud, pendingBaud);
   });
 }
 
@@ -137,7 +153,7 @@ function setRibbonText(text) {
 
 function setConnectedUi(txPort, rxPort, baud) {
   const summary = 'TX: ' + txPort + ' • RX: ' + rxPort;
-  setRibbonText('STM32 Optical Bridge • ' + summary + ' (' + baud + ' bps)');
+  setRibbonText('STM32 Optical Bridge • ' + summary + ' • UART ' + FIXED_PHYSICAL_BAUD + ' fixed • Optical ' + baud + ' bps');
   setTone('ribbon-badge', 'success');
 
   const footerHealthDot = document.getElementById('footer-health-dot');
@@ -146,7 +162,7 @@ function setConnectedUi(txPort, rxPort, baud) {
   const footerHealth = document.getElementById('footer-health-text');
   if (footerHealth) footerHealth.className = 'font-mono-caption text-mono-caption font-medium text-secondary truncate';
   setText('footer-port-label', summary);
-  setText('footer-baud-label', baud + ' bps');
+  updateBaudrateDisplays(baud);
 
   if (window.UIBadge) {
     window.UIBadge.set('hw-header-link-badge', { tone: 'success', label: 'LINK CONNECTED' });
@@ -173,6 +189,8 @@ function setConnectingUi(txPort, rxPort) {
 }
 
 function setDisconnectedUi() {
+  pendingBaud = null;
+  renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
   setRibbonText('STM32 Optical Bridge • Disconnected');
   setTone('ribbon-badge', 'neutral');
 
@@ -214,6 +232,44 @@ function initBridgeListeners() {
       );
     });
   });
+
+  if (bridge.opticalBaudChanged && bridge.opticalBaudChanged.connect) {
+    bridge.opticalBaudChanged.connect((baud) => {
+      const value = parseInt(baud, 10);
+      if (!Number.isFinite(value)) return;
+      selectedBaud = value;
+      pendingBaud = null;
+      renderBaudrateSelector(currentBaudOptions, value, null);
+      updateBaudrateDisplays(value);
+    });
+  }
+
+  if (bridge.opticalBaudPending && bridge.opticalBaudPending.connect) {
+    bridge.opticalBaudPending.connect((baud) => {
+      const value = parseInt(baud, 10);
+      if (!Number.isFinite(value)) return;
+      pendingBaud = value;
+      renderBaudrateSelector(currentBaudOptions, selectedBaud, value);
+    });
+  }
+
+  if (bridge.baudControlStatus && bridge.baudControlStatus.connect) {
+    bridge.baudControlStatus.connect((status, detail) => {
+      if (status === 'ok') {
+        toast('success', 'Optical baudrate confirmed', detail, { durationMs: 2200 });
+      } else if (status === 'notify') {
+        toast('info', 'Optical baudrate changed', 'Hardware DIP switch selected ' + detail, { durationMs: 3000 });
+      } else if (status === 'error') {
+        pendingBaud = null;
+        renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
+        toast('error', 'Optical baudrate rejected', detail);
+      } else if (status === 'timeout') {
+        pendingBaud = null;
+        renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
+        toast('warning', 'Optical baudrate timeout', detail + ' — link kept open');
+      }
+    });
+  }
 
   bridge.errorOccurred.connect((message) => {
     const wasConnecting = !!pendingConnectBtn;
@@ -317,7 +373,9 @@ function applyLaunchConfig() {
     }
     setTone('ribbon-badge', 'neutral');
     const baudList = Array.isArray(cfg.supported_baudrates) ? cfg.supported_baudrates : DEFAULT_BAUDRATES;
-    loadBaudrateOptions(baudList, cfg.default_baudrate || cfg.baud || selectedBaud);
+    const initialBaud = cfg.default_optical_baudrate || cfg.default_baudrate || cfg.baud || selectedBaud;
+    if (cfg.physical_baudrate) window.fixedPhysicalBaud = cfg.physical_baudrate;
+    loadBaudrateOptions(baudList, initialBaud);
     refreshPortList(null, cfg.tx_port || cfg.preferred_port || null, cfg.rx_port || null);
   });
 }
@@ -405,11 +463,28 @@ document.addEventListener('click', (e) => {
   if (baudContainer) {
     const baudVal = parseInt(btn.dataset.baud || btn.innerText.trim(), 10);
     if (!isNaN(baudVal)) {
-      selectedBaud = baudVal;
-      baudContainer.querySelectorAll('button').forEach((b) => {
-        b.className = baudButtonClass(parseInt(b.dataset.baud, 10) === selectedBaud);
-      });
-      console.log('Selected Baudrate:', selectedBaud);
+      const connBtn = document.getElementById('btn-connect');
+      const isConnected = connBtn && connBtn.dataset.state === 'connected';
+      if (isConnected && bridge && typeof bridge.setOpticalBaud === 'function') {
+        pendingBaud = baudVal;
+        renderBaudrateSelector(currentBaudOptions, selectedBaud, pendingBaud);
+        bridge.setOpticalBaud(baudVal, (resultJson) => {
+          let result = {};
+          try { result = JSON.parse(resultJson); } catch (e) { result = {}; }
+          if (result && result.ok === false) {
+            pendingBaud = null;
+            renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
+            toast('error', 'Optical baudrate change rejected', result.error || 'Unsupported optical baudrate');
+          } else {
+            console.log('Requested optical baudrate:', baudVal);
+          }
+        });
+      } else {
+        selectedBaud = baudVal;
+        pendingBaud = null;
+        renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
+        console.log('Selected optical baudrate for next connect:', selectedBaud);
+      }
     }
     return;
   }

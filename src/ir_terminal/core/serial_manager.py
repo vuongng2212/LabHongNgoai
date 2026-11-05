@@ -18,6 +18,7 @@ from ir_terminal.protocol.constants import (
     SHUTDOWN_WAIT_MS,
     SOCKET_CONNECT_TIMEOUT_SEC,
 )
+from ir_terminal.protocol.control_channel import encode_control_line
 from ir_terminal.protocol.framer import pack_frame
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.utils.logger import (
@@ -41,6 +42,7 @@ class SerialManager(QObject):
     raw_tx: ClassVar[Signal] = Signal(bytes)
     raw_rx: ClassVar[Signal] = Signal(bytes)
     packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
+    control_message_received: ClassVar[Signal] = Signal(str)
     ports_changed: ClassVar[Signal] = Signal(list)
     framer_error: ClassVar[Signal] = Signal(str, int)
 
@@ -96,6 +98,7 @@ class SerialManager(QObject):
         self._worker.raw_data_sent.connect(self.raw_tx)
         self._worker.raw_data_received.connect(self.raw_rx)
         self._worker.packet_received.connect(self.packet_received)
+        self._worker.control_message_received.connect(self.control_message_received)
         self._worker.ports_changed.connect(self.ports_changed)
         self._worker.framer_error.connect(self.framer_error)
 
@@ -169,7 +172,7 @@ class SerialManager(QObject):
 
     @property
     def current_baud(self) -> int:
-        """Returns current baud rate."""
+        """Returns the physical UART baudrate (always 115200 in the active path)."""
         return self._current_baud
 
     def connect_ports(
@@ -224,6 +227,33 @@ class SerialManager(QObject):
                 self._current_port,
             )
         self._sig_send.emit(data)
+
+    def send_control_line(self, message: str) -> None:
+        """Transmits one ASCII control line through the existing worker queue.
+
+        Args:
+            message: Control line such as ``SET_BAUD:19200``. A single trailing
+                newline is appended; any existing ``\\r\\n`` is stripped.
+        """
+        try:
+            payload = encode_control_line(message)
+        except ValueError as exc:
+            logger.warning(
+                "%s TX control rejected (%s): input=%r",
+                LogTag.BAUD_CTRL,
+                exc,
+                message,
+            )
+            self.error_occurred.emit(f"Control message rejected: {exc}")
+            return
+        logger.info(
+            "%s TX control line=%r port=%s connected=%s",
+            LogTag.BAUD_CTRL,
+            message.strip(),
+            self._current_port or self._current_tx_port or "<no-port>",
+            self._is_connected,
+        )
+        self._sig_send.emit(payload)
 
     def send_packet(self, seq: int, opcode: int, payload: bytes = b"") -> None:
         """Packs and transmits a structured protocol frame."""

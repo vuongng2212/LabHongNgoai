@@ -22,6 +22,10 @@ _SOF_BYTES: bytes = struct.pack("<H", SOF_MAGIC)
 _HEADER_STRUCT: struct.Struct = struct.Struct("<HBBH")
 _FOOTER_STRUCT: struct.Struct = struct.Struct("<IH")
 
+FRAME_PARSE_OK: str = "ok"
+FRAME_PARSE_INCOMPLETE: str = "incomplete"
+FRAME_PARSE_INVALID: str = "invalid"
+
 
 class FrameCorruptedError(Exception):
     """Raised when frame CRC-32 mismatch or structural corruption is detected."""
@@ -37,6 +41,8 @@ class FramerStats:
         self.len_errors: int = 0
         self.noise_bytes: int = 0
         self.frames_ok: int = 0
+        self.control_lines: int = 0
+        self.control_bytes: int = 0
 
     def snapshot(self) -> dict[str, int]:
         """Returns a copy of current counters."""
@@ -46,6 +52,8 @@ class FramerStats:
             "len_errors": self.len_errors,
             "noise_bytes": self.noise_bytes,
             "frames_ok": self.frames_ok,
+            "control_lines": self.control_lines,
+            "control_bytes": self.control_bytes,
         }
 
 
@@ -150,6 +158,99 @@ def parse_frames_from_buffer(buffer: bytes | bytearray | memoryview) -> tuple[li
     return packets, _remaining
 
 
+def parse_frame_at(
+    view: memoryview,
+    idx: int,
+    stats: FramerStats,
+) -> tuple[Packet | None, int, str]:
+    """Parses one candidate binary frame starting at ``idx``.
+
+    Args:
+        view: Buffer view containing the candidate frame.
+        idx: Offset where the SOF magic is expected to begin.
+        stats: Accumulator updated in place for structural errors.
+
+    Returns:
+        Tuple of ``(packet, next_offset, status)``. ``status`` is
+        :data:`FRAME_PARSE_INCOMPLETE` when more bytes are required,
+        :data:`FRAME_PARSE_INVALID` when the candidate was rejected, and
+        :data:`FRAME_PARSE_OK` when a verified packet was produced.
+    """
+    buf_len = len(view)
+    if buf_len - idx < HEADER_SIZE:
+        return None, idx, FRAME_PARSE_INCOMPLETE
+
+    _, seq, opcode, payload_len = _HEADER_STRUCT.unpack_from(view, idx)
+
+    if payload_len > MAX_PAYLOAD_SIZE:
+        stats.len_errors += 1
+        logger.warning(
+            "%s RX len_error @offset=%d: LEN=%d exceeds MAX=%d "
+            "(probable false SOF) | %s hex=%s",
+            LogTag.PROTO_FRAME,
+            idx,
+            payload_len,
+            MAX_PAYLOAD_SIZE,
+            format_frame_summary(seq, opcode, payload_len),
+            format_hex_preview(bytes(view[idx : min(idx + HEADER_SIZE + 8, buf_len)])),
+        )
+        return None, idx + 2, FRAME_PARSE_INVALID
+
+    total_frame_len = HEADER_SIZE + payload_len + FOOTER_SIZE
+
+    if buf_len - idx < total_frame_len:
+        return None, idx, FRAME_PARSE_INCOMPLETE
+
+    footer_offset = idx + HEADER_SIZE + payload_len
+
+    rx_crc, rx_eof = _FOOTER_STRUCT.unpack_from(view, footer_offset)
+
+    if rx_eof != EOF_MAGIC:
+        stats.eof_errors += 1
+        logger.warning(
+            "%s RX eof_error @offset=%d: got=0x%04X expected=0x%04X | %s",
+            LogTag.PROTO_FRAME,
+            footer_offset,
+            rx_eof,
+            EOF_MAGIC,
+            format_frame_summary(seq, opcode, payload_len, rx_crc),
+        )
+        return None, idx + 2, FRAME_PARSE_INVALID
+
+    crc_end = idx + HEADER_SIZE + payload_len
+    crc_val = zlib.crc32(view[idx + 2 : idx + HEADER_SIZE])
+    if payload_len:
+        crc_val = zlib.crc32(view[idx + HEADER_SIZE : crc_end], crc_val)
+    expected_crc = crc_val & 0xFFFFFFFF
+    if rx_crc != expected_crc:
+        stats.crc_errors += 1
+        logger.warning(
+            "%s RX crc_error @offset=%d: rx=0x%08X expected=0x%08X | %s hex=%s",
+            LogTag.PROTO_FRAME,
+            idx,
+            rx_crc,
+            expected_crc,
+            format_frame_summary(seq, opcode, payload_len, rx_crc),
+            format_hex_preview(bytes(view[idx : min(idx + total_frame_len, buf_len)])),
+        )
+        return None, idx + 2, FRAME_PARSE_INVALID
+
+    payload = bytes(view[idx + HEADER_SIZE : crc_end])
+    header = Header(sof=SOF_MAGIC, seq=seq, opcode=opcode, length=payload_len)
+    packet = Packet(header=header, payload=payload, crc32=rx_crc, eof=EOF_MAGIC)
+    stats.frames_ok += 1
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "%s RX ok @offset=%d %s frame_len=%dB payload_hex=%s",
+            LogTag.PROTO_FRAME,
+            idx,
+            format_frame_summary(seq, opcode, payload_len, rx_crc),
+            total_frame_len,
+            format_hex_preview(payload, max_bytes=16),
+        )
+    return packet, idx + total_frame_len, FRAME_PARSE_OK
+
+
 def parse_frames_with_stats(
     buffer: bytes | bytearray | memoryview,
     stats: FramerStats | None = None,
@@ -207,82 +308,11 @@ def parse_frames_with_stats(
                 )
         idx = sof_pos
 
-        if buf_len - idx < HEADER_SIZE:
+        packet, next_idx, status = parse_frame_at(view, idx, own_stats)
+        if status == FRAME_PARSE_INCOMPLETE:
             return _tail(idx)
-
-        _, seq, opcode, payload_len = _HEADER_STRUCT.unpack_from(view, idx)
-
-        if payload_len > MAX_PAYLOAD_SIZE:
-            own_stats.len_errors += 1
-            logger.warning(
-                "%s RX len_error @offset=%d: LEN=%d exceeds MAX=%d "
-                "(probable false SOF) | %s hex=%s",
-                LogTag.PROTO_FRAME,
-                idx,
-                payload_len,
-                MAX_PAYLOAD_SIZE,
-                format_frame_summary(seq, opcode, payload_len),
-                format_hex_preview(bytes(view[idx : min(idx + HEADER_SIZE + 8, buf_len)])),
-            )
-            idx += 2
-            continue
-
-        total_frame_len = HEADER_SIZE + payload_len + FOOTER_SIZE
-
-        if buf_len - idx < total_frame_len:
-            return _tail(idx)
-
-        footer_offset = idx + HEADER_SIZE + payload_len
-
-        rx_crc, rx_eof = _FOOTER_STRUCT.unpack_from(view, footer_offset)
-
-        if rx_eof != EOF_MAGIC:
-            own_stats.eof_errors += 1
-            logger.warning(
-                "%s RX eof_error @offset=%d: got=0x%04X expected=0x%04X | %s",
-                LogTag.PROTO_FRAME,
-                footer_offset,
-                rx_eof,
-                EOF_MAGIC,
-                format_frame_summary(seq, opcode, payload_len, rx_crc),
-            )
-            idx += 2
-            continue
-
-        crc_end = idx + HEADER_SIZE + payload_len
-        crc_val = zlib.crc32(view[idx + 2 : idx + HEADER_SIZE])
-        if payload_len:
-            crc_val = zlib.crc32(view[idx + HEADER_SIZE : crc_end], crc_val)
-        expected_crc = crc_val & 0xFFFFFFFF
-        if rx_crc != expected_crc:
-            own_stats.crc_errors += 1
-            logger.warning(
-                "%s RX crc_error @offset=%d: rx=0x%08X expected=0x%08X | %s hex=%s",
-                LogTag.PROTO_FRAME,
-                idx,
-                rx_crc,
-                expected_crc,
-                format_frame_summary(seq, opcode, payload_len, rx_crc),
-                format_hex_preview(bytes(view[idx : min(idx + total_frame_len, buf_len)])),
-            )
-            idx += 2
-            continue
-
-        payload = bytes(view[idx + HEADER_SIZE : crc_end])
-        header = Header(sof=SOF_MAGIC, seq=seq, opcode=opcode, length=payload_len)
-        packet = Packet(header=header, payload=payload, crc32=rx_crc, eof=EOF_MAGIC)
-        packets.append(packet)
-        own_stats.frames_ok += 1
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s RX ok @offset=%d %s frame_len=%dB payload_hex=%s",
-                LogTag.PROTO_FRAME,
-                idx,
-                format_frame_summary(seq, opcode, payload_len, rx_crc),
-                total_frame_len,
-                format_hex_preview(payload, max_bytes=16),
-            )
-
-        idx += total_frame_len
+        if status == FRAME_PARSE_OK and packet is not None:
+            packets.append(packet)
+        idx = next_idx
 
     return packets, bytes(view[idx:buf_len]), own_stats

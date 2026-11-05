@@ -10,6 +10,13 @@ import time
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.ring_buffer import ByteRingBuffer
 from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, RING_BUFFER_CAPACITY, Opcode
+from ir_terminal.protocol.control_channel import (
+    CONTROL_LINE_MAX_BYTES,
+    ControlKind,
+    format_baud_ok,
+    format_notify_baud,
+    parse_control_line,
+)
 from ir_terminal.protocol.framer import pack_frame, parse_frames_from_buffer
 from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
 
@@ -50,6 +57,8 @@ class MockSerialPort(ITransport):
         self._is_open = False
         self._rx_buffer = ByteRingBuffer(capacity=RING_BUFFER_CAPACITY)
         self._tx_buffer = bytearray()
+        self._control_tx_buffer = bytearray()
+        self._simulated_optical_baud = int(baudrate)
         self._los_blocked = False
         self._pending: list[tuple[float, bytes]] = []
         self._dropped_by_loss: int = 0
@@ -61,6 +70,7 @@ class MockSerialPort(ITransport):
         self._is_open = True
         self._rx_buffer.clear()
         self._tx_buffer = bytearray()
+        self._control_tx_buffer = bytearray()
         with self._lock:
             self._pending = []
         logger.info(
@@ -79,6 +89,7 @@ class MockSerialPort(ITransport):
         self._is_open = False
         self._rx_buffer.clear()
         self._tx_buffer = bytearray()
+        self._control_tx_buffer = bytearray()
         with self._lock:
             pending = len(self._pending)
             self._pending = []
@@ -161,6 +172,12 @@ class MockSerialPort(ITransport):
             return len(data)
 
         if self._auto_respond:
+            self._handle_outgoing(data)
+
+        return len(data)
+
+    def _handle_outgoing(self, data: bytes) -> None:
+        if self._tx_buffer or data[:1] == b"\x55":
             self._tx_buffer.extend(data)
             packets, remaining = parse_frames_from_buffer(self._tx_buffer)
             self._tx_buffer = bytearray(remaining)
@@ -172,8 +189,32 @@ class MockSerialPort(ITransport):
                     self._handle_chat_packet(pkt.seq, pkt.payload)
                 elif pkt.opcode in (Opcode.TRANSFER_START, Opcode.DATA_CHUNK, Opcode.TRANSFER_END):
                     self._handle_file_ack(pkt.seq)
+            return
 
-        return len(data)
+        self._control_tx_buffer.extend(data)
+        while b"\n" in self._control_tx_buffer:
+            raw, _, rest = bytes(self._control_tx_buffer).partition(b"\n")
+            self._control_tx_buffer = bytearray(rest)
+            message = parse_control_line(raw)
+            if message is None:
+                continue
+            if message.kind == ControlKind.SET_BAUD and message.baudrate is not None:
+                self._simulated_optical_baud = message.baudrate
+                ack = (format_baud_ok(message.baudrate) + "\n").encode("ascii")
+                logger.info(
+                    "%s Mock SET_BAUD accepted: port=%s optical=%d",
+                    LogTag.BAUD_CTRL,
+                    self._port_name,
+                    message.baudrate,
+                )
+                self._schedule_response(ack, self._latency_s)
+        if len(self._control_tx_buffer) > CONTROL_LINE_MAX_BYTES:
+            self._control_tx_buffer.clear()
+
+    def notify_baud(self, baudrate: int) -> None:
+        """Injects a hardware ``NOTIFY_BAUD`` event into the RX stream."""
+        self._simulated_optical_baud = int(baudrate)
+        self.inject_rx_data((format_notify_baud(baudrate) + "\n").encode("ascii"))
 
     def _schedule_response(self, frame: bytes, delay_s: float) -> None:
         """Enqueues a response frame for delivery after delay_s (non-blocking)."""
@@ -261,6 +302,11 @@ class MockSerialPort(ITransport):
 
     def flush(self) -> None:
         """Flushes the outgoing transmit buffer (no-op for mock serial)."""
+
+    @property
+    def simulated_optical_baud(self) -> int:
+        """Returns the optical baudrate currently simulated by the mock."""
+        return self._simulated_optical_baud
 
     @property
     def dropped_by_loss(self) -> int:
