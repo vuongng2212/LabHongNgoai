@@ -631,3 +631,34 @@ class TestOpticalBaudControl:
             assert manager.is_connected is True
         finally:
             manager.shutdown()
+
+    def test_default_health_check_timer_is_disabled_on_link_up(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            assert bridge._health_interval_sec == 0.0
+            assert bridge._health_timer.isActive() is False
+        finally:
+            manager.shutdown()
+
+    def test_manual_ping_triggers_ping_result(self, qtbot: QtBot) -> None:
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000):
+                bridge.connectPort("MOCK_COM_LOOPBACK", 9600)
+
+            with qtbot.waitSignal(bridge.pingResult, timeout=2000) as blocker:
+                bridge.sendPing()
+
+            rtt_ms, seq = blocker.args
+            assert rtt_ms >= 0.0
+            assert seq > 0
+        finally:
+            manager.shutdown()
+

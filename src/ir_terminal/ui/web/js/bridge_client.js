@@ -27,7 +27,6 @@ let pendingConnectBtn = null;
 let pendingConnectPort = '';
 let connectFailTimer = null;
 let pendingPingBtns = [];
-let pingFailTimer = null;
 
 function toast(type, title, message, opts) {
   if (window.UIFeedback) window.UIFeedback.showToast(type, title, message, opts);
@@ -42,7 +41,6 @@ function clearConnectLoading() {
 function clearPingLoading() {
   if (window.UIFeedback) pendingPingBtns.forEach((b) => window.UIFeedback.setButtonLoading(b, false));
   pendingPingBtns = [];
-  if (pingFailTimer) { clearTimeout(pingFailTimer); pingFailTimer = null; }
 }
 
 function baudButtonClass(isActive, isPending) {
@@ -300,6 +298,7 @@ function initBridgeListeners() {
   bridge.portDisconnected.connect(() => {
     const wasConnecting = !!pendingConnectBtn;
     clearConnectLoading();
+    clearPingLoading();
     setDisconnectedUi();
     if (!wasConnecting) toast('info', 'Disconnected', 'Serial link closed.');
   });
@@ -519,10 +518,12 @@ document.addEventListener('click', (e) => {
         }
       }, 6000);
     }
+    clearPingLoading();
     setConnectingUi(txPort, rxPort);
     bridge.connectDualPorts(txPort, rxPort, selectedBaud);
   } else if (btn.innerText.includes('Disconnect')) {
     if (!bridge) return;
+    clearPingLoading();
     bridge.disconnectPort();
     toast('info', 'Disconnecting...', 'Closing serial link.');
   } else if (btn.innerText.includes('Ping Test') || btn.innerText.includes('Ping Link Test') || btn.innerText.includes('Calibrate Optics') || btn.innerText.includes('Ping')) {
@@ -533,13 +534,6 @@ document.addEventListener('click', (e) => {
     if (window.UIFeedback) {
       window.UIFeedback.setButtonLoading(btn, true, 'Pinging...');
       pendingPingBtns.push(btn);
-      if (pingFailTimer) clearTimeout(pingFailTimer);
-      pingFailTimer = setTimeout(() => {
-        if (pendingPingBtns.length) {
-          clearPingLoading();
-          toast('error', 'Ping timeout', 'No PONG within 1.5s — check link, or swap TX / RX ports.');
-        }
-      }, 1500);
     }
     bridge.sendPing();
   } else if (btn.innerText.includes('Rescan') || btn.id === 'btn-top-refresh') {
@@ -547,6 +541,7 @@ document.addEventListener('click', (e) => {
       toast('warning', 'Backend not connected', 'Port scan needs the Desktop app. Open via SpectraLink.');
       return;
     }
+    clearPingLoading();
     refreshPortList(btn);
   }
 });

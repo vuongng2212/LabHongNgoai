@@ -106,6 +106,38 @@ class TestBridgeClientContract:
         assert "targetRx && !entries.some" in script
 
 
+    def test_manual_ping_has_no_auto_timeout_timer(self) -> None:
+        script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
+        assert "pingFailTimer" not in script
+        assert "setTimeout" not in script or "1500" not in script
+
+    def test_settings_modal_debug_diagnostics_contract(self, index_html: str) -> None:
+        modal_html = (COMPONENTS_DIR / "settings_modal.html").read_text(encoding="utf-8")
+        for element_id in (
+            "btn-toggle-debug",
+            "settings-debug-panel",
+            "debug-physical-baud",
+            "debug-optical-baud",
+            "debug-log-count",
+            "btn-clear-debug-logs",
+            "btn-copy-debug-logs",
+            "chk-autoscroll-debug",
+            "debug-log-console",
+        ):
+            assert f'id="{element_id}"' in modal_html
+            assert f'id="{element_id}"' in index_html
+
+    def test_settings_controller_debug_logging_contract(self) -> None:
+        script = (WEB_DIR / "js" / "settings_controller.js").read_text(encoding="utf-8")
+        assert "decodeRawBytes" in script
+        assert "appendDebugLog" in script
+        assert "clearDebugLogs" in script
+        assert "copyDebugLogs" in script
+        assert "rawTxData" in script
+        assert "rawRxData" in script
+        assert "opticalBaudChanged" in script
+
+
 class TestLauncherContract:
     """Verifies the hardware launcher accepts four independent COM ports."""
 
