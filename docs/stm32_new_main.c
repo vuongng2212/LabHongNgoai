@@ -686,6 +686,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART2)
   {
+    /* IR → PC: luon forward moi byte */
     (void)Ring_Push(&ring_ir_to_pc, uart2_rx_byte);
     HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
   }
@@ -693,43 +694,39 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   {
     uint8_t b = uart3_rx_byte;
 
-    if (!ctrl_active)
+    /* ============================================================
+     * QUAN TRONG: LUON day moi byte vao ring (transparent bridge).
+     * Khong bao gio chan / vut bo byte chi vi thay 'S' hay '0'.
+     * Dong thoi gom vao ctrl_line de kiem tra lenh control.
+     * Chi khi nao ca dong khop 100% SET_BAUD / 00 01 10 11
+     * moi goi Process_Control_Line (side-effect doi baud).
+     * ============================================================ */
+    (void)Ring_Push(&ring_pc_to_ir, b);
+
+    /* Gom dong control song song (khong anh huong forward) */
+    if (b == '\n' || b == '\r')
     {
-      /* Bat dau dong control neu thay ky tu dac trung */
-      if (b == 'S' || b == 'B' || b == 'N' || b == '0' || b == '1')
+      if (ctrl_idx > 0)
       {
-        ctrl_active = 1;
-        ctrl_idx = 0;
-        if (ctrl_idx < CTRL_LINE_MAX - 1)
-          ctrl_line[ctrl_idx++] = (char)b;
+        ctrl_line[ctrl_idx] = '\0';
+        /* Process_Control_Line chi thuc thi neu khop lenh;
+         * neu khong khop thi bo qua (byte da duoc forward roi). */
+        Process_Control_Line(ctrl_line);
       }
-      else
-      {
-        (void)Ring_Push(&ring_pc_to_ir, b);
-      }
+      ctrl_idx = 0;
+      ctrl_active = 0;
     }
     else
     {
-      if (b == '\n' || b == '\r')
+      if (ctrl_idx < CTRL_LINE_MAX - 1)
       {
-        ctrl_line[ctrl_idx] = '\0';
-        Process_Control_Line(ctrl_line);
-        ctrl_active = 0;
-        ctrl_idx = 0;
+        ctrl_line[ctrl_idx++] = (char)b;
       }
       else
       {
-        if (ctrl_idx < CTRL_LINE_MAX - 1)
-          ctrl_line[ctrl_idx++] = (char)b;
-        else
-        {
-          /* Qua dai → day nhu du lieu thuong */
-          for (uint8_t i = 0; i < ctrl_idx; i++)
-            (void)Ring_Push(&ring_pc_to_ir, (uint8_t)ctrl_line[i]);
-          (void)Ring_Push(&ring_pc_to_ir, b);
-          ctrl_active = 0;
-          ctrl_idx = 0;
-        }
+        /* Qua dai → reset, coi nhu khong phai control */
+        ctrl_idx = 0;
+        ctrl_active = 0;
       }
     }
 

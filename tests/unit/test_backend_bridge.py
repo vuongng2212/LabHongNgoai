@@ -12,6 +12,7 @@ from pytestqt.qtbot import QtBot
 from ir_terminal.config import LaunchConfig
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
+    DEFAULT_OPTICAL_BAUDRATE,
     EOF_MAGIC,
     PHYSICAL_BAUDRATE,
     SOF_MAGIC,
@@ -120,6 +121,26 @@ class TestBackendBridge:
             assert connected["rx_port"] == "MOCK_NODE_B"
             assert connected["physical_baudrate"] == PHYSICAL_BAUDRATE
             assert connected["baudrate"] == 19200
+        finally:
+            manager.shutdown()
+
+    def test_connect_dual_ports_aliases_physical_baudrate(self, qtbot: QtBot) -> None:
+        """Verifies a 115200 request aliases to the default optical rate."""
+        manager = SerialManager()
+        bridge = BackendBridge(manager)
+
+        try:
+            with qtbot.waitSignal(bridge.portConnected, timeout=2000) as blocker:
+                bridge.connectDualPorts(
+                    "MOCK_NODE_A", "MOCK_NODE_B", PHYSICAL_BAUDRATE
+                )
+
+            assert blocker.args == [
+                "MOCK_NODE_A",
+                "MOCK_NODE_B",
+                DEFAULT_OPTICAL_BAUDRATE,
+            ]
+            assert bridge._optical_baud == DEFAULT_OPTICAL_BAUDRATE
         finally:
             manager.shutdown()
 

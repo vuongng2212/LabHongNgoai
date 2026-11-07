@@ -30,6 +30,8 @@ class FakeSerial:
         self.flush_calls = 0
         self.fail_close = False
         self.fail_read = False
+        self.reset_input_calls = 0
+        self.reset_output_calls = 0
         self.written: list[bytes] = []
         self.pending = bytearray()
 
@@ -51,6 +53,13 @@ class FakeSerial:
     @property
     def in_waiting(self) -> int:
         return len(self.pending)
+
+    def reset_input_buffer(self) -> None:
+        self.reset_input_calls += 1
+        self.pending.clear()
+
+    def reset_output_buffer(self) -> None:
+        self.reset_output_calls += 1
 
     def close(self) -> None:
         self.close_calls += 1
@@ -119,6 +128,11 @@ class TestDualSerialTransportOpen:
         assert transport.rx_port == "COM7"
         assert transport.is_single_port is True
         assert transport.is_open is True
+
+    def test_single_port_detection_is_case_insensitive(self) -> None:
+        transport = DualSerialTransport("com3", "COM3", 115200)
+
+        assert transport.is_single_port is True
 
     def test_rollback_closes_tx_when_rx_open_fails(self, serial_factory: SerialFactory) -> None:
         serial_factory.fail_on = {2}

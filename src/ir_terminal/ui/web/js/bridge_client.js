@@ -27,6 +27,7 @@ let pendingConnectBtn = null;
 let pendingConnectPort = '';
 let connectFailTimer = null;
 let pendingPingBtns = [];
+let pingFailTimer = null;
 
 function toast(type, title, message, opts) {
   if (window.UIFeedback) window.UIFeedback.showToast(type, title, message, opts);
@@ -41,6 +42,7 @@ function clearConnectLoading() {
 function clearPingLoading() {
   if (window.UIFeedback) pendingPingBtns.forEach((b) => window.UIFeedback.setButtonLoading(b, false));
   pendingPingBtns = [];
+  if (pingFailTimer) { clearTimeout(pingFailTimer); pingFailTimer = null; }
 }
 
 function baudButtonClass(isActive, isPending) {
@@ -114,8 +116,7 @@ function fillPortSelect(select, entries, preferred) {
 }
 
 function pickRxPort(names, txPort) {
-  const alternatives = names.filter((name) => name !== txPort);
-  return alternatives[0] || txPort;
+  return txPort;
 }
 
 function parsePortEntries(ports) {
@@ -535,6 +536,13 @@ document.addEventListener('click', (e) => {
       window.UIFeedback.setButtonLoading(btn, true, 'Pinging...');
       pendingPingBtns.push(btn);
     }
+    if (pingFailTimer) clearTimeout(pingFailTimer);
+    pingFailTimer = setTimeout(() => {
+      if (pendingPingBtns.length) {
+        clearPingLoading();
+        toast('error', 'Ping timeout', 'No echo received within 1.5s. Check the link or swap TX and RX.');
+      }
+    }, 1500);
     bridge.sendPing();
   } else if (btn.innerText.includes('Rescan') || btn.id === 'btn-top-refresh') {
     if (!bridge) {

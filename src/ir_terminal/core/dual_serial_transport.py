@@ -57,7 +57,7 @@ class DualSerialTransport(ITransport):
     @property
     def is_single_port(self) -> bool:
         """Returns True when TX and RX share one serial handle."""
-        return self._tx_port == self._rx_port
+        return self._tx_port.strip().upper() == self._rx_port.strip().upper()
 
     def _create_serial(self, port_name: str, *, writable: bool) -> serial.Serial:
         """Builds one 8-N-1 serial handle for the requested direction."""
@@ -103,6 +103,19 @@ class DualSerialTransport(ITransport):
             self._tx_serial = None
             self._rx_serial = None
             raise
+        try:
+            if tx_handle is not None:
+                if hasattr(tx_handle, "reset_input_buffer"):
+                    tx_handle.reset_input_buffer()
+                if hasattr(tx_handle, "reset_output_buffer"):
+                    tx_handle.reset_output_buffer()
+            if not self.is_single_port and self._rx_serial is not None:
+                if hasattr(self._rx_serial, "reset_input_buffer"):
+                    self._rx_serial.reset_input_buffer()
+                if hasattr(self._rx_serial, "reset_output_buffer"):
+                    self._rx_serial.reset_output_buffer()
+        except Exception as exc:
+            logger.warning("%s Buffer purge warning: %s", LogTag.HW_SERIAL, exc)
         logger.info(
             "%s DualSerial opened: tx=%s rx=%s baud=%d is_open=%s",
             LogTag.HW_SERIAL,

@@ -106,10 +106,11 @@ class TestBridgeClientContract:
         assert "targetRx && !entries.some" in script
 
 
-    def test_manual_ping_has_no_auto_timeout_timer(self) -> None:
+    def test_manual_ping_has_auto_timeout_timer(self) -> None:
+        """Manual ping clears loading and warns when no echo arrives in 1.5s."""
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
-        assert "pingFailTimer" not in script
-        assert "setTimeout" not in script or "1500" not in script
+        assert "pingFailTimer" in script
+        assert "1500" in script
 
     def test_settings_modal_debug_diagnostics_contract(self, index_html: str) -> None:
         modal_html = (COMPONENTS_DIR / "settings_modal.html").read_text(encoding="utf-8")

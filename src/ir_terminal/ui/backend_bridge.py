@@ -203,7 +203,7 @@ class BackendBridge(QObject):
         )
         self.portConnected.emit(tx_port, rx_port, self._optical_baud)
         self.opticalBaudChanged.emit(self._optical_baud)
-        QTimer.singleShot(0, self._sync_optical_baud)
+        QTimer.singleShot(200, self._sync_optical_baud)
 
     def _on_link_down(self) -> None:
         """Stops periodic health checks once the optical link is closed."""
@@ -645,6 +645,8 @@ class BackendBridge(QObject):
                 )
                 self.errorOccurred.emit(f"Connect failed: invalid baudrate {baudrate}")
                 return
+            if baudrate == PHYSICAL_BAUDRATE:
+                baudrate = DEFAULT_OPTICAL_BAUDRATE
             if baudrate not in SUPPORTED_BAUDRATES:
                 logger.warning(
                     "%s Connect rejected: unsupported optical baudrate=%d tx=%s rx=%s",
