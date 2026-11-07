@@ -1,113 +1,88 @@
 /* USER CODE BEGIN Header */
 /**
   ******************************************************************************
-  * @file           : main.c
-  * @brief          : Transparent Bridge PC <-> IR (MCP2122/TFDU4101)
-  *                   STM32F407 + ILI9341 LCD
-  *                   Baud quang: 2400 / 4800 / 9600 / 19200 (AUTO mac dinh 19200)
-  *                   Protocol binary frames + Control channel SET_BAUD
+  * @file    main.c
+  * @brief   Transparent Bridge PC <-> IR — dong bo LabHongNgoai app 0.8.0
+  *
+  *  - USART3 PC: 115200 8N1 co dinh
+  *  - USART2 IR: 2400/4800/9600/19200 (mac dinh 9600 = app DEFAULT_OPTICAL)
+  *  - ISR chi Ring_Push (khong parse, khong Transmit)
+  *  - Main: FSM demux binary frame (55 AA) vs SET_BAUD:\n
+  *  - TX theo block, LCD rate-limit 200ms
+  *  - Control: SET_BAUD / BAUD_OK / BAUD_ERR / NOTIFY_BAUD (PROTOCOL §8)
   ******************************************************************************
   */
 /* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_host.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
 #include "ili9341.h"
 #include "fonts.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-/* USER CODE END Includes */
 
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-#define FRAME_X  0
-#define FRAME_Y  0
-#define FRAME_W  320
-#define FRAME_H  240
-#define FRAME_T  1
-#define DIVIDER_X 158
-
-/* AUTO mac dinh = 19200 bps -> index 3 */
-#define AUTO_CONFIG_STATE  3
-
-/* Ring buffer size – toi thieu 2048 theo PROTOCOL */
+#define AUTO_CONFIG_STATE  2   /* 9600 — khop app DEFAULT_OPTICAL_BAUDRATE */
 #define RING_SIZE          2048U
-
-/* Control line max length */
 #define CTRL_LINE_MAX      64U
-/* USER CODE END PD */
+#define TX_BLOCK_MAX       64U
+#define LCD_UPDATE_MS     200U
+#define IDLE_RESET_MS      300U
+#define DBG_VIEW_LEN       20U
 
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi2;
-
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
-/* USER CODE BEGIN PV */
-
-/* ========== RING BUFFER ========== */
 typedef struct {
   uint8_t  buf[RING_SIZE];
   volatile uint16_t head;
   volatile uint16_t tail;
 } RingBuf_t;
 
-static RingBuf_t ring_pc_to_ir;   /* USART3 RX → USART2 TX */
-static RingBuf_t ring_ir_to_pc;   /* USART2 RX → USART3 TX */
+static RingBuf_t ring_pc_to_ir;
+static RingBuf_t ring_ir_to_pc;
 
 static uint8_t uart2_rx_byte = 0;
 static uint8_t uart3_rx_byte = 0;
 
-/* Control line accumulator (from PC) */
-static char     ctrl_line[CTRL_LINE_MAX];
-static uint8_t  ctrl_idx = 0;
-static uint8_t  ctrl_active = 0;
-
-/* Counters */
 static volatile uint32_t cnt_pc_to_ir = 0;
 static volatile uint32_t cnt_ir_to_pc = 0;
 static volatile uint32_t cnt_ctrl_cmd = 0;
 
-/* Status strings – giu nguyen ten bien nhu code cu */
 static char display_tx_msg[64] = "Waiting for PC data...";
 static char display_rx_msg[64] = "Waiting for data...";
 static char pc_status_msg[40]  = "PC: WAITING";
 static char ir_tx_status_msg[40] = "IR TX: 0 B";
 static char ir_rx_status_msg[40] = "IR RX: 0 B";
 
-/* Switch / baud state */
+static uint8_t dbg_tx_bytes[DBG_VIEW_LEN];
+static uint8_t dbg_rx_bytes[DBG_VIEW_LEN];
+static uint8_t dbg_tx_len = 0;
+static uint8_t dbg_rx_len = 0;
+
 static int8_t   current_mode = -1;
 static uint32_t current_baud = 0;
 static uint32_t applied_ir_baud = 0;
 
 volatile uint8_t dbg_sw_state = 0;
-volatile uint8_t dbg_baud1    = 0;
-volatile uint8_t dbg_baud2    = 0;
-volatile uint8_t dbg_baud3    = 0;
-volatile uint8_t dbg_baud4    = 0;
-
-/* 0:2400  1:4800  2:9600  3:19200  – mac dinh AUTO = 19200 */
+volatile uint8_t dbg_baud1 = 0, dbg_baud2 = 0, dbg_baud3 = 0, dbg_baud4 = 0;
 volatile uint8_t auto_state_cmd = AUTO_CONFIG_STATE;
 
 static volatile uint8_t flag_lcd_update = 0;
 static volatile uint8_t flag_new_tx = 0;
 static volatile uint8_t flag_new_rx = 0;
+static uint32_t last_tx_activity_ms = 0;
+static uint32_t last_rx_activity_ms = 0;
+static uint32_t last_lcd_ms = 0;
 
-/* USER CODE END PV */
+typedef enum {
+  STATE_STREAM_IDLE = 0,
+  STATE_FORWARD_BINARY_FRAME
+} BridgeStreamState_t;
 
-/* Private function prototypes -----------------------------------------------*/
+static BridgeStreamState_t bridge_state = STATE_STREAM_IDLE;
+static uint16_t binary_bytes_left = 0;
+
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART3_UART_Init(void);
@@ -115,33 +90,33 @@ static void MX_SPI2_Init(void);
 static void MX_USART2_UART_Init(void);
 void MX_USB_HOST_Process(void);
 
-/* USER CODE BEGIN PFP */
 void Process_Switches_And_Display(void);
 void DrawMainScreen(void);
 void DrawTransferStatus(void);
 void DrawTextBox(const char *msg, uint16_t x, uint16_t y, uint16_t bg_color);
 void IR_SetBaudrate(uint32_t baud);
+void Apply_Hardware_Clock_And_LEDs(uint8_t state_idx);
 void Process_Control_Line(const char *line);
 void Bridge_Process(void);
+void Format_Debug_Hex(char *out, size_t out_sz, const uint8_t *data, uint8_t len);
+void Debug_Push_TX(uint8_t b);
+void Debug_Push_RX(uint8_t b);
 static inline uint16_t Ring_Count(RingBuf_t *r);
-static inline int      Ring_Push(RingBuf_t *r, uint8_t b);
-static inline int      Ring_Pop(RingBuf_t *r, uint8_t *b);
-/* USER CODE END PFP */
+static inline int Ring_Push(RingBuf_t *r, uint8_t b);
+static inline int Ring_Pop(RingBuf_t *r, uint8_t *b);
+static inline int Ring_Peek(RingBuf_t *r, uint16_t offset, uint8_t *b);
 
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* ---------- Ring buffer helpers ---------- */
 static inline uint16_t Ring_Count(RingBuf_t *r)
 {
-  return (uint16_t)((r->head - r->tail) & (RING_SIZE - 1));
+  return (uint16_t)((r->head - r->tail) & (RING_SIZE - 1U));
 }
 
 static inline int Ring_Push(RingBuf_t *r, uint8_t b)
 {
-  uint16_t next = (uint16_t)((r->head + 1) & (RING_SIZE - 1));
+  uint16_t next = (uint16_t)((r->head + 1U) & (RING_SIZE - 1U));
   if (next == r->tail) return -1;
   r->buf[r->head] = b;
+  __DMB();
   r->head = next;
   return 0;
 }
@@ -150,80 +125,111 @@ static inline int Ring_Pop(RingBuf_t *r, uint8_t *b)
 {
   if (r->head == r->tail) return -1;
   *b = r->buf[r->tail];
-  r->tail = (uint16_t)((r->tail + 1) & (RING_SIZE - 1));
+  __DMB();
+  r->tail = (uint16_t)((r->tail + 1U) & (RING_SIZE - 1U));
   return 0;
 }
 
-/* ---------- Doi baudrate USART2 an toan ---------- */
+static inline int Ring_Peek(RingBuf_t *r, uint16_t offset, uint8_t *b)
+{
+  if (offset >= Ring_Count(r)) return -1;
+  uint16_t idx = (uint16_t)((r->tail + offset) & (RING_SIZE - 1U));
+  *b = r->buf[idx];
+  return 0;
+}
+
+static inline uint32_t Get_Dynamic_Timeout(uint16_t len, uint32_t baud)
+{
+  if (baud == 0U) baud = 9600U;
+  return (uint32_t)(((uint32_t)len * 10000UL) / baud) + 20UL;
+}
+
+void Apply_Hardware_Clock_And_LEDs(uint8_t state_idx)
+{
+  uint8_t s1 = 0, s0 = 0;
+  switch (state_idx)
+  {
+    case 0: s1 = 0; s0 = 0;
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_7|GPIO_PIN_6, GPIO_PIN_RESET);
+      break;
+    case 1: s1 = 0; s0 = 1;
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9|GPIO_PIN_7|GPIO_PIN_6, GPIO_PIN_RESET);
+      break;
+    case 2: s1 = 1; s0 = 0;
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9|GPIO_PIN_8|GPIO_PIN_6, GPIO_PIN_RESET);
+      break;
+    case 3: s1 = 1; s0 = 1;
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9|GPIO_PIN_8|GPIO_PIN_7, GPIO_PIN_RESET);
+      break;
+    default: return;
+  }
+  HAL_GPIO_WritePin(GPIOC, CLK_S1_3_3V_Pin, s1 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, CLK_S0_3_3V_Pin, s0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
 void IR_SetBaudrate(uint32_t baud)
 {
-  if (baud == 0) return;
-  if (applied_ir_baud == baud) return;
+  if (baud == 0U || applied_ir_baud == baud) return;
+
+  uint32_t t0 = HAL_GetTick();
+  while (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_TC) == RESET)
+  {
+    if ((HAL_GetTick() - t0) > 50U) break;
+  }
 
   HAL_UART_AbortReceive_IT(&huart2);
   HAL_UART_DeInit(&huart2);
 
-  huart2.Instance          = USART2;
-  huart2.Init.BaudRate     = baud;
-  huart2.Init.WordLength   = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits     = UART_STOPBITS_1;
-  huart2.Init.Parity       = UART_PARITY_NONE;
-  huart2.Init.Mode         = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = baud;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
 
   if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
     Error_Handler();
-  }
 
   applied_ir_baud = baud;
   HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
 }
 
-/* ---------- Xu ly dong dieu khien tu PC ---------- */
 void Process_Control_Line(const char *line)
 {
-  /* Ho tro:
-   *   SET_BAUD:2400 / 4800 / 9600 / 19200
-   *   Lenh cu: 00 01 10 11  →  2400 4800 9600 19200
-   */
-  uint32_t new_baud = 0;
-  int      cmd_idx  = -1;
-
-  if (strncmp(line, "SET_BAUD:", 9) == 0)
-  {
-    new_baud = (uint32_t)atoi(line + 9);
-  }
-  else if (strcmp(line, "00") == 0) { new_baud = 2400;  cmd_idx = 0; }
-  else if (strcmp(line, "01") == 0) { new_baud = 4800;  cmd_idx = 1; }
-  else if (strcmp(line, "10") == 0) { new_baud = 9600;  cmd_idx = 2; }
-  else if (strcmp(line, "11") == 0) { new_baud = 19200; cmd_idx = 3; }
-  else
-  {
+  if (strncmp(line, "SET_BAUD:", 9) != 0)
     return;
-  }
 
-  /* Chi chap nhan baud hop le */
-  if (new_baud != 2400 && new_baud != 4800 &&
-      new_baud != 9600 && new_baud != 19200)
+  uint32_t new_baud = (uint32_t)atoi(line + 9);
+
+  /* MANUAL: switch phan cung uu tien — tu choi SET_BAUD */
+  if (dbg_sw_state == 0)
   {
-    char err[48];
-    snprintf(err, sizeof(err), "BAUD_ERR:invalid\n");
+    const char *err = "BAUD_ERR:manual_mode_active\n";
     HAL_UART_Transmit(&huart3, (uint8_t *)err, (uint16_t)strlen(err), 100);
     return;
   }
 
-  if (cmd_idx >= 0)
-    auto_state_cmd = (uint8_t)cmd_idx;
-  else
+  if (new_baud != 2400U && new_baud != 4800U &&
+      new_baud != 9600U && new_baud != 19200U)
   {
-    if      (new_baud == 2400)  auto_state_cmd = 0;
-    else if (new_baud == 4800)  auto_state_cmd = 1;
-    else if (new_baud == 9600)  auto_state_cmd = 2;
-    else if (new_baud == 19200) auto_state_cmd = 3;
+    const char *err = "BAUD_ERR:invalid\n";
+    HAL_UART_Transmit(&huart3, (uint8_t *)err, (uint16_t)strlen(err), 100);
+    return;
   }
 
+  if      (new_baud == 2400U)  auto_state_cmd = 0;
+  else if (new_baud == 4800U)  auto_state_cmd = 1;
+  else if (new_baud == 9600U)  auto_state_cmd = 2;
+  else                         auto_state_cmd = 3;
+
+  /* Dong bo clock MCP2122 TRUOC khi re-init UART */
+  Apply_Hardware_Clock_And_LEDs(auto_state_cmd);
   IR_SetBaudrate(new_baud);
 
   char ok[32];
@@ -232,92 +238,223 @@ void Process_Control_Line(const char *line)
 
   cnt_ctrl_cmd++;
   snprintf(pc_status_msg, sizeof(pc_status_msg), "PC: CTRL #%lu", (unsigned long)cnt_ctrl_cmd);
-  snprintf(display_tx_msg, sizeof(display_tx_msg), "CTRL: SET_BAUD %lu", (unsigned long)new_baud);
-  flag_new_tx = 1;
   flag_lcd_update = 1;
 }
 
-/* ---------- Bridge: day du lieu 2 chieu tu ring ---------- */
+void Format_Debug_Hex(char *out, size_t out_sz, const uint8_t *data, uint8_t len)
+{
+  size_t pos = 0;
+  for (uint8_t i = 0; i < len && (pos + 3U) < out_sz; i++)
+  {
+    int n = snprintf(out + pos, out_sz - pos, "%02X ", data[i]);
+    if (n <= 0) break;
+    pos += (size_t)n;
+  }
+  if (pos > 0U && out[pos - 1U] == ' ') out[pos - 1U] = '\0';
+  else out[pos] = '\0';
+}
+
+void Debug_Push_TX(uint8_t b)
+{
+  if (dbg_tx_len < DBG_VIEW_LEN) dbg_tx_bytes[dbg_tx_len++] = b;
+  else { memmove(dbg_tx_bytes, dbg_tx_bytes + 1, DBG_VIEW_LEN - 1); dbg_tx_bytes[DBG_VIEW_LEN - 1] = b; }
+}
+
+void Debug_Push_RX(uint8_t b)
+{
+  if (dbg_rx_len < DBG_VIEW_LEN) dbg_rx_bytes[dbg_rx_len++] = b;
+  else { memmove(dbg_rx_bytes, dbg_rx_bytes + 1, DBG_VIEW_LEN - 1); dbg_rx_bytes[DBG_VIEW_LEN - 1] = b; }
+}
+
 void Bridge_Process(void)
 {
-  uint8_t b;
+  uint8_t block_buf[TX_BLOCK_MAX];
+  uint16_t avail;
+  uint32_t now = HAL_GetTick();
+  uint8_t tx_act = 0, rx_act = 0;
 
-  /* PC → IR */
-  while (Ring_Pop(&ring_pc_to_ir, &b) == 0)
+  /* ========== PC -> IR (FSM demux) ========== */
+  avail = Ring_Count(&ring_pc_to_ir);
+  while (avail > 0U)
   {
-    if (HAL_UART_Transmit(&huart2, &b, 1, 20) == HAL_OK)
-      cnt_pc_to_ir++;
+    if (bridge_state == STATE_FORWARD_BINARY_FRAME)
+    {
+      uint16_t chunk = (avail < binary_bytes_left) ? avail : binary_bytes_left;
+      if (chunk > TX_BLOCK_MAX) chunk = TX_BLOCK_MAX;
+
+      for (uint16_t i = 0; i < chunk; i++)
+        (void)Ring_Pop(&ring_pc_to_ir, &block_buf[i]);
+
+      if (HAL_UART_Transmit(&huart2, block_buf, chunk,
+            Get_Dynamic_Timeout(chunk, applied_ir_baud)) == HAL_OK)
+      {
+        cnt_pc_to_ir += chunk;
+        for (uint16_t i = 0; i < chunk; i++) Debug_Push_TX(block_buf[i]);
+        tx_act = 1;
+        last_tx_activity_ms = now;
+      }
+
+      binary_bytes_left = (uint16_t)(binary_bytes_left - chunk);
+      if (binary_bytes_left == 0U)
+        bridge_state = STATE_STREAM_IDLE;
+      break;
+    }
+
+    /* IDLE: nhan dien frame hoac SET_BAUD */
+    {
+      uint8_t b0 = 0, b1 = 0;
+      if (Ring_Peek(&ring_pc_to_ir, 0, &b0) == 0 && b0 == 0x55 &&
+          Ring_Peek(&ring_pc_to_ir, 1, &b1) == 0 && b1 == 0xAA)
+      {
+        if (avail < 6U) break;
+        uint8_t len_l = 0, len_h = 0;
+        Ring_Peek(&ring_pc_to_ir, 4, &len_l);
+        Ring_Peek(&ring_pc_to_ir, 5, &len_h);
+        uint16_t payload_len = (uint16_t)(len_l | ((uint16_t)len_h << 8));
+        if (payload_len <= 512U)
+        {
+          binary_bytes_left = (uint16_t)(payload_len + 12U);
+          bridge_state = STATE_FORWARD_BINARY_FRAME;
+          continue;
+        }
+      }
+
+      if (Ring_Peek(&ring_pc_to_ir, 0, &b0) == 0 && b0 == (uint8_t)'S')
+      {
+        int nl = -1;
+        uint16_t scan = (avail < 48U) ? avail : 48U;
+        for (uint16_t i = 1; i < scan; i++)
+        {
+          uint8_t sc = 0;
+          Ring_Peek(&ring_pc_to_ir, i, &sc);
+          if (sc == (uint8_t)'\n' || sc == (uint8_t)'\r')
+          {
+            nl = (int)i;
+            break;
+          }
+        }
+        if (nl > 0)
+        {
+          char line_buf[64];
+          int n = 0;
+          for (int i = 0; i <= nl && n < 63; i++)
+          {
+            uint8_t c = 0;
+            Ring_Pop(&ring_pc_to_ir, &c);
+            line_buf[n++] = (char)c;
+          }
+          line_buf[n] = '\0';
+          if (strncmp(line_buf, "SET_BAUD:", 9) == 0)
+          {
+            Process_Control_Line(line_buf);
+          }
+          else
+          {
+            HAL_UART_Transmit(&huart2, (uint8_t *)line_buf, (uint16_t)n,
+                              Get_Dynamic_Timeout((uint16_t)n, applied_ir_baud));
+            cnt_pc_to_ir += (uint32_t)n;
+            tx_act = 1;
+            last_tx_activity_ms = now;
+          }
+          break;
+        }
+        if (avail < 32U) break;
+      }
+
+      /* Du lieu thuong: block forward */
+      uint16_t chunk = (avail > TX_BLOCK_MAX) ? TX_BLOCK_MAX : avail;
+      for (uint16_t i = 0; i < chunk; i++)
+        (void)Ring_Pop(&ring_pc_to_ir, &block_buf[i]);
+      if (HAL_UART_Transmit(&huart2, block_buf, chunk,
+            Get_Dynamic_Timeout(chunk, applied_ir_baud)) == HAL_OK)
+      {
+        cnt_pc_to_ir += chunk;
+        for (uint16_t i = 0; i < chunk; i++) Debug_Push_TX(block_buf[i]);
+        tx_act = 1;
+        last_tx_activity_ms = now;
+      }
+      break;
+    }
   }
 
-  /* IR → PC */
-  while (Ring_Pop(&ring_ir_to_pc, &b) == 0)
+  /* ========== IR -> PC (transparent block) ========== */
+  avail = Ring_Count(&ring_ir_to_pc);
+  while (avail > 0U)
   {
-    if (HAL_UART_Transmit(&huart3, &b, 1, 5) == HAL_OK)
-      cnt_ir_to_pc++;
+    uint16_t chunk = (avail > TX_BLOCK_MAX) ? TX_BLOCK_MAX : avail;
+    for (uint16_t i = 0; i < chunk; i++)
+      (void)Ring_Pop(&ring_ir_to_pc, &block_buf[i]);
+
+    if (HAL_UART_Transmit(&huart3, block_buf, chunk, 50) == HAL_OK)
+    {
+      cnt_ir_to_pc += chunk;
+      for (uint16_t i = 0; i < chunk; i++) Debug_Push_RX(block_buf[i]);
+      rx_act = 1;
+      last_rx_activity_ms = now;
+    }
+    avail = Ring_Count(&ring_ir_to_pc);
+    if (chunk < TX_BLOCK_MAX) break;
   }
 
-  /* Cap nhat status LCD */
-  static uint32_t last_pc = 0, last_ir = 0;
-  if (cnt_pc_to_ir != last_pc || cnt_ir_to_pc != last_ir)
+  /* LCD rate-limit */
+  if ((tx_act || rx_act) && (now - last_lcd_ms) >= LCD_UPDATE_MS)
   {
-    last_pc = cnt_pc_to_ir;
-    last_ir = cnt_ir_to_pc;
+    last_lcd_ms = now;
     snprintf(ir_tx_status_msg, sizeof(ir_tx_status_msg), "IR TX: %lu B", (unsigned long)cnt_pc_to_ir);
     snprintf(ir_rx_status_msg, sizeof(ir_rx_status_msg), "IR RX: %lu B", (unsigned long)cnt_ir_to_pc);
     snprintf(pc_status_msg, sizeof(pc_status_msg), "PC: BRIDGE OK");
-
-    /* Hien thi ngan gon trong 2 o content (khong in nhi phan) */
-    snprintf(display_tx_msg, sizeof(display_tx_msg), "TX %lu bytes forwarded", (unsigned long)cnt_pc_to_ir);
-    snprintf(display_rx_msg, sizeof(display_rx_msg), "RX %lu bytes forwarded", (unsigned long)cnt_ir_to_pc);
-    flag_new_tx = 1;
-    flag_new_rx = 1;
+    if (dbg_tx_len > 0)
+    {
+      Format_Debug_Hex(display_tx_msg, sizeof(display_tx_msg), dbg_tx_bytes, dbg_tx_len);
+      flag_new_tx = 1;
+    }
+    if (dbg_rx_len > 0)
+    {
+      Format_Debug_Hex(display_rx_msg, sizeof(display_rx_msg), dbg_rx_bytes, dbg_rx_len);
+      flag_new_rx = 1;
+    }
     flag_lcd_update = 1;
+  }
+
+  if (dbg_tx_len > 0 && (now - last_tx_activity_ms) >= IDLE_RESET_MS)
+  {
+    dbg_tx_len = 0; cnt_pc_to_ir = 0;
+    snprintf(display_tx_msg, sizeof(display_tx_msg), "Waiting for PC data...");
+    snprintf(ir_tx_status_msg, sizeof(ir_tx_status_msg), "IR TX: 0 B");
+    flag_new_tx = 1; flag_lcd_update = 1;
+  }
+  if (dbg_rx_len > 0 && (now - last_rx_activity_ms) >= IDLE_RESET_MS)
+  {
+    dbg_rx_len = 0; cnt_ir_to_pc = 0;
+    snprintf(display_rx_msg, sizeof(display_rx_msg), "Waiting for data...");
+    snprintf(ir_rx_status_msg, sizeof(ir_rx_status_msg), "IR RX: 0 B");
+    flag_new_rx = 1; flag_lcd_update = 1;
   }
 }
 
-/* USER CODE END 0 */
-
 int main(void)
 {
-  /* USER CODE BEGIN 1 */
-  /* USER CODE END 1 */
-
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-  /* USER CODE END Init */
-
   SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-  /* USER CODE END SysInit */
-
   MX_GPIO_Init();
   MX_USB_HOST_Init();
   MX_USART3_UART_Init();
   MX_SPI2_Init();
   MX_USART2_UART_Init();
 
-  /* USER CODE BEGIN 2 */
   memset(&ring_pc_to_ir, 0, sizeof(ring_pc_to_ir));
   memset(&ring_ir_to_pc, 0, sizeof(ring_ir_to_pc));
 
   HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
   HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
-
   applied_ir_baud = huart2.Init.BaudRate;
 
+  Apply_Hardware_Clock_And_LEDs(auto_state_cmd);
   DrawMainScreen();
-  /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
     MX_USB_HOST_Process();
-
-    /* USER CODE BEGIN 3 */
     Process_Switches_And_Display();
     Bridge_Process();
 
@@ -339,10 +476,8 @@ int main(void)
       DrawTransferStatus();
     }
   }
-  /* USER CODE END 3 */
 }
 
-/* ========== GIAO DIEN LCD GIU NGUYEN NHU CODE CU ========== */
 void DrawMainScreen(void)
 {
   ILI9341_Init();
@@ -386,7 +521,6 @@ void DrawTransferStatus(void)
   ILI9341_WriteString(10, 106, ir_rx_status_msg, Font_7x10, ILI9341_YELLOW, ILI9341_COLOR565(48, 58, 72));
 }
 
-/* Hien thi toi da 4 dong, moi dong toi da 42 ky tu (font 7x10) */
 void DrawTextBox(const char *msg, uint16_t x, uint16_t y, uint16_t bg_color)
 {
   char line[43];
@@ -399,22 +533,16 @@ void DrawTextBox(const char *msg, uint16_t x, uint16_t y, uint16_t bg_color)
     if (count > 42U) count = 42U;
     memcpy(line, &msg[start], count);
     line[count] = '\0';
-    ILI9341_WriteString(x, (uint16_t)(y + row * 11U), line,
-                        Font_7x10, ILI9341_WHITE, bg_color);
+    ILI9341_WriteString(x, (uint16_t)(y + row * 11U), line, Font_7x10, ILI9341_WHITE, bg_color);
   }
 }
 
-/**
-  * @brief System Clock Configuration
-  */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -423,22 +551,14 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLN = 336;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 7;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) Error_Handler();
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_5) != HAL_OK) Error_Handler();
 }
 
 static void MX_SPI2_Init(void)
@@ -455,30 +575,22 @@ static void MX_SPI2_Init(void)
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi2.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi2) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_SPI_Init(&hspi2) != HAL_OK) Error_Handler();
 }
 
-/* USART2 = IR, khoi tao 19200 (AUTO mac dinh) */
 static void MX_USART2_UART_Init(void)
 {
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 19200;          /* AUTO mac dinh 19200 */
+  huart2.Init.BaudRate = 9600; /* khop app DEFAULT_OPTICAL_BAUDRATE */
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
   huart2.Init.Mode = UART_MODE_TX_RX;
   huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_UART_Init(&huart2) != HAL_OK) Error_Handler();
 }
 
-/* USART3 = PC, co dinh 115200 */
 static void MX_USART3_UART_Init(void)
 {
   huart3.Instance = USART3;
@@ -489,16 +601,12 @@ static void MX_USART3_UART_Init(void)
   huart3.Init.Mode = UART_MODE_TX_RX;
   huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
+  if (HAL_UART_Init(&huart3) != HAL_OK) Error_Handler();
 }
 
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
-
   __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
@@ -547,89 +655,46 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 }
 
-/* USER CODE BEGIN 4 */
-
-/**
-  * @brief  Doc switch, dieu khien LED + GPIO chon clock, cap nhat LCD.
-  *         Baud: 2400 / 4800 / 9600 / 19200
-  */
 void Process_Switches_And_Display(void)
 {
-  dbg_sw_state = HAL_GPIO_ReadPin(GPIOD, STATE_SW_3_3V_Pin);
-  dbg_baud1    = HAL_GPIO_ReadPin(GPIOD, BAUD1_3V3_Pin);
-  dbg_baud2    = HAL_GPIO_ReadPin(GPIOD, BAUD2_3V3_Pin);
-  dbg_baud3    = HAL_GPIO_ReadPin(GPIOD, BAUD3_3V3_Pin);
-  dbg_baud4    = HAL_GPIO_ReadPin(GPIOD, BAUD4_3V3_Pin);
+  static uint32_t last_sw_ms = 0;
+  uint32_t now = HAL_GetTick();
+  if ((now - last_sw_ms) < 50U) return; /* debounce 50ms */
+  last_sw_ms = now;
 
-  uint8_t  mode = dbg_sw_state;
+  dbg_sw_state = HAL_GPIO_ReadPin(GPIOD, STATE_SW_3_3V_Pin);
+  dbg_baud1 = HAL_GPIO_ReadPin(GPIOD, BAUD1_3V3_Pin);
+  dbg_baud2 = HAL_GPIO_ReadPin(GPIOD, BAUD2_3V3_Pin);
+  dbg_baud3 = HAL_GPIO_ReadPin(GPIOD, BAUD3_3V3_Pin);
+  dbg_baud4 = HAL_GPIO_ReadPin(GPIOD, BAUD4_3V3_Pin);
+
+  uint8_t mode = dbg_sw_state;
   uint32_t baud = 0;
-  uint8_t  s1_val = 0, s0_val = 0;
-  uint8_t  baud_index = 0;
+  uint8_t baud_index = 0;
 
   if (mode == 1)
   {
-    /* ========== AUTO mode ========== */
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_SET);
-
     switch (auto_state_cmd)
     {
-      case 0: /* 2400 */
-        s1_val = 0; s0_val = 0; baud = 2400;
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-        break;
-      case 1: /* 4800 */
-        s1_val = 0; s0_val = 1; baud = 4800;
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-        break;
-      case 2: /* 9600 */
-        s1_val = 1; s0_val = 0; baud = 9600;
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
-        break;
-      case 3: /* 19200 – mac dinh AUTO */
-        s1_val = 1; s0_val = 1; baud = 19200;
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-        break;
+      case 0: baud = 2400; break;
+      case 1: baud = 4800; break;
+      case 2: baud = 9600; break;
+      case 3: baud = 19200; break;
       default: break;
     }
-
-    HAL_GPIO_WritePin(GPIOC, CLK_S1_3_3V_Pin, s1_val ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOC, CLK_S0_3_3V_Pin, s0_val ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    Apply_Hardware_Clock_And_LEDs(auto_state_cmd);
   }
   else
   {
-    /* ========== MANUAL mode (DIP SW2) ========== */
     HAL_GPIO_WritePin(GPIOC, GPIO_PIN_14, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOC, CLK_S1_3_3V_Pin, GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOC, CLK_S0_3_3V_Pin, GPIO_PIN_RESET);
 
-    if (dbg_baud1 == GPIO_PIN_SET)
-    {
-      baud = 19200; baud_index = 1;
-    }
-    else if (dbg_baud2 == GPIO_PIN_SET)
-    {
-      baud = 9600;  baud_index = 2;
-    }
-    else if (dbg_baud3 == GPIO_PIN_SET)
-    {
-      baud = 4800;  baud_index = 3;
-    }
-    else if (dbg_baud4 == GPIO_PIN_SET)
-    {
-      baud = 2400;  baud_index = 4;
-    }
+    if (dbg_baud1 == GPIO_PIN_SET) { baud = 19200; baud_index = 1; }
+    else if (dbg_baud2 == GPIO_PIN_SET) { baud = 9600; baud_index = 2; }
+    else if (dbg_baud3 == GPIO_PIN_SET) { baud = 4800; baud_index = 3; }
+    else if (dbg_baud4 == GPIO_PIN_SET) { baud = 2400; baud_index = 4; }
 
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, (baud_index == 4) ? GPIO_PIN_SET : GPIO_PIN_RESET);
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, (baud_index == 3) ? GPIO_PIN_SET : GPIO_PIN_RESET);
@@ -637,19 +702,16 @@ void Process_Switches_And_Display(void)
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, (baud_index == 1) ? GPIO_PIN_SET : GPIO_PIN_RESET);
   }
 
-  /* Baud / mode thay doi → re-init USART2 + cap nhat LCD */
   if (mode != current_mode || baud != current_baud)
   {
     uint32_t old_baud = current_baud;
     current_mode = mode;
     current_baud = baud;
 
-    if (baud != 0 && baud != applied_ir_baud)
+    if (baud != 0U && baud != applied_ir_baud)
     {
       IR_SetBaudrate(baud);
-
-      /* MANUAL + DIP doi → gui NOTIFY_BAUD */
-      if (mode == 0 && old_baud != 0)
+      if (mode == 0 && old_baud != 0U)
       {
         char ntf[32];
         snprintf(ntf, sizeof(ntf), "NOTIFY_BAUD:%lu\n", (unsigned long)baud);
@@ -657,97 +719,48 @@ void Process_Switches_And_Display(void)
       }
     }
 
-    /* O MODE */
     ILI9341_FillRectangle(4, 29, 154, 19, ILI9341_COLOR565(48, 58, 72));
     if (mode == 1)
       ILI9341_WriteString(9, 33, "MODE: AUTO", Font_7x10, ILI9341_GREEN, ILI9341_COLOR565(48, 58, 72));
     else
       ILI9341_WriteString(9, 33, "MODE: MANUAL", Font_7x10, ILI9341_YELLOW, ILI9341_COLOR565(48, 58, 72));
 
-    /* O BAUD */
     ILI9341_FillRectangle(162, 29, 154, 19, ILI9341_COLOR565(48, 58, 72));
-    if (baud != 0)
+    if (baud != 0U)
     {
       char str_baud[16];
       snprintf(str_baud, sizeof(str_baud), "BAUD: %lu", (unsigned long)baud);
       ILI9341_WriteString(169, 33, str_baud, Font_7x10, ILI9341_CYAN, ILI9341_COLOR565(48, 58, 72));
     }
     else
-    {
       ILI9341_WriteString(169, 33, "BAUD: NONE", Font_7x10, ILI9341_RED, ILI9341_COLOR565(48, 58, 72));
-    }
   }
 }
 
-/**
-  * @brief  UART RX Complete – chi day byte vao ring (nhanh).
-  */
+/* Thin ISR — chi push ring, KHONG parse / Transmit / doi baud */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART2)
+  if (huart->Instance == USART3)
   {
-    /* IR → PC: luon forward moi byte */
+    (void)Ring_Push(&ring_pc_to_ir, uart3_rx_byte);
+    HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
+  }
+  else if (huart->Instance == USART2)
+  {
     (void)Ring_Push(&ring_ir_to_pc, uart2_rx_byte);
     HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
   }
-  else if (huart->Instance == USART3)
-  {
-    uint8_t b = uart3_rx_byte;
-
-    /* ============================================================
-     * QUAN TRONG: LUON day moi byte vao ring (transparent bridge).
-     * Khong bao gio chan / vut bo byte chi vi thay 'S' hay '0'.
-     * Dong thoi gom vao ctrl_line de kiem tra lenh control.
-     * Chi khi nao ca dong khop 100% SET_BAUD / 00 01 10 11
-     * moi goi Process_Control_Line (side-effect doi baud).
-     * ============================================================ */
-    (void)Ring_Push(&ring_pc_to_ir, b);
-
-    /* Gom dong control song song (khong anh huong forward) */
-    if (b == '\n' || b == '\r')
-    {
-      if (ctrl_idx > 0)
-      {
-        ctrl_line[ctrl_idx] = '\0';
-        /* Process_Control_Line chi thuc thi neu khop lenh;
-         * neu khong khop thi bo qua (byte da duoc forward roi). */
-        Process_Control_Line(ctrl_line);
-      }
-      ctrl_idx = 0;
-      ctrl_active = 0;
-    }
-    else
-    {
-      if (ctrl_idx < CTRL_LINE_MAX - 1)
-      {
-        ctrl_line[ctrl_idx++] = (char)b;
-      }
-      else
-      {
-        /* Qua dai → reset, coi nhu khong phai control */
-        ctrl_idx = 0;
-        ctrl_active = 0;
-      }
-    }
-
-    HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
-  }
 }
-
-/* USER CODE END 4 */
 
 void Error_Handler(void)
 {
   __disable_irq();
-  while (1)
-  {
-  }
+  while (1) { }
 }
 
 #ifdef USE_FULL_ASSERT
 void assert_failed(uint8_t *file, uint32_t line)
 {
-  /* USER CODE BEGIN 6 */
-  /* USER CODE END 6 */
+  (void)file; (void)line;
 }
-#endif /* USE_FULL_ASSERT */
+#endif

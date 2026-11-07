@@ -26,6 +26,9 @@ class FakeSerialHandle:
         self.baudrate = int(str(kwargs.get("baudrate", 0)))
         self.is_open = True
 
+    def open(self) -> None:
+        self.is_open = True
+
     def write(self, data: bytes) -> int:
         payload = bytes(data)
         self._bus.deliver(self.port, payload)
@@ -37,6 +40,12 @@ class FakeSerialHandle:
     @property
     def in_waiting(self) -> int:
         return self._bus.waiting(self.port)
+
+    def reset_input_buffer(self) -> None:
+        self._bus.take(self.port, self._bus.waiting(self.port))
+
+    def reset_output_buffer(self) -> None:
+        return None
 
     def close(self) -> None:
         self.is_open = False
@@ -85,7 +94,7 @@ def dual_bus(monkeypatch: pytest.MonkeyPatch) -> FakePortBus:
     bus = FakePortBus()
     bus.route("COM3", "COM6")
     bus.route("COM5", "COM4")
-    monkeypatch.setattr(dual_module.serial, "Serial", bus.open)
+    monkeypatch.setattr(dual_module, "ResilientWin32Serial", bus.open)
     return bus
 
 
