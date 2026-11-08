@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import time
 from typing import cast
 
 import pytest
@@ -147,7 +146,7 @@ def no_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     def fake_sleep(duration: float) -> None:
         delays.append(duration)
 
-    monkeypatch.setattr(time, "sleep", fake_sleep)
+    monkeypatch.setattr(dual_module, "_sleep", fake_sleep)
     return delays
 
 

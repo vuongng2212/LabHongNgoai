@@ -25,6 +25,11 @@ MAX_RECONFIGURE_ATTEMPTS: int = 3
 RECONFIGURE_DELAY_SEC: float = 0.025
 
 
+def _sleep(duration: float) -> None:
+    """Suspends execution for duration seconds, isolated for test interception."""
+    time.sleep(duration)
+
+
 class _Win32Api(Protocol):
     """Structural type for the subset of pyserial's Win32 surface used here."""
 
@@ -198,7 +203,7 @@ class ResilientWin32Serial(serial.Serial):
                     raise
                 if not _is_retryable_serial_error(exc):
                     raise
-                time.sleep(RECONFIGURE_DELAY_SEC * (attempt + 1))
+                _sleep(RECONFIGURE_DELAY_SEC * (attempt + 1))
         if last_error is not None:
             raise last_error
 
@@ -381,7 +386,7 @@ class DualSerialTransport(ITransport):
                         MAX_OPEN_RETRIES,
                         exc,
                     )
-                    time.sleep(INITIAL_RETRY_DELAY_SEC * (2**attempt))
+                    _sleep(INITIAL_RETRY_DELAY_SEC * (2**attempt))
                     continue
                 logger.exception(
                     "%s DualSerial open attempt %d/%d failed: %s",
