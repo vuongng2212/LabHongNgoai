@@ -174,7 +174,7 @@ function setConnectedUi(txPort, rxPort, baud) {
   const connBtn = document.getElementById('btn-connect');
   if (connBtn) {
     connBtn.dataset.state = 'connected';
-    if (connBtn.textContent !== 'Disconnect') connBtn.textContent = 'Disconnect';
+    connBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]" data-icon="link_off">link_off</span> Disconnect';
   }
 }
 
@@ -212,7 +212,7 @@ function setDisconnectedUi() {
   const connBtn = document.getElementById('btn-connect');
   if (connBtn) {
     connBtn.dataset.state = 'disconnected';
-    if (connBtn.textContent !== 'Connect') connBtn.textContent = 'Connect';
+    connBtn.innerHTML = '<span class="material-symbols-outlined text-[16px]" data-icon="link">link</span> Connect';
   }
 }
 
@@ -489,7 +489,16 @@ document.addEventListener('click', (e) => {
     return;
   }
 
-  if (btn.innerText.includes('Connect')) {
+  if (btn.id === 'btn-connect') {
+    if (btn.dataset.state === 'connected') {
+      if (!bridge) return;
+      clearConnectLoading();
+      clearPingLoading();
+      bridge.disconnectPort();
+      toast('info', 'Disconnecting...', 'Closing serial link.');
+      return;
+    }
+
     if (!bridge) {
       toast('warning', 'Backend not connected', 'Open this UI inside the SpectraLink Desktop app to control hardware.');
       return;
@@ -522,12 +531,10 @@ document.addEventListener('click', (e) => {
     clearPingLoading();
     setConnectingUi(txPort, rxPort);
     bridge.connectDualPorts(txPort, rxPort, selectedBaud);
-  } else if (btn.innerText.includes('Disconnect')) {
-    if (!bridge) return;
-    clearPingLoading();
-    bridge.disconnectPort();
-    toast('info', 'Disconnecting...', 'Closing serial link.');
-  } else if (btn.innerText.includes('Ping Test') || btn.innerText.includes('Ping Link Test') || btn.innerText.includes('Calibrate Optics') || btn.innerText.includes('Ping')) {
+    return;
+  }
+
+  if (btn.innerText.includes('Ping Test') || btn.innerText.includes('Ping Link Test') || btn.innerText.includes('Calibrate Optics') || btn.innerText.includes('Ping')) {
     if (!bridge) {
       toast('warning', 'Backend not connected', 'Ping needs the Desktop app link. Open via SpectraLink to test RTT.');
       return;

@@ -67,6 +67,18 @@ class TestHardwareDualComUi:
         assert "TX &gt;" in chat_html
         assert "[BURST_TX]" not in chat_html
 
+    def test_chat_send_controls_define_text_only_contract(self) -> None:
+        chat_html = (COMPONENTS_DIR / "view_chat.html").read_text(encoding="utf-8")
+        script = (WEB_DIR / "js" / "chat_controller.js").read_text(encoding="utf-8")
+        assert 'id="btn-chat-send"' in chat_html
+        assert 'id="input-chat-text"' in chat_html
+        assert "<span>Send</span>" in chat_html
+        assert "Type a text message to send across the optical link..." in chat_html
+        assert "exclusively in File Transfer Station" in chat_html
+        assert "getElementById('btn-chat-send')" in script
+        assert "getElementById('input-chat-text')" in script
+        assert "Type a text message before sending." in script
+
 
 class TestBridgeClientContract:
     """Verifies the JavaScript bridge calls the dual-port backend API."""
@@ -78,6 +90,19 @@ class TestBridgeClientContract:
         assert "getAvailableBaudrates" in script
         assert "portConnected.connect((txPort, rxPort, baud)" in script
         assert "TX: ' + txPort + ' • RX: ' + rxPort" in script
+
+    def test_connect_button_uses_explicit_disconnect_state(self) -> None:
+        script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
+        assert "if (btn.id === 'btn-connect')" in script
+        assert "if (btn.dataset.state === 'connected')" in script
+        assert "bridge.disconnectPort()" in script
+        assert "btn.innerText.includes('Connect')" not in script
+        assert 'data-icon="link_off">link_off</span> Disconnect' in script
+        assert 'data-icon="link">link</span> Connect' in script
+
+    def test_connect_button_starts_in_disconnected_state(self) -> None:
+        hardware_html = (COMPONENTS_DIR / "view_hardware.html").read_text(encoding="utf-8")
+        assert 'id="btn-connect" data-state="disconnected"' in hardware_html
 
     def test_default_baudrates_are_optical_values(self) -> None:
         """Backend and browser fallbacks expose only the four optical rates."""

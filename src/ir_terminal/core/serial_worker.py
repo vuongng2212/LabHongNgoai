@@ -327,15 +327,15 @@ class SerialWorker(QObject):
     @Slot()
     def close_port(self) -> None:
         """Stops polling timer and cleanly closes serial transport."""
-        was_open = self._transport is not None and self._transport.is_open
+        was_active = self._transport is not None or bool(self._current_tx_port or self._current_rx_port)
         transport_kind = type(self._transport).__name__ if self._transport else "none"
         buffered = len(self._rx_accumulation) - self._rx_consumed
         stats = self._framer_stats.snapshot()
         logger.debug(
-            "%s Port close requested: transport=%s was_open=%s tx=%s rx=%s",
+            "%s Port close requested: transport=%s was_active=%s tx=%s rx=%s",
             LogTag.HW_SERIAL,
             transport_kind,
-            was_open,
+            was_active,
             self._current_tx_port or "<none>",
             self._current_rx_port or "<none>",
         )
@@ -363,7 +363,7 @@ class SerialWorker(QObject):
         self._link_lost_pending = False
         self._current_tx_port = ""
         self._current_rx_port = ""
-        if was_open:
+        if was_active:
             logger.info(
                 "%s Port CLOSED (%s): buffered=%dB dropped=%dB frames_ok=%d "
                 "crc_err=%d eof_err=%d len_err=%d noise=%dB",

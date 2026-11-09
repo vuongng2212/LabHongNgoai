@@ -1,6 +1,6 @@
 function initChatController() {
-  const chatInput = document.querySelector('#view-chat input');
-  const sendBtn = document.querySelector('#view-chat button.bg-primary-container, #view-chat button:has(span[data-icon="send"])');
+  const chatInput = document.getElementById('input-chat-text');
+  const sendBtn = document.getElementById('btn-chat-send');
   const chatContainer = document.querySelector('#view-chat section.overflow-y-auto');
   const hexDumpElem = document.querySelector('#view-chat pre');
 
@@ -8,7 +8,7 @@ function initChatController() {
     if (!chatInput) return;
     const text = chatInput.value.trim();
     if (!text) {
-      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Empty message', 'Type a payload string before sending.');
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Empty message', 'Type a text message before sending.');
       chatInput.focus();
       return;
     }

@@ -32,18 +32,18 @@
 <div class="flex flex-col gap-2">
 <div class="flex items-center gap-2 p-1.5 pl-3 bg-surface-container-lowest border border-black/[0.12] rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-150">
 <span class="font-mono-data text-mono-data text-on-surface-variant font-semibold shrink-0 select-none">TX &gt;</span>
-<input class="flex-1 min-w-0 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline" placeholder="Enter payload string or message to transmit..." type="text" value=""/>
+<input id="input-chat-text" class="flex-1 min-w-0 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline" placeholder="Type a text message to send across the optical link..." type="text" value=""/>
 <div class="flex items-center gap-1.5 shrink-0">
-<button class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-primary transition-colors active:scale-[0.98] cursor-pointer">
-<span>Transmit</span>
+<button id="btn-chat-send" class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-primary transition-colors active:scale-[0.98] cursor-pointer" title="Send text message (Enter)">
+<span>Send</span>
 <span class="material-symbols-outlined text-[14px]" data-icon="send">send</span>
 </button>
 </div>
 </div>
 <div class="flex items-center justify-between px-1 text-mono-caption font-mono-caption text-outline">
-<div class="flex items-center gap-1 min-w-0 truncate" title="Half-duplex link: transmitter pauses RX carrier during modulated burst. Maximum packet length: 512 bytes.">
+<div class="flex items-center gap-1 min-w-0 truncate" title="Realtime Chat sends text messages up to 512 bytes. Binary files and large transfers are handled exclusively in File Transfer Station.">
 <span class="material-symbols-outlined text-[12px]" data-icon="info">info</span>
-<span class="truncate">Half-duplex link: transmitter pauses RX carrier during modulated burst. Maximum packet length: 512 bytes.</span>
+<span class="truncate">Text messages only (max 512 bytes). Binary files and large transfers belong exclusively in File Transfer Station.</span>
 </div>
 </div>
 </div>
