@@ -3,6 +3,7 @@ function initChatController() {
   const sendBtn = document.getElementById('btn-chat-send');
   const chatContainer = document.querySelector('#view-chat section.overflow-y-auto');
   const hexDumpElem = document.querySelector('#view-chat pre');
+  const optimisticMessages = [];
 
   function doSend() {
     if (!chatInput) return;
@@ -20,7 +21,18 @@ function initChatController() {
       if (window.UIFeedback) window.UIFeedback.showToast('error', 'Backend not ready', 'Bridge is still connecting — try again in a moment.');
       return;
     }
-    window.bridge.sendChat(text);
+    const timestamp = new Date().toLocaleTimeString();
+    optimisticMessages.push(text);
+    appendChatMessage(text, timestamp, true);
+    try {
+      window.bridge.sendChat(text);
+    } catch (err) {
+      const pendingIndex = optimisticMessages.indexOf(text);
+      if (pendingIndex >= 0) optimisticMessages.splice(pendingIndex, 1);
+      console.error('Chat send failed:', err);
+      if (window.UIFeedback) window.UIFeedback.showToast('error', 'Send failed', 'The message could not be sent.');
+      return;
+    }
     chatInput.value = '';
   }
 
@@ -61,6 +73,13 @@ function initChatController() {
 
   function wireBridgeSignals() {
     window.bridge.chatMessageReceived.connect((text, timeStr, isOutgoing) => {
+      if (isOutgoing) {
+        const pendingIndex = optimisticMessages.indexOf(text);
+        if (pendingIndex >= 0) {
+          optimisticMessages.splice(pendingIndex, 1);
+          return;
+        }
+      }
       appendChatMessage(text, timeStr, isOutgoing);
     });
 
@@ -74,7 +93,7 @@ function initChatController() {
       window.bridge.getChatHistory((historyJson) => {
         try {
           const messages = JSON.parse(historyJson);
-          if (Array.isArray(messages) && messages.length > 0 && chatContainer) {
+          if (Array.isArray(messages) && messages.length > 0 && chatContainer && !chatContainer.querySelector('.chat-message-row')) {
             chatContainer.innerHTML = '';
             const fragment = document.createDocumentFragment();
             messages.forEach(msg => {
@@ -100,7 +119,7 @@ function initChatController() {
   function appendChatMessage(text, timeStr, isOutgoing, target) {
     const container = target || chatContainer;
     if (!container) return;
-    const emptyState = document.getElementById('chat-empty-state');
+    const emptyState = chatContainer && chatContainer.querySelector('#chat-empty-state');
     if (emptyState) {
       emptyState.remove();
     }

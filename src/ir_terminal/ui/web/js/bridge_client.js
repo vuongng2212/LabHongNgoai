@@ -163,12 +163,16 @@ function setConnectedUi(txPort, rxPort, baud) {
   setText('footer-port-label', summary);
   updateBaudrateDisplays(baud);
 
-  if (window.UIBadge) {
-    window.UIBadge.set('hw-header-link-badge', { tone: 'success', label: 'LINK CONNECTED' });
-    window.UIBadge.set('hw-tx-status', { tone: 'success', label: 'TX OPEN' });
-    window.UIBadge.set('hw-rx-status', { tone: 'success', label: 'RX OPEN' });
-    window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'READY' });
-    window.UIBadge.set('chat-link-state', { tone: 'success', label: 'LINK CONNECTED' });
+  try {
+    if (window.UIBadge && typeof window.UIBadge.set === 'function') {
+      window.UIBadge.set('hw-header-link-badge', { tone: 'success', label: 'LINK CONNECTED' });
+      window.UIBadge.set('hw-tx-status', { tone: 'success', label: 'TX OPEN' });
+      window.UIBadge.set('hw-rx-status', { tone: 'success', label: 'RX OPEN' });
+      window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'READY' });
+      window.UIBadge.set('chat-link-state', { tone: 'success', label: 'LINK CONNECTED' });
+    }
+  } catch (err) {
+    console.warn('Could not update connected badges:', err);
   }
 
   const connBtn = document.getElementById('btn-connect');
@@ -181,9 +185,13 @@ function setConnectedUi(txPort, rxPort, baud) {
 function setConnectingUi(txPort, rxPort) {
   setRibbonText('STM32 Optical Bridge • Opening ' + txPort + ' / ' + rxPort);
   setTone('ribbon-badge', 'info');
-  if (window.UIBadge) {
-    window.UIBadge.set('hw-header-link-badge', { tone: 'info', label: 'CONNECTING' });
-    window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
+  try {
+    if (window.UIBadge && typeof window.UIBadge.set === 'function') {
+      window.UIBadge.set('hw-header-link-badge', { tone: 'info', label: 'CONNECTING' });
+      window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
+    }
+  } catch (err) {
+    console.warn('Could not update connecting badges:', err);
   }
 }
 
@@ -201,12 +209,16 @@ function setDisconnectedUi() {
   setText('footer-port-label', 'Disconnected');
   setText('footer-baud-label', '--');
 
-  if (window.UIBadge) {
-    window.UIBadge.set('hw-header-link-badge', { tone: 'neutral', label: 'DISCONNECTED' });
-    window.UIBadge.set('hw-tx-status', { tone: 'neutral', label: 'TX IDLE' });
-    window.UIBadge.set('hw-rx-status', { tone: 'neutral', label: 'RX IDLE' });
-    window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'IDLE' });
-    window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
+  try {
+    if (window.UIBadge && typeof window.UIBadge.set === 'function') {
+      window.UIBadge.set('hw-header-link-badge', { tone: 'neutral', label: 'DISCONNECTED' });
+      window.UIBadge.set('hw-tx-status', { tone: 'neutral', label: 'TX IDLE' });
+      window.UIBadge.set('hw-rx-status', { tone: 'neutral', label: 'RX IDLE' });
+      window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'IDLE' });
+      window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
+    }
+  } catch (err) {
+    console.warn('Could not update disconnected badges:', err);
   }
 
   const connBtn = document.getElementById('btn-connect');
@@ -300,21 +312,26 @@ function initBridgeListeners() {
     const wasConnecting = !!pendingConnectBtn;
     clearConnectLoading();
     clearPingLoading();
-    setDisconnectedUi();
+    try { setDisconnectedUi(); } catch (err) { console.error('Disconnected UI update failed:', err); }
     if (!wasConnecting) toast('info', 'Disconnected', 'Serial link closed.');
   });
 
   bridge.pingResult.connect((rtt, seq) => {
     clearPingLoading();
-    setText('hw-rtt-value', rtt.toFixed(1) + ' ms');
-    if (window.UIBadge) {
-      window.UIBadge.set('hw-rtt-state', {
-        tone: window.UIBadge.toneForRtt(rtt),
-        label: 'MEASURED'
-      });
+    const value = Number(rtt);
+    if (!Number.isFinite(value)) return;
+    const formatted = value.toFixed(1);
+    setText('hw-rtt-value', formatted + ' ms');
+    try {
+      if (window.UIBadge && typeof window.UIBadge.set === 'function') {
+        const tone = typeof window.UIBadge.toneForRtt === 'function' ? window.UIBadge.toneForRtt(value) : 'success';
+        window.UIBadge.set('hw-rtt-state', { tone: tone || 'success', label: 'MEASURED' });
+      }
+    } catch (err) {
+      console.warn('Could not update RTT badge:', err);
     }
-    toast('success', 'Ping echo received', 'Seq #' + seq + ' • RTT ' + rtt.toFixed(1) + ' ms', { durationMs: 2800 });
-    console.log('Ping Echo Received: seq #' + seq + ' | RTT: ' + rtt.toFixed(1) + ' ms');
+    toast('success', 'Ping echo received', 'Seq #' + seq + ' • RTT ' + formatted + ' ms', { durationMs: 2800 });
+    console.log('Ping Echo Received: seq #' + seq + ' | RTT: ' + formatted + ' ms');
   });
 
   bridge.healthResult.connect((rtt) => {
@@ -495,6 +512,7 @@ document.addEventListener('click', (e) => {
       clearConnectLoading();
       clearPingLoading();
       bridge.disconnectPort();
+      setDisconnectedUi();
       toast('info', 'Disconnecting...', 'Closing serial link.');
       return;
     }

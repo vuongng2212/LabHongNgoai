@@ -2,14 +2,24 @@
   'use strict';
 
   var wiredKeys = {};
+  var waitingKeys = {};
   function onReady(key, cb) {
-    if (wiredKeys[key]) return;
+    if (wiredKeys[key] || waitingKeys[key]) return;
     if (window.bridge) {
-      wiredKeys[key] = true;
-      cb(window.bridge);
+      waitingKeys[key] = true;
+      try {
+        cb(window.bridge);
+        wiredKeys[key] = true;
+      } catch (err) {
+        console.error('Bridge wiring failed for ' + key + ':', err);
+        setTimeout(function () { onReady(key, cb); }, 300);
+      } finally {
+        waitingKeys[key] = false;
+      }
       return;
     }
-    setTimeout(function () { onReady(key, cb); }, 300);
+    waitingKeys[key] = true;
+    setTimeout(function () { waitingKeys[key] = false; onReady(key, cb); }, 300);
   }
 
   function requireBridge(actionLabel) {
