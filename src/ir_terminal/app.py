@@ -8,6 +8,7 @@ import sys
 from PySide6.QtCore import QLockFile, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from ir_terminal import __version__
 from ir_terminal.config import (
     LINK_CONNECT_ATTEMPT_TIMEOUT_SEC,
     LINK_CONNECT_RETRIES,
@@ -114,8 +115,9 @@ def create_app(
 
     logger, _ = setup_logger(log_dir=ctx.logs_dir)
     logger.info(
-        "Initializing IR-OWC Lab Terminal: instance=%s role=%s transport=%s port=%s "
+        "Initializing IR-OWC Lab Terminal v%s: instance=%s role=%s transport=%s port=%s "
         "link=%s:%d data=%s transfers=%s logs=%s",
+        __version__,
         ctx.instance_id or "single",
         config.effective_link_role,
         config.transport,

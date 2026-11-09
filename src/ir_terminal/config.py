@@ -175,7 +175,9 @@ def _station_names(instance: str | None) -> tuple[str, str]:
 
 def _window_title(display_name: str, role_label: str, port: str | None) -> str:
     """Builds a window title that makes dual-node identity obvious."""
-    base = "SpectraLink IR-OWC Workstation"
+    from ir_terminal import __version__
+
+    base = f"SpectraLink IR-OWC Workstation v{__version__}"
     tag = f"{display_name} - {role_label}" if role_label else display_name
     title = f"{base} [{tag}]"
     if port:
