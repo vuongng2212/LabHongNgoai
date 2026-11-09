@@ -193,6 +193,21 @@ def _is_retryable_serial_error(exc: BaseException) -> bool:
     return isinstance(exc, serial.SerialException)
 
 
+def _is_win32_error_31(exc: BaseException) -> bool:
+    """Returns True when an exception identifies Win32 ERROR_GEN_FAILURE."""
+    if getattr(exc, "winerror", None) == 31:
+        return True
+    if any(type(argument) is int and argument == 31 for argument in exc.args):
+        return True
+    message = str(exc).casefold()
+    return (
+        "a device attached to the system is not functioning" in message
+        or "error_gen_failure" in message
+        or "winerror 31" in message
+        or "error 31" in message
+    )
+
+
 class ResilientWin32Serial(serial.Serial):
     """Serial subclass neutralizing Windows Error 31 before DCB configuration."""
 
@@ -244,6 +259,13 @@ class ResilientWin32Serial(serial.Serial):
         try:
             base_reconfigure(*args)
         except Exception as exc:
+            if _is_win32_error_31(exc):
+                logger.warning(
+                    "%s DCB load failed with WinError 31 (tolerated for USB-CDC adapter compatibility): %s",
+                    LogTag.HW_SERIAL,
+                    exc,
+                )
+                return
             logger.exception(
                 "%s DCB load FAILED (%s: %s)",
                 LogTag.HW_SERIAL,

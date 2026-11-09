@@ -358,6 +358,23 @@ class TestWin32Helpers:
 class TestResilientSerialReconfigure:
     """Verifies the reconfigure hook clears the open handle before SetCommState."""
 
+    def test_tolerates_win32_error_31_from_base_reconfigure(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        error = pyserial.SerialException(
+            "A device attached to the system is not functioning (ERROR_GEN_FAILURE)"
+        )
+
+        def base_reconfigure(_self: object, force_update: bool = False) -> None:
+            raise error
+
+        monkeypatch.setattr(pyserial.Serial, "_reconfigure_port", base_reconfigure)
+        instance = _make_resilient_serial()
+
+        instance._invoke_base_reconfigure()
+
+        assert "DCB load failed with WinError 31" in caplog.text
+
     def test_clears_before_base_reconfigure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
