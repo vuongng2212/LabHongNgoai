@@ -250,7 +250,7 @@ class TestDualSerialTransportOpen:
         assert transport._rx_serial is None
         assert transport.is_open is False
 
-    def test_create_serial_forces_quiescent_dtr_rts(
+    def test_create_serial_preserves_default_dtr_rts(
         self, serial_factory: SerialFactory
     ) -> None:
         transport = DualSerialTransport("COM3", "COM3", 115200)
@@ -260,8 +260,8 @@ class TestDualSerialTransportOpen:
         handle = serial_factory.created[0]
         assert handle.port == "COM3"
         assert handle.open_calls == 1
-        assert cast(object, handle.dtr) is False
-        assert cast(object, handle.rts) is False
+        assert handle.dtr is True
+        assert handle.rts is True
 
 
 class TestOpenRetry:
@@ -347,44 +347,18 @@ class TestOpenRetry:
 
 
 class TestWin32Helpers:
-    """Verifies the Win32 pre-clear helpers stay safe and correctly ordered."""
-
-    def test_pre_clear_opens_clears_purges_and_closes(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        fake = FakeWin32Api()
-        monkeypatch.setattr(dual_module, "_win32_api", lambda: fake)
-
-        dual_module._win32_pre_clear_path("COM12")
-
-        assert fake.created_paths == ["\\\\.\\COM12"]
-        assert fake.events == ["create", "clear", "purge", "close"]
-        assert fake.closed_handles == [fake.handle]
-
-    def test_pre_clear_skips_invalid_handle(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fake = FakeWin32Api(handle=-1)
-        monkeypatch.setattr(dual_module, "_win32_api", lambda: fake)
-
-        dual_module._win32_pre_clear_path("COM6")
-
-        assert fake.events == ["create"]
-        assert fake.closed_handles == []
+    """Verifies the Win32 API boundary stays safe off Windows."""
 
     def test_win32_api_is_absent_off_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(dual_module, "_is_windows", lambda: False)
 
         assert dual_module._win32_api() is None
 
-    def test_device_path_normalization(self) -> None:
-        assert dual_module._win32_device_path("com12") == "\\\\.\\com12"
-        assert dual_module._win32_device_path("COM4") == "\\\\.\\COM4"
-        assert dual_module._win32_device_path("COM1") == "\\\\.\\COM1"
-
 
 class TestResilientSerialReconfigure:
-    """Verifies the reconfigure hook clears driver errors around SetCommState."""
+    """Verifies the reconfigure hook clears the open handle before SetCommState."""
 
-    def test_clears_before_and_after_base_reconfigure(
+    def test_clears_before_base_reconfigure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         events: list[str] = []
@@ -400,45 +374,7 @@ class TestResilientSerialReconfigure:
 
         instance._reconfigure_port()
 
-        assert events == ["clear", "purge", "reconfigure", "clear", "purge"]
-
-    def test_retries_transient_error_31(
-        self, monkeypatch: pytest.MonkeyPatch, no_sleep: list[float]
-    ) -> None:
-        events: list[str] = []
-        fake = FakeWin32Api(events=events)
-        attempts = 0
-        monkeypatch.setattr(dual_module, "_is_windows", lambda: True)
-        monkeypatch.setattr(dual_module, "_win32_api", lambda: fake)
-
-        def base_reconfigure(_self: object, force_update: bool = False) -> None:
-            nonlocal attempts
-            attempts += 1
-            events.append(f"reconfigure:{attempts}")
-            if attempts == 1:
-                raise pyserial.SerialException(
-                    "Cannot configure port, something went wrong. "
-                    "Original message: PermissionError(13, 'A device attached "
-                    "to the system is not functioning.', None, 31)"
-                )
-
-        monkeypatch.setattr(pyserial.Serial, "_reconfigure_port", base_reconfigure)
-        instance = _make_resilient_serial()
-
-        instance._reconfigure_port()
-
-        assert attempts == 2
-        assert no_sleep == [dual_module.RECONFIGURE_DELAY_SEC]
-        assert events == [
-            "clear",
-            "purge",
-            "reconfigure:1",
-            "clear",
-            "purge",
-            "reconfigure:2",
-            "clear",
-            "purge",
-        ]
+        assert events == ["clear", "purge", "reconfigure"]
 
     def test_delegates_without_win32_calls_off_windows(
         self, monkeypatch: pytest.MonkeyPatch

@@ -103,6 +103,11 @@ class SerialManager(QObject):
         self._worker.framer_error.connect(self.framer_error)
 
         self._thread.start()
+        logger.debug(
+            "%s Manager worker thread started: running=%s dispatch=queued-signals",
+            LogTag.HW_SERIAL,
+            self._thread.isRunning(),
+        )
         self._is_connected = False
         self._current_port = ""
         self._current_tx_port = ""
@@ -253,6 +258,13 @@ class SerialManager(QObject):
             self._current_port or self._current_tx_port or "<no-port>",
             self._is_connected,
         )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s TX control payload: len=%dB hex=%s",
+                LogTag.BAUD_CTRL,
+                len(payload),
+                format_hex_preview(payload),
+            )
         self._sig_send.emit(payload)
 
     def send_packet(self, seq: int, opcode: int, payload: bytes = b"") -> None:

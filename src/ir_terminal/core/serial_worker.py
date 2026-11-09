@@ -21,7 +21,7 @@ from ir_terminal.protocol.constants import (
     RX_COMPACT_THRESHOLD,
     SOCKET_CONNECT_TIMEOUT_SEC,
 )
-from ir_terminal.protocol.control_channel import ControlMessage
+from ir_terminal.protocol.control_channel import ControlMessage, parse_control_line
 from ir_terminal.protocol.framer import FramerStats, parse_frames_with_stats
 from ir_terminal.protocol.packet import Packet
 from ir_terminal.protocol.stream_demux import demux_stream
@@ -120,6 +120,22 @@ def _virtual_port_info(device: str, description: str) -> PortInfo:
     )
 
 
+def _tx_control_message(data: bytes) -> ControlMessage | None:
+    """Parses TX bytes as a valid ASCII control line when possible.
+
+    Args:
+        data: Outgoing bytes queued for UART TX.
+
+    Returns:
+        A parsed :class:`ControlMessage`, or None for binary/raw payloads.
+    """
+    try:
+        text = data.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    return parse_control_line(text)
+
+
 class SerialWorker(QObject):
     """Background worker managing serial port I/O and emitting parsed packets."""
 
@@ -174,6 +190,15 @@ class SerialWorker(QObject):
         self._current_tx_port = ""
         self._current_rx_port = ""
         self._current_baud = DEFAULT_BAUDRATE
+        logger.debug(
+            "%s SerialWorker initialized: include_link=%s link_retries=%d "
+            "link_retry_interval=%.2fs link_timeout=%.2fs",
+            LogTag.HW_SERIAL,
+            self._include_link,
+            self._link_connect_retries,
+            self._link_retry_interval_sec,
+            self._link_connect_timeout_sec,
+        )
 
     @property
     def current_tx_port(self) -> str:
@@ -218,12 +243,11 @@ class SerialWorker(QObject):
         try:
             self.close_port()
             logger.info(
-                "%s Opening serial ports: tx=%s rx=%s at %d bps (thread=%s)",
+                "%s Opening serial ports: tx=%s rx=%s at %d bps",
                 LogTag.HW_SERIAL,
                 tx_name,
                 rx_name,
                 baudrate,
-                "worker",
             )
 
             self._transport = create_transport(
@@ -265,6 +289,12 @@ class SerialWorker(QObject):
             self._poll_timer.setInterval(poll_ms)  # 500 Hz mock / 100 Hz hardware
             self._poll_timer.timeout.connect(self._poll_serial)
             self._poll_timer.start()
+            logger.debug(
+                "%s Poll timer started: interval=%dms mock=%s",
+                LogTag.HW_SERIAL,
+                poll_ms,
+                poll_ms == MOCK_POLL_MS,
+            )
             self._start_port_watcher()
 
             logger.info(
@@ -301,9 +331,18 @@ class SerialWorker(QObject):
         transport_kind = type(self._transport).__name__ if self._transport else "none"
         buffered = len(self._rx_accumulation) - self._rx_consumed
         stats = self._framer_stats.snapshot()
+        logger.debug(
+            "%s Port close requested: transport=%s was_open=%s tx=%s rx=%s",
+            LogTag.HW_SERIAL,
+            transport_kind,
+            was_open,
+            self._current_tx_port or "<none>",
+            self._current_rx_port or "<none>",
+        )
         if self._poll_timer is not None:
             self._poll_timer.stop()
             self._poll_timer = None
+            logger.debug("%s Poll timer stopped", LogTag.HW_SERIAL)
         self._stop_port_watcher()
 
         if self._transport is not None:
@@ -426,7 +465,23 @@ class SerialWorker(QObject):
                 )
         for event in events:
             if isinstance(event, ControlMessage):
-                logger.info("%s RX control line=%s", LogTag.BAUD_CTRL, event.raw)
+                if event.baudrate is not None:
+                    logger.info(
+                        "%s RX control %s: baud=%d reason=%r raw=%r",
+                        LogTag.BAUD_CTRL,
+                        event.kind,
+                        event.baudrate,
+                        event.reason,
+                        event.raw,
+                    )
+                else:
+                    logger.info(
+                        "%s RX control %s: reason=%r raw=%r",
+                        LogTag.BAUD_CTRL,
+                        event.kind,
+                        event.reason,
+                        event.raw,
+                    )
                 self.control_message_received.emit(event.raw)
                 continue
             pkt = event
@@ -521,6 +576,27 @@ class SerialWorker(QObject):
 
     def _describe_tx_bytes(self, data: bytes) -> None:
         """Logs a one-line TX descriptor, decoding the frame header when possible."""
+        control = _tx_control_message(data)
+        if control is not None:
+            if control.baudrate is not None:
+                logger.debug(
+                    "%s TX control %s: baud=%d payload=%dB raw=%r",
+                    LogTag.BAUD_CTRL,
+                    control.kind,
+                    control.baudrate,
+                    len(data),
+                    control.raw,
+                )
+            else:
+                logger.debug(
+                    "%s TX control %s: reason=%r payload=%dB raw=%r",
+                    LogTag.BAUD_CTRL,
+                    control.kind,
+                    control.reason,
+                    len(data),
+                    control.raw,
+                )
+            return
         if len(data) >= 6 and data[0] == 0x55 and data[1] == 0xAA:
             seq = data[2]
             opcode = data[3]
@@ -559,6 +635,7 @@ class SerialWorker(QObject):
         if self._port_poll_timer is not None:
             self._port_poll_timer.stop()
             self._port_poll_timer = None
+            logger.debug("%s Hotplug watcher stopped", LogTag.HW_SERIAL)
 
     @Slot()
     def _poll_ports(self) -> None:

@@ -21,8 +21,21 @@ __all__ = ["DualSerialTransport", "ResilientWin32Serial", "serial"]
 
 MAX_OPEN_RETRIES: int = 3
 INITIAL_RETRY_DELAY_SEC: float = 0.05
-MAX_RECONFIGURE_ATTEMPTS: int = 3
-RECONFIGURE_DELAY_SEC: float = 0.025
+
+_WIN32_CE_ERROR_FLAGS: tuple[tuple[int, str], ...] = (
+    (0x0001, "CE_RXOVER"),
+    (0x0002, "CE_OVERRUN"),
+    (0x0004, "CE_RXPARITY"),
+    (0x0008, "CE_FRAME"),
+    (0x0010, "CE_BREAK"),
+    (0x0100, "CE_TXFULL"),
+    (0x0200, "CE_PTO"),
+    (0x0400, "CE_IOE"),
+    (0x0800, "CE_DNS"),
+    (0x1000, "CE_OOP"),
+    (0x8000, "CE_MODE"),
+)
+_WIN32_CE_KNOWN_MASK: int = sum(bit for bit, _name in _WIN32_CE_ERROR_FLAGS)
 
 
 def _sleep(duration: float) -> None:
@@ -33,11 +46,6 @@ def _sleep(duration: float) -> None:
 class _Win32Api(Protocol):
     """Structural type for the subset of pyserial's Win32 surface used here."""
 
-    INVALID_HANDLE_VALUE: int
-    GENERIC_READ: int
-    GENERIC_WRITE: int
-    OPEN_EXISTING: int
-    FILE_ATTRIBUTE_NORMAL: int
     PURGE_TXCLEAR: int
     PURGE_TXABORT: int
     PURGE_RXCLEAR: int
@@ -45,10 +53,6 @@ class _Win32Api(Protocol):
 
     DWORD: type[ctypes.c_ulong]
     COMSTAT: type[ctypes.Structure]
-
-    def CreateFile(self, *args: object) -> int | None: ...
-
-    def CloseHandle(self, *args: object) -> int: ...
 
     def ClearCommError(self, *args: object) -> int: ...
 
@@ -72,12 +76,56 @@ def _win32_api() -> _Win32Api | None:
     return cast(_Win32Api, win32_module)
 
 
-def _win32_device_path(port_name: str) -> str:
-    """Normalizes a Windows COM name to the extended device path form."""
-    name = port_name.strip()
-    if name.upper().startswith("COM"):
-        return "\\\\.\\" + name
-    return name
+def _read_ctypes_ulong(container: object, attribute: str) -> int:
+    """Reads an unsigned-integer member from a ctypes structure, tolerating mocks.
+
+    Args:
+        container: ctypes instance, or a test double, exposing the member.
+        attribute: Member name such as ``value``, ``cbInQue`` or ``cbOutQue``.
+
+    Returns:
+        Member value, or 0 when the member is absent or unreadable.
+    """
+    member = getattr(container, attribute, None)
+    if isinstance(member, ctypes.c_ulong):
+        return int(member.value)
+    if isinstance(member, int):
+        return member
+    return 0
+
+
+def _win32_error_flag_names(errors_value: int) -> str:
+    """Renders a DWORD comm-error bitfield as readable Win32 flag names.
+
+    Args:
+        errors_value: Raw ClearCommError error DWORD bitfield.
+
+    Returns:
+        Pipe-separated flag names, "none" when no flag is set.
+    """
+    if errors_value == 0:
+        return "none"
+    names = [name for bit, name in _WIN32_CE_ERROR_FLAGS if errors_value & bit]
+    unknown = errors_value & ~_WIN32_CE_KNOWN_MASK
+    if unknown:
+        names.append(f"UNKNOWN(0x{unknown:04X})")
+    return "|".join(names) if names else "none"
+
+
+def _input_buffer_bytes(handle: serial.Serial) -> int:
+    """Reads the number of bytes queued in the handle driver RX buffer.
+
+    Args:
+        handle: Opened pyserial instance.
+
+    Returns:
+        Pending RX byte count, or 0 when the count is unavailable.
+    """
+    try:
+        waiting = handle.in_waiting
+    except Exception:
+        return 0
+    return int(waiting) if waiting is not None else 0
 
 
 def _win32_clear_and_purge_port(port_handle: int | None) -> None:
@@ -88,11 +136,40 @@ def _win32_clear_and_purge_port(port_handle: int | None) -> None:
     """
     win32 = _win32_api()
     if win32 is None or not port_handle:
+        logger.debug(
+            "%s Win32 clear/purge skipped: win32=%s handle=%s",
+            LogTag.HW_SERIAL,
+            win32 is not None,
+            port_handle,
+        )
         return
     try:
         errors = win32.DWORD()
         comstat = win32.COMSTAT()
         win32.ClearCommError(port_handle, ctypes.byref(errors), ctypes.byref(comstat))
+        errors_value = _read_ctypes_ulong(errors, "value")
+        input_queue = _read_ctypes_ulong(comstat, "cbInQue")
+        output_queue = _read_ctypes_ulong(comstat, "cbOutQue")
+        if errors_value:
+            logger.warning(
+                "%s ClearCommError handle=%d errors=0x%04X flags=[%s] "
+                "cbInQue=%d cbOutQue=%d",
+                LogTag.HW_SERIAL,
+                int(port_handle),
+                errors_value,
+                _win32_error_flag_names(errors_value),
+                input_queue,
+                output_queue,
+            )
+        else:
+            logger.debug(
+                "%s ClearCommError handle=%d errors=0x0000 flags=[none] "
+                "cbInQue=%d cbOutQue=%d",
+                LogTag.HW_SERIAL,
+                int(port_handle),
+                input_queue,
+                output_queue,
+            )
         win32.PurgeComm(
             port_handle,
             win32.PURGE_TXCLEAR
@@ -100,55 +177,13 @@ def _win32_clear_and_purge_port(port_handle: int | None) -> None:
             | win32.PURGE_RXCLEAR
             | win32.PURGE_RXABORT,
         )
+        logger.debug(
+            "%s PurgeComm handle=%d mask=TXCLEAR|TXABORT|RXCLEAR|RXABORT",
+            LogTag.HW_SERIAL,
+            int(port_handle),
+        )
     except Exception as exc:
         logger.warning("%s Win32 clear/purge warning: %s", LogTag.HW_SERIAL, exc)
-
-
-def _win32_pre_clear_path(port_name: str) -> None:
-    """Clears driver errors and purges queues before pyserial claims the port.
-
-    Args:
-        port_name: Physical Windows COM port name, for example ``COM6``.
-    """
-    win32 = _win32_api()
-    if win32 is None or not port_name.strip():
-        return
-    handle: int | None = None
-    try:
-        handle = win32.CreateFile(
-            _win32_device_path(port_name),
-            win32.GENERIC_READ | win32.GENERIC_WRITE,
-            0,
-            None,
-            win32.OPEN_EXISTING,
-            win32.FILE_ATTRIBUTE_NORMAL,
-            0,
-        )
-        if not handle or handle == win32.INVALID_HANDLE_VALUE:
-            logger.warning(
-                "%s Win32 pre-clear could not open %s",
-                LogTag.HW_SERIAL,
-                port_name,
-            )
-            return
-        _win32_clear_and_purge_port(handle)
-    except Exception as exc:
-        logger.warning(
-            "%s Win32 pre-clear skipped for %s: %s",
-            LogTag.HW_SERIAL,
-            port_name,
-            exc,
-        )
-    finally:
-        if handle and handle != win32.INVALID_HANDLE_VALUE:
-            try:
-                win32.CloseHandle(handle)
-            except Exception as exc:
-                logger.warning(
-                    "%s Win32 pre-clear close warning: %s",
-                    LogTag.HW_SERIAL,
-                    exc,
-                )
 
 
 def _is_retryable_serial_error(exc: BaseException) -> bool:
@@ -156,20 +191,6 @@ def _is_retryable_serial_error(exc: BaseException) -> bool:
     if isinstance(exc, PermissionError):
         return True
     return isinstance(exc, serial.SerialException)
-
-
-def _apply_quiescent_control_lines(serial_instance: serial.Serial) -> None:
-    """Forces DTR and RTS to their inactive state before the port is opened.
-
-    Args:
-        serial_instance: Configured but still closed pyserial instance.
-    """
-    try:
-        serial_instance.dtr = False
-        serial_instance.rts = False
-    except (serial.SerialException, AttributeError):
-        for attribute in ("_dtr_state", "_rts_state"):
-            setattr(serial_instance, attribute, False)
 
 
 class ResilientWin32Serial(serial.Serial):
@@ -187,25 +208,21 @@ class ResilientWin32Serial(serial.Serial):
 
         port_handle = cast(int | None, getattr(self, "_port_handle", None))
         if not port_handle:
+            logger.debug(
+                "%s DCB reconfigure: no native handle yet, backend defaults apply",
+                LogTag.HW_SERIAL,
+            )
             self._invoke_base_reconfigure()
             return
 
-        last_error: serial.SerialException | None = None
-        for attempt in range(MAX_RECONFIGURE_ATTEMPTS):
-            try:
-                _win32_clear_and_purge_port(port_handle)
-                self._invoke_base_reconfigure()
-                _win32_clear_and_purge_port(port_handle)
-                return
-            except serial.SerialException as exc:
-                last_error = exc
-                if attempt >= MAX_RECONFIGURE_ATTEMPTS - 1:
-                    raise
-                if not _is_retryable_serial_error(exc):
-                    raise
-                _sleep(RECONFIGURE_DELAY_SEC * (attempt + 1))
-        if last_error is not None:
-            raise last_error
+        logger.debug(
+            "%s DCB reconfigure: clearing driver error state on handle=%d "
+            "before SetCommState",
+            LogTag.HW_SERIAL,
+            port_handle,
+        )
+        _win32_clear_and_purge_port(port_handle)
+        self._invoke_base_reconfigure()
 
     def _invoke_base_reconfigure(self, *args: object) -> None:
         """Delegates to the platform backend reconfigure routine.
@@ -218,7 +235,27 @@ class ResilientWin32Serial(serial.Serial):
             Callable[..., None],
             getattr(super(), base_method),
         )
-        base_reconfigure(*args)
+        logger.debug(
+            "%s DCB load starting (handle=%r args=%d)",
+            LogTag.HW_SERIAL,
+            cast(object, getattr(self, "_port_handle", None)),
+            len(args),
+        )
+        try:
+            base_reconfigure(*args)
+        except Exception as exc:
+            logger.exception(
+                "%s DCB load FAILED (%s: %s)",
+                LogTag.HW_SERIAL,
+                type(exc).__name__,
+                exc,
+            )
+            raise
+        logger.debug(
+            "%s DCB load OK (baudrate=%d framing=8N1)",
+            LogTag.HW_SERIAL,
+            int(getattr(self, "baudrate", 0)),
+        )
 
 
 class DualSerialTransport(ITransport):
@@ -275,7 +312,6 @@ class DualSerialTransport(ITransport):
         Returns:
             Fully opened resilient serial instance.
         """
-        _win32_pre_clear_path(port_name)
         serial_instance = ResilientWin32Serial(
             port=None,
             baudrate=self._baudrate,
@@ -287,13 +323,33 @@ class DualSerialTransport(ITransport):
             rtscts=False,
             dsrdtr=False,
         )
-        _apply_quiescent_control_lines(serial_instance)
+        logger.debug(
+            "%s Serial handle config: port=%s baud=%d framing=8N1 read_timeout=0.0s "
+            "write_timeout=%ss rtscts=False dsrdtr=False xonxoff=False force_update=False",
+            LogTag.HW_SERIAL,
+            port_name,
+            self._baudrate,
+            cast(float | None, getattr(serial_instance, "write_timeout", None)),
+        )
         serial_instance.port = port_name
         try:
             serial_instance.open()
-        except Exception:
+        except Exception as exc:
+            logger.exception(
+                "%s Serial handle open FAILED: port=%s (%s: %s)",
+                LogTag.HW_SERIAL,
+                port_name,
+                type(exc).__name__,
+                exc,
+            )
             self._close_handle(serial_instance)
             raise
+        logger.debug(
+            "%s Serial handle open OK: port=%s baud=%d (handles busy, 8N1 active)",
+            LogTag.HW_SERIAL,
+            port_name,
+            self._baudrate,
+        )
         return serial_instance
 
     def _open_handles_once(self) -> tuple[serial.Serial, serial.Serial]:
@@ -329,11 +385,31 @@ class DualSerialTransport(ITransport):
             rx_handle: Opened RX handle, possibly the same object.
         """
         try:
+            tx_drained = _input_buffer_bytes(tx_handle)
             tx_handle.reset_input_buffer()
             tx_handle.reset_output_buffer()
-            if rx_handle is not tx_handle:
-                rx_handle.reset_input_buffer()
-                rx_handle.reset_output_buffer()
+            logger.debug(
+                "%s Post-open purge tx: port=%s drained=%dB (in+out buffers cleared)",
+                LogTag.HW_SERIAL,
+                self._tx_port,
+                tx_drained,
+            )
+            if rx_handle is tx_handle:
+                logger.debug(
+                    "%s Post-open purge rx: port=%s shared tx handle, nothing extra drained",
+                    LogTag.HW_SERIAL,
+                    self._rx_port,
+                )
+                return
+            rx_drained = _input_buffer_bytes(rx_handle)
+            rx_handle.reset_input_buffer()
+            rx_handle.reset_output_buffer()
+            logger.debug(
+                "%s Post-open purge rx: port=%s drained=%dB (in+out buffers cleared)",
+                LogTag.HW_SERIAL,
+                self._rx_port,
+                rx_drained,
+            )
         except Exception as exc:
             logger.warning(
                 "%s Post-open buffer purge warning: %s",
@@ -357,6 +433,14 @@ class DualSerialTransport(ITransport):
 
         last_error: Exception | None = None
         for attempt in range(MAX_OPEN_RETRIES):
+            logger.debug(
+                "%s DualSerial open attempt %d/%d starting: tx=%s rx=%s",
+                LogTag.HW_SERIAL,
+                attempt + 1,
+                MAX_OPEN_RETRIES,
+                self._tx_port,
+                self._rx_port,
+            )
             try:
                 tx_handle, rx_handle = self._open_handles_once()
                 self._tx_serial = tx_handle
@@ -379,20 +463,26 @@ class DualSerialTransport(ITransport):
                 self._tx_serial = None
                 self._rx_serial = None
                 if attempt < MAX_OPEN_RETRIES - 1 and _is_retryable_serial_error(exc):
+                    delay = INITIAL_RETRY_DELAY_SEC * (2**attempt)
                     logger.warning(
-                        "%s DualSerial open attempt %d/%d failed, retrying: %s",
+                        "%s DualSerial open attempt %d/%d FAILED (%s: %s), "
+                        "retrying in %.0fms",
                         LogTag.HW_SERIAL,
                         attempt + 1,
                         MAX_OPEN_RETRIES,
+                        type(exc).__name__,
                         exc,
+                        delay * 1000,
                     )
-                    _sleep(INITIAL_RETRY_DELAY_SEC * (2**attempt))
+                    _sleep(delay)
                     continue
                 logger.exception(
-                    "%s DualSerial open attempt %d/%d failed: %s",
+                    "%s DualSerial open attempt %d/%d FAILED permanently "
+                    "(%s: %s), no retry",
                     LogTag.HW_SERIAL,
                     attempt + 1,
                     MAX_OPEN_RETRIES,
+                    type(exc).__name__,
                     exc,
                 )
                 break
