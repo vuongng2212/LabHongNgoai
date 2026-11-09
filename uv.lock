@@ -118,7 +118,7 @@ wheels = [
 
 [[package]]
 name = "ir-terminal"
-version = "0.8.6"
+version = "0.8.7"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
