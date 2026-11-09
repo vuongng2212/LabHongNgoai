@@ -7,8 +7,8 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ir_terminal.config import DEFAULT_OPTICAL_BAUDRATE, PHYSICAL_BAUDRATE
 from ir_terminal.core.serial_manager import SerialManager
+from ir_terminal.protocol.constants import DEFAULT_OPTICAL_BAUDRATE, PHYSICAL_BAUDRATE
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.ui.backend_bridge import BackendBridge
 
