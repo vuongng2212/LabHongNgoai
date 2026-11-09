@@ -151,6 +151,7 @@ function setRibbonText(text) {
 }
 
 function setConnectedUi(txPort, rxPort, baud) {
+  clearConnectLoading();
   const summary = 'TX: ' + txPort + ' • RX: ' + rxPort;
   setRibbonText('STM32 Optical Bridge • ' + summary + ' • UART ' + FIXED_PHYSICAL_BAUD + ' fixed • Optical ' + baud + ' bps');
   setTone('ribbon-badge', 'success');
@@ -232,16 +233,13 @@ function initBridgeListeners() {
   if (!bridge) return;
 
   bridge.portConnected.connect((txPort, rxPort, baud) => {
-    clearConnectLoading();
-    requestAnimationFrame(() => {
-      setConnectedUi(txPort, rxPort, baud);
-      toast(
-        'success',
-        'Link connected',
-        'TX: ' + txPort + ' • RX: ' + rxPort + ' @ ' + baud + ' bps • 8-N-1',
-        { durationMs: 2800 }
-      );
-    });
+    setConnectedUi(txPort, rxPort, baud);
+    toast(
+      'success',
+      'Link connected',
+      'TX: ' + txPort + ' • RX: ' + rxPort + ' @ ' + baud + ' bps • 8-N-1',
+      { durationMs: 2800 }
+    );
   });
 
   if (bridge.opticalBaudChanged && bridge.opticalBaudChanged.connect) {
@@ -552,7 +550,7 @@ document.addEventListener('click', (e) => {
     return;
   }
 
-  if (btn.innerText.includes('Ping Test') || btn.innerText.includes('Ping Link Test') || btn.innerText.includes('Calibrate Optics') || btn.innerText.includes('Ping')) {
+  if (btn.id === 'btn-ping' || btn.innerText.includes('Ping Test') || btn.innerText.includes('Ping Link Test') || btn.innerText.includes('Calibrate Optics') || btn.innerText.includes('Ping')) {
     if (!bridge) {
       toast('warning', 'Backend not connected', 'Ping needs the Desktop app link. Open via SpectraLink to test RTT.');
       return;
@@ -569,7 +567,7 @@ document.addEventListener('click', (e) => {
       }
     }, 1500);
     bridge.sendPing();
-  } else if (btn.innerText.includes('Rescan') || btn.id === 'btn-top-refresh') {
+  } else if (btn.id === 'btn-rescan' || btn.id === 'btn-top-refresh' || btn.innerText.includes('Rescan')) {
     if (!bridge) {
       toast('warning', 'Backend not connected', 'Port scan needs the Desktop app. Open via SpectraLink.');
       return;
