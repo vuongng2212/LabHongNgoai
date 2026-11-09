@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+function initAppNavigation() {
   const navItems = document.querySelectorAll('.nav-item');
   const viewPanels = document.querySelectorAll('.view-panel');
   const centerTitle = document.getElementById('window-center-title');
@@ -41,4 +41,10 @@ document.addEventListener('DOMContentLoaded', () => {
       window.switchView(target);
     });
   });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAppNavigation, { once: true });
+} else {
+  initAppNavigation();
+}

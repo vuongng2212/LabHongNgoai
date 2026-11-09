@@ -61,13 +61,13 @@ class VirtualDualComBridge:
 
         t_ab = threading.Thread(
             target=self._forward_loop,
-            args=(self.m_a_tx, self.m_b_rx, "A_TX -> B_RX"),
+            args=(self.m_a_tx, self.m_b_rx, "A_TX -> B_RX", self.m_a_rx),
             name="relay-a-to-b",
             daemon=True,
         )
         t_ba = threading.Thread(
             target=self._forward_loop,
-            args=(self.m_b_tx, self.m_a_rx, "B_TX -> A_RX"),
+            args=(self.m_b_tx, self.m_a_rx, "B_TX -> A_RX", self.m_b_rx),
             name="relay-b-to-a",
             daemon=True,
         )
@@ -86,18 +86,47 @@ class VirtualDualComBridge:
                 f"Warning: could not create symlink {link_path} -> {target_dev}: {exc}\n"
             )
 
-    def _forward_loop(self, src_fd: int, dst_fd: int, channel_name: str) -> None:
+    def _forward_loop(
+        self, src_fd: int, dst_fd: int, channel_name: str, local_rx_fd: int
+    ) -> None:
+        control_buffer = bytearray()
+        control_prefix = b"SET_BAUD:"
         while not self.stop_event.is_set():
             try:
                 data = os.read(src_fd, 4096)
                 if not data:
                     time.sleep(0.01)
                     continue
-                os.write(dst_fd, data)
+
+                forwarded = bytearray()
+                for value in data:
+                    if control_buffer:
+                        control_buffer.append(value)
+                        if value == 10:
+                            command = bytes(control_buffer)
+                            control_buffer.clear()
+                            baud_text = command[len(control_prefix) : -1].rstrip(b"\r")
+                            if command.startswith(control_prefix) and baud_text.isdigit():
+                                os.write(local_rx_fd, b"BAUD_OK:" + baud_text + b"\n")
+                            else:
+                                forwarded.extend(command)
+                        continue
+
+                    if value == control_prefix[0]:
+                        control_buffer.append(value)
+                    else:
+                        forwarded.append(value)
+
+                    if control_buffer and not control_prefix.startswith(control_buffer):
+                        forwarded.extend(control_buffer)
+                        control_buffer.clear()
+
+                if forwarded:
+                    os.write(dst_fd, forwarded)
                 if "A_TX" in channel_name:
-                    self.bytes_a_to_b += len(data)
+                    self.bytes_a_to_b += len(forwarded)
                 else:
-                    self.bytes_b_to_a += len(data)
+                    self.bytes_b_to_a += len(forwarded)
             except OSError:
                 if self.stop_event.is_set():
                     break

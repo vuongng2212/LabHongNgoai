@@ -175,6 +175,10 @@ function initChatController() {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => {
+    setTimeout(initChatController, 100);
+  }, { once: true });
+} else {
   setTimeout(initChatController, 100);
-});
+}

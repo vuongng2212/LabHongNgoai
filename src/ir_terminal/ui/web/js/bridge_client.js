@@ -577,10 +577,16 @@ document.addEventListener('click', (e) => {
   }
 });
 
-document.addEventListener('DOMContentLoaded', () => {
+function initBridgeDom() {
   loadBaudrateOptions(DEFAULT_BAUDRATES, selectedBaud);
   if (!bridge) {
     fillPortSelect(document.getElementById('select-port-tx'), fallbackEntries(), null);
     fillPortSelect(document.getElementById('select-port-rx'), fallbackEntries(), null);
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initBridgeDom, { once: true });
+} else {
+  initBridgeDom();
+}
