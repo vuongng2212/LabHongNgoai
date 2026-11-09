@@ -1,18 +1,3 @@
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file    main.c
-  * @brief   Transparent Bridge PC <-> IR — dong bo LabHongNgoai app 0.8.0
-  *
-  *  - USART3 PC: 115200 8N1 co dinh
-  *  - USART2 IR: 2400/4800/9600/19200 (mac dinh 9600 = app DEFAULT_OPTICAL)
-  *  - ISR chi Ring_Push (khong parse, khong Transmit)
-  *  - Main: FSM demux binary frame (55 AA) vs SET_BAUD:\n
-  *  - TX theo block, LCD rate-limit 200ms
-  *  - Control: SET_BAUD / BAUD_OK / BAUD_ERR / NOTIFY_BAUD (PROTOCOL §8)
-  ******************************************************************************
-  */
-/* USER CODE END Header */
 #include "main.h"
 #include "usb_host.h"
 #include "ili9341.h"
@@ -21,7 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define AUTO_CONFIG_STATE  2   /* 9600 — khop app DEFAULT_OPTICAL_BAUDRATE */
+#define AUTO_CONFIG_STATE  2
 #define RING_SIZE          2048U
 #define CTRL_LINE_MAX      64U
 #define TX_BLOCK_MAX       64U
@@ -29,6 +14,13 @@
 #define IDLE_RESET_MS      300U
 #define DBG_VIEW_LEN       20U
 
+/*
+ * UART Mapping & System Architecture:
+ * - USART3: PC Interface (Physical USB-to-UART bridge) @ FIXED 115200 bps 8N1.
+ *   Receives data and in-band control lines (SET_BAUD:<baud>\n), replies BAUD_OK.
+ * - USART2: Optical Interface (MCP2122 IrDA Encoder/Decoder + TFDU4101).
+ *   Baud rate dynamic: 2400, 4800, 9600, 19200 bps (matched with MCP2122 16x clock).
+ */
 SPI_HandleTypeDef hspi2;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
@@ -39,15 +31,22 @@ typedef struct {
   volatile uint16_t tail;
 } RingBuf_t;
 
+/* Ring buffers for transparent bridging */
 static RingBuf_t ring_pc_to_ir;
 static RingBuf_t ring_ir_to_pc;
 
 static uint8_t uart2_rx_byte = 0;
 static uint8_t uart3_rx_byte = 0;
 
+/* Diagnostic counters (monitored in debugger/telemetry) */
 static volatile uint32_t cnt_pc_to_ir = 0;
 static volatile uint32_t cnt_ir_to_pc = 0;
 static volatile uint32_t cnt_ctrl_cmd = 0;
+static volatile uint32_t cnt_drop_pc_to_ir = 0; /* Increments if PC->IR ring buffer overflows */
+static volatile uint32_t cnt_drop_ir_to_pc = 0; /* Increments if IR->PC ring buffer overflows */
+static volatile uint32_t cnt_uart2_err = 0;     /* Optical UART errors (ORE, FE, NE, PE) */
+static volatile uint32_t cnt_uart3_err = 0;     /* PC UART errors */
+static volatile uint8_t pc_baud_override = 0;   /* Latched when PC sends SET_BAUD command */
 
 static char display_tx_msg[64] = "Waiting for PC data...";
 static char display_rx_msg[64] = "Waiting for data...";
@@ -171,6 +170,13 @@ void Apply_Hardware_Clock_And_LEDs(uint8_t state_idx)
   HAL_GPIO_WritePin(GPIOC, CLK_S0_3_3V_Pin, s0 ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
+/*
+ * Dynamically updates optical baudrate on USART2:
+ * - Waits for active transmission complete (TC flag).
+ * - Aborts ongoing interrupt reception safely before re-init.
+ * - Reinitializes USART2 with new baud rate (2400/4800/9600/19200).
+ * - USART3 (PC) is NOT touched and stays at 115200 bps.
+ */
 void IR_SetBaudrate(uint32_t baud)
 {
   if (baud == 0U || applied_ir_baud == baud) return;
@@ -200,20 +206,60 @@ void IR_SetBaudrate(uint32_t baud)
   HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
 }
 
+/*
+ * In-band baudrate control handler:
+ * - Protocol: "SET_BAUD:<baud>\n" sent by PC application over USART3.
+ * - Supported rates: 2400, 4800, 9600, 19200 bps.
+ * - Software Override: Once PC sends SET_BAUD, pc_baud_override is set to 1,
+ *   allowing PC control even if hardware DIP switch was set to manual.
+ * - Response: "BAUD_OK:<baud>\n" sent back to PC over USART3.
+ *   USART3 remains FIXED at 115200 bps. Only USART2 (optical) baud is updated.
+ */
 void Process_Control_Line(const char *line)
 {
   if (strncmp(line, "SET_BAUD:", 9) != 0)
     return;
 
-  uint32_t new_baud = (uint32_t)atoi(line + 9);
-
-  /* MANUAL: switch phan cung uu tien — tu choi SET_BAUD */
-  if (dbg_sw_state == 0)
+  char baud_text[CTRL_LINE_MAX + 1U];
+  size_t baud_text_len = 0U;
+  while (baud_text_len < CTRL_LINE_MAX && line[9U + baud_text_len] != '\0')
+    baud_text_len++;
+  if (baud_text_len == CTRL_LINE_MAX)
   {
-    const char *err = "BAUD_ERR:manual_mode_active\n";
+    const char *err = "BAUD_ERR:invalid\n";
     HAL_UART_Transmit(&huart3, (uint8_t *)err, (uint16_t)strlen(err), 100);
     return;
   }
+  memcpy(baud_text, line + 9, baud_text_len + 1U);
+  while (baud_text_len > 0U &&
+         (baud_text[baud_text_len - 1U] == '\r' || baud_text[baud_text_len - 1U] == '\n'))
+    baud_text[--baud_text_len] = '\0';
+
+  if (baud_text_len == 0U)
+  {
+    const char *err = "BAUD_ERR:invalid\n";
+    HAL_UART_Transmit(&huart3, (uint8_t *)err, (uint16_t)strlen(err), 100);
+    return;
+  }
+  for (size_t i = 0; i < baud_text_len; i++)
+  {
+    if (baud_text[i] < '0' || baud_text[i] > '9')
+    {
+      const char *err = "BAUD_ERR:invalid\n";
+      HAL_UART_Transmit(&huart3, (uint8_t *)err, (uint16_t)strlen(err), 100);
+      return;
+    }
+  }
+
+  char *end = NULL;
+  unsigned long parsed_baud = strtoul(baud_text, &end, 10);
+  if (end == baud_text || *end != '\0')
+  {
+    const char *err = "BAUD_ERR:invalid\n";
+    HAL_UART_Transmit(&huart3, (uint8_t *)err, (uint16_t)strlen(err), 100);
+    return;
+  }
+  uint32_t new_baud = (uint32_t)parsed_baud;
 
   if (new_baud != 2400U && new_baud != 4800U &&
       new_baud != 9600U && new_baud != 19200U)
@@ -228,7 +274,7 @@ void Process_Control_Line(const char *line)
   else if (new_baud == 9600U)  auto_state_cmd = 2;
   else                         auto_state_cmd = 3;
 
-  /* Dong bo clock MCP2122 TRUOC khi re-init UART */
+  pc_baud_override = 1U;
   Apply_Hardware_Clock_And_LEDs(auto_state_cmd);
   IR_SetBaudrate(new_baud);
 
@@ -266,14 +312,26 @@ void Debug_Push_RX(uint8_t b)
   else { memmove(dbg_rx_bytes, dbg_rx_bytes + 1, DBG_VIEW_LEN - 1); dbg_rx_bytes[DBG_VIEW_LEN - 1] = b; }
 }
 
+/*
+ * Bridge Processing Loop (called continuously in main while(1)):
+ * Handles bi-directional communication:
+ * 1. PC -> IR:
+ *    - Binary Frame Detection: 0x55 0xAA SOF, reads payload length (LE), forwards
+ *      exactly (payload_len + 12) bytes (6B header + 4B CRC32 + 2B EOF) without splitting.
+ *    - In-Band Command Detection: "SET_BAUD:<baud>\n" is intercepted locally,
+ *      processed by Process_Control_Line(), and acknowledged via BAUD_OK. Never leaked to IR.
+ *    - Malformed Command Protection: If "SET_BAUD" exceeds 64B without '\n', it is discarded.
+ * 2. IR -> PC:
+ *    - Fully transparent block forwarding to PC via USART3.
+ */
 void Bridge_Process(void)
 {
   uint8_t block_buf[TX_BLOCK_MAX];
   uint16_t avail;
   uint32_t now = HAL_GetTick();
   uint8_t tx_act = 0, rx_act = 0;
+  static const uint8_t control_prefix[] = "SET_BAUD:";
 
-  /* ========== PC -> IR (FSM demux) ========== */
   avail = Ring_Count(&ring_pc_to_ir);
   while (avail > 0U)
   {
@@ -300,16 +358,18 @@ void Bridge_Process(void)
       break;
     }
 
-    /* IDLE: nhan dien frame hoac SET_BAUD */
     {
       uint8_t b0 = 0, b1 = 0;
+      if (Ring_Peek(&ring_pc_to_ir, 0, &b0) == 0 && b0 == 0x55 && avail == 1U)
+        break;
       if (Ring_Peek(&ring_pc_to_ir, 0, &b0) == 0 && b0 == 0x55 &&
           Ring_Peek(&ring_pc_to_ir, 1, &b1) == 0 && b1 == 0xAA)
       {
         if (avail < 6U) break;
         uint8_t len_l = 0, len_h = 0;
-        Ring_Peek(&ring_pc_to_ir, 4, &len_l);
-        Ring_Peek(&ring_pc_to_ir, 5, &len_h);
+        if (Ring_Peek(&ring_pc_to_ir, 4, &len_l) != 0 ||
+            Ring_Peek(&ring_pc_to_ir, 5, &len_h) != 0)
+          break;
         uint16_t payload_len = (uint16_t)(len_l | ((uint16_t)len_h << 8));
         if (payload_len <= 512U)
         {
@@ -319,49 +379,65 @@ void Bridge_Process(void)
         }
       }
 
-      if (Ring_Peek(&ring_pc_to_ir, 0, &b0) == 0 && b0 == (uint8_t)'S')
+      if (Ring_Peek(&ring_pc_to_ir, 0, &b0) == 0 && b0 == control_prefix[0])
       {
-        int nl = -1;
-        uint16_t scan = (avail < 48U) ? avail : 48U;
-        for (uint16_t i = 1; i < scan; i++)
+        uint16_t prefix_len = (uint16_t)(sizeof(control_prefix) - 1U);
+        uint16_t matched = 0;
+        uint16_t check_len = (avail < prefix_len) ? avail : prefix_len;
+        while (matched < check_len)
         {
-          uint8_t sc = 0;
-          Ring_Peek(&ring_pc_to_ir, i, &sc);
-          if (sc == (uint8_t)'\n' || sc == (uint8_t)'\r')
+          uint8_t value = 0;
+          if (Ring_Peek(&ring_pc_to_ir, matched, &value) != 0 ||
+              value != control_prefix[matched])
+            break;
+          matched++;
+        }
+        if (matched == check_len && avail < prefix_len)
+          break;
+        if (matched == prefix_len)
+        {
+          uint16_t line_len = 0;
+          uint16_t scan_len = (avail < CTRL_LINE_MAX) ? avail : CTRL_LINE_MAX;
+          uint8_t terminator_found = 0;
+          for (uint16_t i = prefix_len; i < scan_len; i++)
           {
-            nl = (int)i;
+            uint8_t value = 0;
+            if (Ring_Peek(&ring_pc_to_ir, i, &value) != 0)
+              break;
+            if (value == (uint8_t)'\n')
+            {
+              line_len = (uint16_t)(i + 1U);
+              terminator_found = 1U;
+              break;
+            }
+          }
+          if (!terminator_found && avail < CTRL_LINE_MAX)
+            break;
+          if (!terminator_found && avail >= CTRL_LINE_MAX)
+          {
+            for (uint16_t i = 0; i < scan_len; i++)
+            {
+              uint8_t value = 0;
+              (void)Ring_Pop(&ring_pc_to_ir, &value);
+            }
+            break;
+          }
+          if (terminator_found)
+          {
+            char line_buf[CTRL_LINE_MAX + 1U];
+            for (uint16_t i = 0; i < line_len; i++)
+            {
+              uint8_t value = 0;
+              (void)Ring_Pop(&ring_pc_to_ir, &value);
+              line_buf[i] = (char)value;
+            }
+            line_buf[line_len] = '\0';
+            Process_Control_Line(line_buf);
             break;
           }
         }
-        if (nl > 0)
-        {
-          char line_buf[64];
-          int n = 0;
-          for (int i = 0; i <= nl && n < 63; i++)
-          {
-            uint8_t c = 0;
-            Ring_Pop(&ring_pc_to_ir, &c);
-            line_buf[n++] = (char)c;
-          }
-          line_buf[n] = '\0';
-          if (strncmp(line_buf, "SET_BAUD:", 9) == 0)
-          {
-            Process_Control_Line(line_buf);
-          }
-          else
-          {
-            HAL_UART_Transmit(&huart2, (uint8_t *)line_buf, (uint16_t)n,
-                              Get_Dynamic_Timeout((uint16_t)n, applied_ir_baud));
-            cnt_pc_to_ir += (uint32_t)n;
-            tx_act = 1;
-            last_tx_activity_ms = now;
-          }
-          break;
-        }
-        if (avail < 32U) break;
       }
 
-      /* Du lieu thuong: block forward */
       uint16_t chunk = (avail > TX_BLOCK_MAX) ? TX_BLOCK_MAX : avail;
       for (uint16_t i = 0; i < chunk; i++)
         (void)Ring_Pop(&ring_pc_to_ir, &block_buf[i]);
@@ -377,7 +453,6 @@ void Bridge_Process(void)
     }
   }
 
-  /* ========== IR -> PC (transparent block) ========== */
   avail = Ring_Count(&ring_ir_to_pc);
   while (avail > 0U)
   {
@@ -396,7 +471,6 @@ void Bridge_Process(void)
     if (chunk < TX_BLOCK_MAX) break;
   }
 
-  /* LCD rate-limit */
   if ((tx_act || rx_act) && (now - last_lcd_ms) >= LCD_UPDATE_MS)
   {
     last_lcd_ms = now;
@@ -581,7 +655,7 @@ static void MX_SPI2_Init(void)
 static void MX_USART2_UART_Init(void)
 {
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600; /* khop app DEFAULT_OPTICAL_BAUDRATE */
+  huart2.Init.BaudRate = 9600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -659,7 +733,7 @@ void Process_Switches_And_Display(void)
 {
   static uint32_t last_sw_ms = 0;
   uint32_t now = HAL_GetTick();
-  if ((now - last_sw_ms) < 50U) return; /* debounce 50ms */
+  if ((now - last_sw_ms) < 50U) return;
   last_sw_ms = now;
 
   dbg_sw_state = HAL_GPIO_ReadPin(GPIOD, STATE_SW_3_3V_Pin);
@@ -668,7 +742,7 @@ void Process_Switches_And_Display(void)
   dbg_baud3 = HAL_GPIO_ReadPin(GPIOD, BAUD3_3V3_Pin);
   dbg_baud4 = HAL_GPIO_ReadPin(GPIOD, BAUD4_3V3_Pin);
 
-  uint8_t mode = dbg_sw_state;
+  uint8_t mode = (dbg_sw_state != 0U || pc_baud_override != 0U) ? 1U : 0U;
   uint32_t baud = 0;
   uint8_t baud_index = 0;
 
@@ -737,18 +811,56 @@ void Process_Switches_And_Display(void)
   }
 }
 
-/* Thin ISR — chi push ring, KHONG parse / Transmit / doi baud */
+/*
+ * UART RX Complete Interrupt Callback:
+ * - USART3: Byte from PC -> pushed to ring_pc_to_ir.
+ * - USART2: Byte from Optical (MCP2122) -> pushed to ring_ir_to_pc.
+ * Tracks buffer drops with cnt_drop_pc_to_ir and cnt_drop_ir_to_pc.
+ */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART3)
   {
-    (void)Ring_Push(&ring_pc_to_ir, uart3_rx_byte);
+    if (Ring_Push(&ring_pc_to_ir, uart3_rx_byte) != 0)
+      cnt_drop_pc_to_ir++;
     HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
   }
   else if (huart->Instance == USART2)
   {
-    (void)Ring_Push(&ring_ir_to_pc, uart2_rx_byte);
+    if (Ring_Push(&ring_ir_to_pc, uart2_rx_byte) != 0)
+      cnt_drop_ir_to_pc++;
     HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
+  }
+}
+
+/*
+ * UART Hardware Error Callback:
+ * Handles Overrun (ORE), Framing Error (FE), Noise Error (NE), Parity Error (PE).
+ * Essential for optical IR reception where ambient noise or baud mismatch causes ORE/FE.
+ * Clears flags by reading SR followed by DR, then re-arms HAL_UART_Receive_IT.
+ */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  volatile uint32_t status;
+  volatile uint32_t data;
+
+  if (huart->Instance == USART2)
+  {
+    cnt_uart2_err++;
+    status = huart->Instance->SR;
+    data = huart->Instance->DR;
+    (void)status;
+    (void)data;
+    HAL_UART_Receive_IT(&huart2, &uart2_rx_byte, 1);
+  }
+  else if (huart->Instance == USART3)
+  {
+    cnt_uart3_err++;
+    status = huart->Instance->SR;
+    data = huart->Instance->DR;
+    (void)status;
+    (void)data;
+    HAL_UART_Receive_IT(&huart3, &uart3_rx_byte, 1);
   }
 }
 

@@ -19,6 +19,11 @@ from ir_terminal.protocol.constants import (
     SOCKET_READ_TIMEOUT_SEC,
     SOCKET_RECV_CHUNK,
 )
+from ir_terminal.protocol.control_channel import (
+    ControlKind,
+    format_baud_ok,
+    parse_control_line,
+)
 from ir_terminal.utils.logger import LogTag, format_hex_preview
 
 logger = logging.getLogger(__name__)
@@ -209,6 +214,10 @@ class SocketTransport(ITransport):
         """Returns True if TCP connection is active."""
         return self._is_open and self._sock is not None
 
+    def inject_rx_data(self, data: bytes) -> None:
+        """Injects raw bytes directly into the local RX buffer."""
+        self._rx_buffer.extend(data)
+
     def write(self, data: bytes) -> int:
         """Sends bytes to the broker for forwarding to the peer app.
 
@@ -226,6 +235,13 @@ class SocketTransport(ITransport):
                 len(data),
             )
             raise RuntimeError("SocketTransport not open for write")
+        if data.startswith(b"SET_BAUD:") and b"\n" in data:
+            raw_line = data.split(b"\n")[0]
+            msg = parse_control_line(raw_line)
+            if msg and msg.kind == ControlKind.SET_BAUD and msg.baudrate is not None:
+                ack = (format_baud_ok(msg.baudrate) + "\n").encode("ascii")
+                self._rx_buffer.extend(ack)
+                return len(data)
         try:
             self._sock.sendall(data)
         except Exception:

@@ -144,6 +144,8 @@ class BackendBridge(QObject):
         self._baud_ack_timer.setSingleShot(True)
         self._baud_ack_timer.setInterval(BAUD_ACK_TIMEOUT_MS)
         self._baud_ack_timer.timeout.connect(self._on_baud_ack_timeout)
+        self._baud_retry_count = 0
+        self._max_baud_retries = 2
 
         self._wire_signals()
 
@@ -230,6 +232,7 @@ class BackendBridge(QObject):
             )
             return
         self._pending_optical_baud = self._optical_baud
+        self._baud_retry_count = 0
         self._baud_request_generation += 1
         self.opticalBaudPending.emit(self._optical_baud)
         self._baud_ack_timer.start()
@@ -245,7 +248,20 @@ class BackendBridge(QObject):
         pending = self._pending_optical_baud
         if pending is None:
             return
+        if self._baud_retry_count < self._max_baud_retries and self._is_connected:
+            self._baud_retry_count += 1
+            logger.info(
+                "%s Retrying SET_BAUD:%d (attempt %d/%d)",
+                LogTag.BAUD_CTRL,
+                pending,
+                self._baud_retry_count,
+                self._max_baud_retries,
+            )
+            self._baud_ack_timer.start()
+            self._serial_manager.send_control_line(format_set_baud(pending))
+            return
         self._pending_optical_baud = None
+        self._baud_retry_count = 0
         logger.warning(
             "%s No BAUD_OK for pending optical rate %d; keeping %d",
             LogTag.BAUD_CTRL,
@@ -313,6 +329,7 @@ class BackendBridge(QObject):
         previous = self._optical_baud
         self._optical_baud = int(baudrate)
         self._pending_optical_baud = None
+        self._baud_retry_count = 0
         self._baud_ack_timer.stop()
         logger.info(
             "%s Optical baudrate %s: %d -> %d",
