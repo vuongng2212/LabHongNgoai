@@ -25,8 +25,7 @@ Wire format và pacing: xem `docs/PROTOCOL.md`.
    - `HardwareSetupView` (HTML/JS): chỉ tương tác giao diện.
 
 2. **Open/Closed**
-   - Transport phụ thuộc `ITransport`: `PySerialTransport`,
-     `DualSerialTransport`, `SocketTransport`, `DualSocketTransport`,
+   - Transport phụ thuộc `ITransport`: `DualSerialTransport`, `SocketTransport`,
      `MockSerialPort`.
    - Thêm transport mới không sửa service hay UI.
 
@@ -133,10 +132,8 @@ LabHongNgoai/
 │   │   ├── interfaces.py         # ITransport
 │   │   ├── serial_worker.py      # QObject worker trên QThread
 │   │   ├── serial_manager.py     # coordinator + signals
-│   │   ├── pyserial_transport.py # cổng đơn
-│   │   ├── dual_serial_transport.py # COM1 + COM2
-│   │   ├── socket_transport.py   # TCP một chiều
-│   │   ├── dual_socket_transport.py
+│   │   ├── dual_serial_transport.py # COM1 (Quang) + COM2 (STM32)
+│   │   ├── socket_transport.py   # TCP loopback / virtual link
 │   │   ├── link_broker.py        # broker hai node
 │   │   ├── transport_factory.py
 │   │   ├── ring_buffer.py
@@ -146,8 +143,8 @@ LabHongNgoai/
 │   │   ├── framer.py
 │   │   └── packet.py
 │   ├── services/
-│   │   ├── file_transfer_service.py
-│   │   ├── chat_service.py       # đóng băng
+│   │   ├── file_transfer_service.py # open-loop paced streaming
+│   │   ├── chat_service.py       # virtual file envelope
 │   │   ├── storage_service.py
 │   │   └── telemetry_service.py
 │   ├── ui/

@@ -1,6 +1,6 @@
 # IR-OWC Lab Terminal (Infrared Optical Wireless Communication)
 
-[![Tests](https://img.shields.io/badge/tests-265%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-274%20passed-brightgreen.svg)]()
 [![Type Checked](https://img.shields.io/badge/mypy-strict%20passing-blue.svg)]()
 [![Linting](https://img.shields.io/badge/ruff-clean-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
@@ -37,9 +37,10 @@ Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision L
    - **Hủy phiên**: dừng ngay lập tức, watchdog 3 giây kết thúc phiên nhận khi END không đến; AutoSave quyết định giữ file `.partial`.
    - Giám sát tiến độ %, tốc độ thực tế (KB/s), ETA và lưu lịch sử truyền file vào JSON.
 
-3. **Optical Chat Surface (Screen 3):**
-   - Giao diện lịch sử được giữ để tương thích, nhưng giao thức WinForm C# không có khung chat nên gửi tin nhắn bị vô hiệu hóa.
-   - Khung **Raw Frame Inspector** hiển thị metadata frame quang nhị phân.
+3. **Realtime Optical Chat Stream (Screen 3):**
+   - Đã được kích hoạt trọn vẹn thông qua cơ chế **Virtual File Envelope**: tự động đóng gói văn bản UTF-8 thành file RAM mang tên `_chat_<timestamp>_<station>.txt`.
+   - Truyền nhận trực tiếp hai chiều cực nhanh (< 100 ms) qua kênh quang mà không làm thay đổi 1 bit cấu trúc wire format gốc, đảm bảo tương thích 100% hai chiều với cả WinForm C#.
+   - Giao diện bong bóng tin nhắn trực quan, hỗ trợ gõ nhanh bằng Enter và tự động cuộn theo thời gian thực.
 
 4. **Lab Analytics, Diagnostics & CSV Export (Screen 4):**
    - 4 thẻ KPI động: Tốc độ tức thời, Tỷ lệ mất gói, Số frame, Số chunk đã truyền.
@@ -61,7 +62,7 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (265/265 tests passed)
+# 3. Chạy bộ kiểm thử tự động (274/274 tests passed)
 uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn

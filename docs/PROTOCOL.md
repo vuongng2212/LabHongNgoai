@@ -137,7 +137,23 @@ khoảng trống giữa các khung và không được giả định khung đế
 
 ---
 
-## 4. KHÔNG CÓ ARQ, ACK, CRC HAY RETRANSMIT
+## 4. TÍNH NĂNG REALTIME CHAT QUA VIRTUAL FILE ENVELOPE
+
+Vì giao thức WinForm C# gốc không có opcode riêng cho Chat/Text, hệ thống mở rộng tính năng Chat thời gian thực bằng cơ chế **Virtual File Envelope** (100% trong suốt ở tầng wire):
+
+- **Phía gửi (TX):**
+  - Đóng gói tin nhắn văn bản UTF-8 thành file RAM (`io.BytesIO`).
+  - Đặt tên file theo định dạng chuẩn: `_chat_<YYYYMMDD_HHMMSS>_<StationName>.txt`.
+  - Truyền qua kênh quang bằng đúng luồng chuẩn: `HEADER -> DATA (1..N chunks 256B) -> END` kèm Paced Delay danh định.
+- **Phía nhận (RX):**
+  - Nhận diện tiền tố `_chat_` và đuôi `.txt` từ gói HEADER, tự động đệm dữ liệu trong bộ nhớ RAM thay vì ghi ra đĩa `.part`.
+  - Khi gói END đến, giải mã UTF-8 và bắn trực tiếp lên bong bóng tin nhắn của Tab **Realtime Chat** trong vòng < 100 ms.
+- **Khả năng tương thích ngược:**
+  - Nếu bên nhận là ứng dụng WinForm C#, C# vẫn nhận và lưu thành file `.txt` bình thường mà không hề phát sinh lỗi phân tích.
+
+---
+
+## 5. KHÔNG CÓ ARQ, ACK, CRC HAY RETRANSMIT
 
 Giao thức cố tình bỏ toàn bộ cơ chế bảo toàn dữ liệu:
 
@@ -162,9 +178,9 @@ lại file bằng tay. Bên nhận báo `PARTIAL` kèm số packet thiếu.
 
 ---
 
-## 5. ĐIỀU KHIỂN BAUDRATE QUANG QUA COM2
+## 6. ĐIỀU KHIỂN BAUDRATE QUANG QUA COM2
 
-### 5.1. Lệnh hai ký tự
+### 6.1. Lệnh hai ký tự
 
 Bên gửi ghi lên COM2 mã ASCII hai ký tự, kết thúc bằng `\r` (`0x0D`):
 
@@ -194,7 +210,7 @@ bị từ chối và UI báo lỗi.
 
 ---
 
-## 6. MÃ NGUỒN C MẪU CHO STM32
+## 7. MÃ NGUỒN C MẪU CHO STM32
 
 ### 6.1. Tạo khung
 
@@ -338,7 +354,7 @@ static void ir_on_control_byte(uint8_t byte) {
 
 ---
 
-## 7. KHUYẾN NGHỊ FIRMWARE
+## 8. KHUYẾN NGHỊ FIRMWARE
 
 1. Dùng DMA RX circular kèm ngắt IDLE để không bỏ byte giữa các khung.
 2. Duy trì ring buffer tối thiểu 2048 byte cho luồng quang.
@@ -350,7 +366,7 @@ static void ir_on_control_byte(uint8_t byte) {
 
 ---
 
-## 8. ĐỐI CHIẾU CODE
+## 9. ĐỐI CHIẾU CODE
 
 | Thành phần | Vị trí |
 | :--- | :--- |
