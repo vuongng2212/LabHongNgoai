@@ -466,7 +466,7 @@ class StorageService:
         """
         samples = self.get_telemetry_history(limit=_MAX_TELEMETRY_SAMPLES)
         output = io.StringIO()
-        writer = csv.writer(output)
+        writer = csv.writer(output, lineterminator="\n")
         writer.writerow(
             [
                 "ID",
@@ -496,7 +496,7 @@ class StorageService:
         csv_text = output.getvalue()
         if output_path is not None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(csv_text, encoding="utf-8")
+            output_path.write_text(csv_text, encoding="utf-8", newline="")
             logger.info(
                 "%s Exported telemetry CSV: path=%s rows=%d bytes=%dB",
                 LogTag.STORAGE,
@@ -518,7 +518,7 @@ class StorageService:
         """
         transfers = self.get_file_transfers(limit=5000)
         output = io.StringIO()
-        writer = csv.writer(output)
+        writer = csv.writer(output, lineterminator="\n")
         writer.writerow(
             [
                 "ID",
@@ -552,7 +552,7 @@ class StorageService:
         csv_text = output.getvalue()
         if output_path is not None:
             output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(csv_text, encoding="utf-8")
+            output_path.write_text(csv_text, encoding="utf-8", newline="")
             logger.info(
                 "%s Exported transfers CSV: path=%s rows=%d bytes=%dB",
                 LogTag.STORAGE,

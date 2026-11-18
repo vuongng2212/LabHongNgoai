@@ -382,7 +382,7 @@ class TelemetryService(QObject):
             output_path = get_logs_dir() / f"sniffer_{int(time.time())}.csv"
         records = list(self._sniffer_records)
         output = io.StringIO()
-        writer = csv.writer(output)
+        writer = csv.writer(output, lineterminator="\n")
         writer.writerow(
             [
                 "Time_UTC",
@@ -408,7 +408,7 @@ class TelemetryService(QObject):
             )
         csv_text = output.getvalue()
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(csv_text, encoding="utf-8")
+        output_path.write_text(csv_text, encoding="utf-8", newline="")
         logger.info(
             "%s Exported sniffer CSV: path=%s rows=%d bytes=%dB",
             LogTag.STORAGE,
