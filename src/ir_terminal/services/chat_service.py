@@ -31,10 +31,6 @@ class ChatService(QObject):
 
     message_received: ClassVar[Signal] = Signal(str, str, bool)
 
-    frame_inspected: ClassVar[Signal] = Signal(str, int, int, int)
-
-    message_truncated: ClassVar[Signal] = Signal(str, int)
-
     def __init__(
         self,
         serial_manager: SerialManager,

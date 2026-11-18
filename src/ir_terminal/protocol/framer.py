@@ -130,6 +130,9 @@ def parse_stream(buffer: bytearray) -> tuple[list[WinFormPacket], bytearray]:
             position = sync_at
             break
         sequence, length = _PACKET_HEADER.unpack_from(raw, sync_at + len(SYNC_MAGIC))
+        if length > 1024:
+            position = sync_at + 1
+            continue
         frame_end = sync_at + HEADER_OVERHEAD + length
         if total < frame_end:
             position = sync_at

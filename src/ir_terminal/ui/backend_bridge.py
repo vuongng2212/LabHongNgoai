@@ -53,7 +53,6 @@ class BackendBridge(QObject):
     maximizeWindowRequested: ClassVar[Signal] = Signal()
 
     chatMessageReceived: ClassVar[Signal] = Signal(str, str, bool)
-    chatFrameInspected: ClassVar[Signal] = Signal(str, int, int, int)
 
     transferProgress: ClassVar[Signal] = Signal(int, float, float, int, int)
     transferCompleted: ClassVar[Signal] = Signal(str, int, float, str)
@@ -67,7 +66,6 @@ class BackendBridge(QObject):
     telemetryUpdated: ClassVar[Signal] = Signal(float, float, float, int, int)
     snifferFrameLogged: ClassVar[Signal] = Signal(str, str, str, str, str, str, float)
     portsChanged: ClassVar[Signal] = Signal(str)
-    chatTruncated: ClassVar[Signal] = Signal(str, int)
     settingsChanged: ClassVar[Signal] = Signal(str)
 
     def __init__(
@@ -137,11 +135,6 @@ class BackendBridge(QObject):
             pass
 
         self._chat_service.message_received.connect(self.chatMessageReceived)
-        self._chat_service.frame_inspected.connect(self.chatFrameInspected)
-        try:
-            self._chat_service.message_truncated.connect(self.chatTruncated)
-        except Exception:
-            pass
 
         self._file_service.progress_updated.connect(self._on_transfer_progress)
         self._file_service.transfer_completed.connect(self.transferCompleted)

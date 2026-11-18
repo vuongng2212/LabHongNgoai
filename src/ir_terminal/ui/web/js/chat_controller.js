@@ -111,12 +111,6 @@ function initChatController() {
       });
     }
 
-    window.bridge.chatFrameInspected.connect((hexDump, seq, opcode, len) => {
-      if (hexDumpElem) {
-        hexDumpElem.innerText = `[FRAME SEQ #${seq} | CMD 0x${opcode.toString(16).padStart(2, '0').toUpperCase()} | LEN ${len}B]\n` + hexDump;
-      }
-    });
-
     if (typeof window.bridge.getChatHistory === 'function') {
       window.bridge.getChatHistory((historyJson) => {
         try {

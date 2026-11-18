@@ -131,6 +131,16 @@ class TestParseStream:
         assert [p.sequence for p in packets] == [9]
         assert remaining == bytearray()
 
+    def test_skips_huge_noise_length_beyond_1024(self) -> None:
+        noise = b"\xAA\x55\x00\x00\x00\x00\xFF\xFF"
+        real = pack_packet(1, b"valid")
+        packets, remaining = parse_stream(bytearray(noise + real))
+
+        assert len(packets) == 1
+        assert packets[0].sequence == 1
+        assert packets[0].data == b"valid"
+        assert remaining == bytearray()
+
     def test_keeps_trailing_partial_sync_byte(self) -> None:
         packets, remaining = parse_stream(bytearray(b"noise\xAA"))
 

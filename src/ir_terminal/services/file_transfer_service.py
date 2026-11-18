@@ -740,6 +740,14 @@ class FileTransferService(QObject):
         except ValueError as exc:
             logger.warning("%s RX invalid HEADER dropped: %s", LogTag.FILE_SVC, exc)
             return
+        if self._max_file_size_bytes and (total_packets * PACKET_SIZE) > self._max_file_size_bytes:
+            logger.warning(
+                "%s RX rejected file '%s': declared size exceeds %d B limit",
+                LogTag.FILE_SVC,
+                file_name,
+                self._max_file_size_bytes,
+            )
+            return
         if self._state is TransferState.RECEIVING:
             logger.warning(
                 "%s RX restart: previous transfer '%s' replaced", LogTag.FILE_SVC, self._rx_name
@@ -826,7 +834,8 @@ class FileTransferService(QObject):
             received = len(self._rx_received)
             pct = int(received * 100 / total) if total else 0
             elapsed = max(time.monotonic() - self._rx_started_at, 0.0)
-            speed_kbps = (self._rx_highest_end / 1024.0) / elapsed if elapsed > 0 else 0.0
+            actual_bytes = len(self._rx_received) * self._chunk_size
+            speed_kbps = (actual_bytes / 1024.0) / elapsed if elapsed > 0 else 0.0
             remaining = max(total - received, 0)
             eta_sec = remaining * self._chunk_size / (self._baudrate() / 10.0)
             self.progress_updated.emit(min(pct, 100), speed_kbps, eta_sec, received, total)

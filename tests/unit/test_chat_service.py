@@ -128,6 +128,5 @@ class TestChatService:
 
     def test_signal_contract_remains_connectable(self, tmp_path: Path) -> None:
         chat_service, _, _, _ = make_chat_system(tmp_path)
-        chat_service.frame_inspected.connect(lambda *args: None)
-        chat_service.message_truncated.connect(lambda *args: None)
+        chat_service.message_received.connect(lambda *args: None)
         chat_service.handle_packet(WinFormPacket(sequence=0, length=3, data=b"abc"))

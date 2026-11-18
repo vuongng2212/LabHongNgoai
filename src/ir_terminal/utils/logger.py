@@ -20,7 +20,6 @@ class LogTag(StrEnum):
     HW_SERIAL = "[HW_SERIAL]"
     OPTICAL_PHY = "[OPTICAL_PHY]"
     PROTO_FRAME = "[PROTO_FRAME]"
-    ARQ_ENGINE = "[ARQ_ENGINE]"
     CHAT_SVC = "[CHAT_SVC]"
     FILE_SVC = "[FILE_SVC]"
     STORAGE = "[STORAGE]"
@@ -35,53 +34,6 @@ _LOG_FORMAT = (
 _LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 
 MAX_HEX_PREVIEW_BYTES: int = 32
-
-_OPCODE_NAMES: dict[int, str] = {
-    0x01: "DATA_CHUNK",
-    0x02: "DATA_TEXT",
-    0x10: "ACK",
-    0x11: "NACK",
-    0x20: "PING",
-    0x21: "PONG",
-    0x30: "TRANSFER_START",
-    0x31: "TRANSFER_END",
-    0x32: "TRANSFER_PAUSE",
-    0x33: "TRANSFER_RESUME",
-    0x34: "TRANSFER_START_LARGE",
-    0x35: "DATA_CHUNK_LARGE",
-    0x36: "TRANSFER_END_LARGE",
-}
-
-_ACK_STATUS_NAMES: dict[int, str] = {
-    0x00: "OK",
-    0x01: "CRC_ERROR",
-    0x02: "OUT_OF_ORDER",
-    0x03: "TIMEOUT",
-}
-
-
-def opcode_name(opcode: int) -> str:
-    """Returns human-readable opcode mnemonic for log lines.
-
-    Args:
-        opcode: Raw opcode byte value.
-
-    Returns:
-        Mnemonic such as ``DATA_TEXT`` or fallback ``OP_0xFF``.
-    """
-    return _OPCODE_NAMES.get(opcode, f"OP_0x{opcode:02X}")
-
-
-def ack_status_name(status: int) -> str:
-    """Returns human-readable ACK status mnemonic for log lines.
-
-    Args:
-        status: Raw ACK status byte value.
-
-    Returns:
-        Mnemonic such as ``OK`` or fallback ``STATUS_0xFF``.
-    """
-    return _ACK_STATUS_NAMES.get(status, f"STATUS_0x{status:02X}")
 
 
 def format_hex_preview(
@@ -105,24 +57,6 @@ def format_hex_preview(
     if total > shown:
         return f"{hex_part} ... (len={total}B, shown={shown}B)"
     return f"{hex_part} (len={total}B)"
-
-
-def format_frame_summary(seq: int, opcode: int, payload_len: int, crc32: int | None = None) -> str:
-    """Formats a compact frame descriptor for consistent cross-layer log correlation.
-
-    Args:
-        seq: Sequence number byte.
-        opcode: Opcode byte.
-        payload_len: Payload length in bytes.
-        crc32: Optional CRC-32 value.
-
-    Returns:
-        String like ``seq=5 opcode=DATA_TEXT(0x02) len=12 crc=0x1234ABCD``.
-    """
-    base = f"seq={seq} opcode={opcode_name(opcode)}(0x{opcode:02X}) len={payload_len}B"
-    if crc32 is not None:
-        base += f" crc=0x{crc32 & 0xFFFFFFFF:08X}"
-    return base
 
 
 class QtLogEmitter(QObject):

@@ -214,7 +214,7 @@
       else { ascii = ''; break; }
     }
     ascii = ascii.trim();
-    if (/^(SET_BAUD|BAUD_OK|NOTIFY_BAUD|BAUD_ERR):/.test(ascii)) {
+    if (/^(00|01|10|11)$/.test(ascii) || /^(SET_BAUD|BAUD_OK|NOTIFY_BAUD|BAUD_ERR):/.test(ascii)) {
       return {
         label: 'CTRL: ' + ascii,
         tone: 'info',
