@@ -171,10 +171,10 @@ class TestLauncherContract:
     """Verifies the hardware launcher accepts four independent COM ports."""
 
     def test_com_pair_accepts_four_ports(self) -> None:
-        """Start_Com_Pair maps TX_A, RX_A, TX_B, and RX_B onto CLI flags."""
+        """Start_Com_Pair maps dual COM ports onto CLI flags."""
         script = (REPO_ROOT / "scripts" / "Start_Com_Pair.cmd").read_text(encoding="utf-8")
-        assert "Start_Com_Pair.cmd [TX_A] [RX_A] [TX_B] [RX_B]" in script
-        assert "--tx-port %TX_A%" in script
-        assert "--rx-port %RX_A%" in script
-        assert "--tx-port %TX_B%" in script
-        assert "--rx-port %RX_B%" in script
+        assert "Start_Com_Pair.cmd [DATA_A] [CTRL_A] [DATA_B] [CTRL_B]" in script
+        assert "--data-port %DATA_A%" in script
+        assert "--ctrl-port %CTRL_A%" in script
+        assert "--data-port %DATA_B%" in script
+        assert "--ctrl-port %CTRL_B%" in script

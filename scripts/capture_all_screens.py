@@ -26,11 +26,6 @@ def capture_all() -> None:
         app.processEvents()
         time.sleep(0.05)
 
-    window.bridge.sendPing()
-    for _ in range(15):
-        app.processEvents()
-        time.sleep(0.05)
-
     window.web_view.page().runJavaScript("window.switchView('view-hardware');")
     for _ in range(15):
         app.processEvents()

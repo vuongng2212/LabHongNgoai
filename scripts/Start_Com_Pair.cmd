@@ -8,18 +8,21 @@ if not exist "%APP%" (
   exit /b 1
 )
 
-set "TX_A=%~1"
-set "RX_A=%~2"
-set "TX_B=%~3"
-set "RX_B=%~4"
-if "%TX_A%"=="" set "TX_A=COM11"
-if "%RX_A%"=="" set "RX_A=COM14"
-if "%TX_B%"=="" set "TX_B=COM13"
-if "%RX_B%"=="" set "RX_B=COM12"
+set "DATA_A=%~1"
+set "CTRL_A=%~2"
+set "DATA_B=%~3"
+set "CTRL_B=%~4"
+if "%DATA_A%"=="" set "DATA_A=COM11"
+if "%CTRL_A%"=="" set "CTRL_A=COM12"
+if "%DATA_B%"=="" set "DATA_B=COM13"
+if "%CTRL_B%"=="" set "CTRL_B=COM14"
 
-echo Usage: Start_Com_Pair.cmd [TX_A] [RX_A] [TX_B] [RX_B]
-echo Starting dual-port COM pair: Node A=TX %TX_A% / RX %RX_A%  Node B=TX %TX_B% / RX %RX_B%
-start "IR-OWC Node A (TX %TX_A% / RX %RX_A%)" "%APP%" --instance A --tx-port %TX_A% --rx-port %RX_A% --baud 9600 --auto-connect --window-pos left
+echo Usage: Start_Com_Pair.cmd [DATA_A] [CTRL_A] [DATA_B] [CTRL_B]
+echo Starting Dual COM hardware pair:
+echo   Node A: COM1 Data=%DATA_A%  COM2 Control=%CTRL_A%
+echo   Node B: COM1 Data=%DATA_B%  COM2 Control=%CTRL_B%
+
+start "IR-OWC Node A (Data %DATA_A% / Ctrl %CTRL_A%)" "%APP%" --instance A --data-port %DATA_A% --ctrl-port %CTRL_A% --baud 19200 --auto-connect --window-pos left
 timeout /t 1 /nobreak >nul
-start "IR-OWC Node B (TX %TX_B% / RX %RX_B%)" "%APP%" --instance B --tx-port %TX_B% --rx-port %RX_B% --baud 9600 --auto-connect --window-pos right
+start "IR-OWC Node B (Data %DATA_B% / Ctrl %CTRL_B%)" "%APP%" --instance B --data-port %DATA_B% --ctrl-port %CTRL_B% --baud 19200 --auto-connect --window-pos right
 endlocal
