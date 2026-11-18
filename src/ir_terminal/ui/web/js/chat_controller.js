@@ -7,6 +7,10 @@ function initChatController() {
 
   function doSend() {
     if (!chatInput) return;
+    if (sendBtn && sendBtn.disabled) {
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Link busy', 'Optical link is currently transmitting; please wait.');
+      return;
+    }
     const text = chatInput.value.trim();
     if (!text) {
       if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Empty message', 'Type a text message before sending.');
@@ -82,6 +86,30 @@ function initChatController() {
       }
       appendChatMessage(text, timeStr, isOutgoing);
     });
+
+    if (window.bridge.transferStateChanged) {
+      window.bridge.transferStateChanged.connect((state) => {
+        const busy = state === 'SENDING' || state === 'RECEIVING';
+        if (sendBtn) {
+          sendBtn.disabled = busy;
+          sendBtn.classList.toggle('opacity-50', busy);
+          sendBtn.classList.toggle('cursor-not-allowed', busy);
+        }
+        const badge = document.getElementById('chat-link-state');
+        if (badge) {
+          if (window.UIBadge) {
+            window.UIBadge.set('chat-link-state', {
+              tone: busy ? 'warning' : 'neutral',
+              label: busy ? 'CHANNEL BUSY' : 'LINK STANDBY'
+            });
+          } else {
+            badge.dataset.tone = busy ? 'warning' : 'neutral';
+            const labelElem = badge.querySelector('.ui-badge__label');
+            if (labelElem) labelElem.textContent = busy ? 'CHANNEL BUSY' : 'LINK STANDBY';
+          }
+        }
+      });
+    }
 
     window.bridge.chatFrameInspected.connect((hexDump, seq, opcode, len) => {
       if (hexDumpElem) {

@@ -186,14 +186,24 @@ class TestBridgeSettings:
 
 
 class TestBridgeLegacyActions:
-    """Verifies legacy actions are rejected without breaking the UI contract."""
+    """Verifies actions and validation rules without breaking the UI contract."""
 
-    def test_chat_and_ping_are_rejected(self, qtbot: QtBot, tmp_path: Path) -> None:
+    def test_send_chat_streams_envelope(self, qtbot: QtBot, tmp_path: Path) -> None:
         bridge, manager, _ = make_bridge(tmp_path)
 
-        with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as chat_error:
-            bridge.sendChat("hello")
-        assert "Chat is disabled" in chat_error.args[0]
+        with qtbot.waitSignal(bridge.chatMessageReceived, timeout=1000) as received:
+            bridge.sendChat("hello optical link")
+        assert received.args[0] == "hello optical link"
+        assert received.args[2] is True
+
+        with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as empty_error:
+            bridge.sendChat("")
+        assert "empty" in empty_error.args[0]
+
+        manager.shutdown()
+
+    def test_ping_is_rejected(self, qtbot: QtBot, tmp_path: Path) -> None:
+        bridge, manager, _ = make_bridge(tmp_path)
 
         with qtbot.waitSignal(bridge.errorOccurred, timeout=1000) as ping_error:
             bridge.sendPing()

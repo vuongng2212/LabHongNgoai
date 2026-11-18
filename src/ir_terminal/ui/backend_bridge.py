@@ -96,10 +96,14 @@ class BackendBridge(QObject):
         self._launch_config = launch_config
         self._instance_context = instance_context
         self._storage = storage_service or StorageService()
-        self._chat_service = chat_service or ChatService(self._serial_manager, self._storage)
         self._file_service = file_service or FileTransferService(
             self._serial_manager, storage_service=self._storage
         )
+        self._chat_service = chat_service or ChatService(
+            self._serial_manager, self._storage, file_transfer_service=self._file_service
+        )
+        if self._chat_service.file_transfer_service is None:
+            self._chat_service.set_file_transfer_service(self._file_service)
         self._telemetry = telemetry_service or TelemetryService(storage_service=self._storage)
 
         self._last_ping_time: float = 0.0
@@ -642,7 +646,11 @@ class BackendBridge(QObject):
                 preview,
                 self._is_connected,
             )
-            self._chat_service.send_message(text)
+            success = self._chat_service.send_message(text)
+            if not success:
+                self.errorOccurred.emit(
+                    "Optical link is busy. Please wait for the current transfer to complete."
+                )
         except Exception as exc:
             logger.exception(
                 "%s sendChat FAILED (%s: %s) preview=%r",

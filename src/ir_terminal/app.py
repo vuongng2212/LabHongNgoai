@@ -65,6 +65,7 @@ def _build_chat_service(
     ctx: InstanceContext,
     serial_manager: SerialManager,
     storage_service: StorageService,
+    file_service: FileTransferService | None = None,
 ) -> ChatService:
     """Builds the chat service with instance-aware station names."""
     if ctx.instance_id is not None:
@@ -73,8 +74,13 @@ def _build_chat_service(
             storage_service=storage_service,
             local_name=ctx.local_station,
             remote_name=ctx.remote_station,
+            file_transfer_service=file_service,
         )
-    return ChatService(serial_manager=serial_manager, storage_service=storage_service)
+    return ChatService(
+        serial_manager=serial_manager,
+        storage_service=storage_service,
+        file_transfer_service=file_service,
+    )
 
 
 def create_app(
@@ -184,11 +190,13 @@ def create_app(
 
     storage_service = StorageService(data_dir=ctx.data_dir)
     serial_manager = _build_serial_manager(config)
-    chat_service = _build_chat_service(config, ctx, serial_manager, storage_service)
     file_service = FileTransferService(
         serial_manager=serial_manager,
         storage_service=storage_service,
         transfers_dir=ctx.transfers_dir,
+    )
+    chat_service = _build_chat_service(
+        config, ctx, serial_manager, storage_service, file_service=file_service
     )
     telemetry_service = TelemetryService(storage_service=storage_service)
 

@@ -20,6 +20,7 @@ from ir_terminal.protocol.packet import WinFormPacket
 from ir_terminal.services.file_transfer_service import (
     FileTransferService,
     TransferState,
+    is_chat_envelope_name,
     paced_delay_ms,
     sanitize_received_name,
 )
@@ -268,3 +269,71 @@ class TestConfiguration:
 
         with pytest.raises(ValueError):
             service.set_transfers_dir(target)
+
+
+class TestChatEnvelopeAndVirtualTransfer:
+    """Verifies in-memory virtual envelope streaming and detection."""
+
+    def test_is_chat_envelope_name(self) -> None:
+        assert is_chat_envelope_name("_chat_20261118_153045_Alpha.txt") is True
+        assert is_chat_envelope_name("_chat_hello.txt") is True
+        assert is_chat_envelope_name("   _chat_trimmed.txt   ") is True
+        assert is_chat_envelope_name("normal_file.txt") is False
+        assert is_chat_envelope_name("_chat_image.png") is False
+        assert is_chat_envelope_name("_chat_file.bin") is False
+        assert is_chat_envelope_name("") is False
+
+    def test_start_virtual_transfer_success(self, qtbot: QtBot, tmp_path: Path) -> None:
+        service, manager = make_service(tmp_path)
+        payload = b"Hello from memory! " * 20
+
+        with qtbot.waitSignal(service.state_changed, timeout=5000):
+            started = service.start_virtual_transfer("_chat_msg.txt", payload)
+
+        assert started is True
+        assert service.is_active is True
+
+        qtbot.waitUntil(lambda: service.state is TransferState.COMPLETED, timeout=5000)
+
+        sequences = [sequence for sequence, _ in manager.sent]
+        assert sequences == [SEQ_HEADER, 0, 1, SEQ_END]
+        transfers_files = (
+            list((tmp_path / "transfers").glob("*")) if (tmp_path / "transfers").exists() else []
+        )
+        assert transfers_files == []
+
+    def test_start_virtual_transfer_rejected_when_busy(self, tmp_path: Path) -> None:
+        service, _ = make_service(tmp_path)
+        source = tmp_path / "sample.bin"
+        source.write_bytes(b"data" * 100)
+        service.start_transfer(str(source))
+        assert service.is_active is True
+
+        assert service.start_virtual_transfer("_chat_busy.txt", b"text") is False
+
+    def test_virtual_reception_in_memory(self, qtbot: QtBot, tmp_path: Path) -> None:
+        service, manager = make_service(tmp_path)
+        emitted: list[tuple[str, bytes]] = []
+        service.virtual_transfer_completed.connect(lambda name, data: emitted.append((name, data)))
+
+        env_name = "_chat_20261118_153045_Bravo.txt"
+        env_data = "Xin chào trạm quang học OWC!".encode()
+
+        manager.deliver(SEQ_HEADER, pack_header_payload(env_name, 1))
+        assert service._rx_is_chat is True
+        assert service._rx_part_path is None
+
+        manager.deliver(0, env_data)
+        manager.deliver(SEQ_END, b"")
+
+        assert len(emitted) == 1
+        name, data = emitted[0]
+        assert name == env_name
+        assert data == env_data
+        assert service.state is TransferState.COMPLETED
+
+        transfers_files = (
+            list((tmp_path / "transfers").glob("*")) if (tmp_path / "transfers").exists() else []
+        )
+        assert transfers_files == []
+

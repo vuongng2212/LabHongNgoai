@@ -14,6 +14,7 @@ disk.
 
 from __future__ import annotations
 
+import io
 import logging
 import math
 import os
@@ -94,6 +95,19 @@ def paced_delay_ms(packet_length: int, baudrate: int) -> int:
     return math.ceil(packet_length * 10.0 * 1000 / baudrate) + PACED_DELAY_SAFETY_MS
 
 
+def is_chat_envelope_name(file_name: str) -> bool:
+    """Returns True if the announced file name matches the chat envelope pattern.
+
+    Args:
+        file_name: File name carried by the incoming HEADER frame.
+
+    Returns:
+        True if the name has the ``_chat_`` prefix and ``.txt`` extension.
+    """
+    clean = (file_name or "").strip()
+    return clean.startswith("_chat_") and clean.endswith(".txt")
+
+
 def sanitize_received_name(file_name: str) -> str:
     """Reduces an announced file name to a safe base name.
 
@@ -135,6 +149,8 @@ class FileTransferService(QObject):
 
     transfer_completed: ClassVar[Signal] = Signal(str, int, float, str)
 
+    virtual_transfer_completed: ClassVar[Signal] = Signal(str, bytes)
+
     transfer_failed: ClassVar[Signal] = Signal(str)
 
     state_changed: ClassVar[Signal] = Signal(str)
@@ -168,6 +184,8 @@ class FileTransferService(QObject):
 
         self._tx_file: BinaryIO | None = None
         self._tx_path: Path | None = None
+        self._tx_name = ""
+        self._tx_is_virtual = False
         self._tx_total_packets = 0
         self._tx_next_index = 0
         self._tx_size_bytes = 0
@@ -178,6 +196,7 @@ class FileTransferService(QObject):
         self._tx_timer.timeout.connect(self._send_next_chunk)
 
         self._rx_name = ""
+        self._rx_is_chat = False
         self._rx_total_packets = 0
         self._rx_received: set[int] = set()
         self._rx_handle: BinaryIO | None = None
@@ -192,6 +211,11 @@ class FileTransferService(QObject):
 
         self._serial_manager.packet_received.connect(self._handle_packet)
         self.load_settings()
+
+    @property
+    def is_active(self) -> bool:
+        """Returns True while a transmission or reception is in progress."""
+        return self._state.is_active
 
     @property
     def state(self) -> TransferState:
@@ -419,6 +443,8 @@ class FileTransferService(QObject):
             raise ValueError(
                 f"File size {size}B exceeds configured cap {self._max_file_size_bytes}B"
             )
+        self._tx_is_virtual = False
+        self._tx_name = path.name
         self._tx_file = handle
         self._tx_path = path
         self._tx_size_bytes = size
@@ -446,6 +472,57 @@ class FileTransferService(QObject):
             len(header_payload),
         )
         self._tx_timer.start(paced_delay_ms(HEADER_OVERHEAD + len(header_payload), self._baudrate()))
+
+    def start_virtual_transfer(self, virtual_name: str, payload: bytes) -> bool:
+        """Starts an open-loop paced transmission of an in-memory virtual payload.
+
+        Args:
+            virtual_name: Virtual file envelope name announced in the HEADER.
+            payload: Raw bytes to stream.
+
+        Returns:
+            True if the transmission started successfully, False if busy or failed.
+        """
+        if self._state.is_active:
+            logger.warning(
+                "%s Virtual transfer rejected: transfer already active (%s)",
+                LogTag.FILE_SVC,
+                self._state.name,
+            )
+            return False
+        clean_name = sanitize_received_name(virtual_name)
+        size = len(payload)
+        self._tx_is_virtual = True
+        self._tx_name = clean_name
+        self._tx_file = io.BytesIO(payload)
+        self._tx_path = None
+        self._tx_size_bytes = size
+        self._tx_total_packets = (size + self._chunk_size - 1) // self._chunk_size if size else 0
+        self._tx_next_index = 0
+        self._tx_bytes_sent = 0
+        self._tx_started_at = time.monotonic()
+        self._set_state(TransferState.SENDING)
+
+        header_payload = pack_header_payload(clean_name, self._tx_total_packets)
+        try:
+            self._serial_manager.send_packet(SEQ_HEADER, header_payload)
+        except Exception as exc:
+            self._fail_tx(f"Could not send virtual file header: {exc}")
+            return False
+        logger.info(
+            "%s Virtual TX start: file=%s size=%dB packets=%d chunk=%dB baud=%d header=%dB",
+            LogTag.FILE_SVC,
+            clean_name,
+            size,
+            self._tx_total_packets,
+            self._chunk_size,
+            self._baudrate(),
+            len(header_payload),
+        )
+        self._tx_timer.start(
+            paced_delay_ms(HEADER_OVERHEAD + len(header_payload), self._baudrate())
+        )
+        return True
 
     def cancel_transfer(self) -> None:
         """Cancels the active transmission or reception immediately."""
@@ -510,7 +587,8 @@ class FileTransferService(QObject):
             return
         self._tx_next_index += 1
         self._tx_bytes_sent += len(payload)
-        self._emit_progress()
+        if not self._tx_is_virtual:
+            self._emit_progress()
         if self._tx_next_index >= self._tx_total_packets:
             self._tx_timer.start(
                 paced_delay_ms(HEADER_OVERHEAD + len(payload), self._baudrate())
@@ -526,33 +604,50 @@ class FileTransferService(QObject):
             self._fail_tx(f"Could not send end packet: {exc}")
             return
         elapsed = max(time.monotonic() - self._tx_started_at, 0.0)
-        filename = self._tx_path.name if self._tx_path else "unknown"
+        filename = (
+            self._tx_name
+            if self._tx_is_virtual
+            else (self._tx_path.name if self._tx_path else "unknown")
+        )
         file_path = str(self._tx_path) if self._tx_path else ""
         size_bytes = self._tx_size_bytes
         speed_kbps = (self._tx_bytes_sent / 1024.0) / elapsed if elapsed > 0 else 0.0
+        is_virtual = self._tx_is_virtual
         self._close_tx_file()
         self._set_state(TransferState.COMPLETED)
-        self.progress_updated.emit(100, speed_kbps, 0.0, self._tx_total_packets, self._tx_total_packets)
-        self._persist_record(
-            filename=filename,
-            file_path=file_path,
-            direction="TX",
-            size_bytes=size_bytes,
-            speed_kbps=speed_kbps,
-            duration_sec=elapsed,
-            status="SUCCESS",
-        )
-        logger.info(
-            "%s TX complete: file=%s sent=%dB/%dB packets=%d elapsed=%.2fs speed=%.1fKB/s",
-            LogTag.FILE_SVC,
-            filename,
-            self._tx_bytes_sent,
-            size_bytes,
-            self._tx_total_packets,
-            elapsed,
-            speed_kbps,
-        )
-        self.transfer_completed.emit(filename, size_bytes, elapsed, "")
+        if not is_virtual:
+            self.progress_updated.emit(
+                100, speed_kbps, 0.0, self._tx_total_packets, self._tx_total_packets
+            )
+            self._persist_record(
+                filename=filename,
+                file_path=file_path,
+                direction="TX",
+                size_bytes=size_bytes,
+                speed_kbps=speed_kbps,
+                duration_sec=elapsed,
+                status="SUCCESS",
+            )
+            logger.info(
+                "%s TX complete: file=%s sent=%dB/%dB packets=%d elapsed=%.2fs speed=%.1fKB/s",
+                LogTag.FILE_SVC,
+                filename,
+                self._tx_bytes_sent,
+                size_bytes,
+                self._tx_total_packets,
+                elapsed,
+                speed_kbps,
+            )
+            self.transfer_completed.emit(filename, size_bytes, elapsed, "")
+        else:
+            logger.info(
+                "%s Virtual TX complete: name=%s sent=%dB packets=%d elapsed=%.2fs",
+                LogTag.FILE_SVC,
+                filename,
+                self._tx_bytes_sent,
+                self._tx_total_packets,
+                elapsed,
+            )
 
     def _emit_progress(self) -> None:
         """Emits the current transmission progress snapshot."""
@@ -570,6 +665,8 @@ class FileTransferService(QObject):
         """Closes the transmission file handle if it is open."""
         handle = self._tx_file
         self._tx_file = None
+        self._tx_is_virtual = False
+        self._tx_name = ""
         if handle is not None:
             try:
                 handle.close()
@@ -579,23 +676,30 @@ class FileTransferService(QObject):
     def _fail_tx(self, reason: str, status: str = "FAILED", aborted: bool = False) -> None:
         """Aborts a transmission, releases the file and notifies listeners."""
         self._tx_timer.stop()
-        filename = self._tx_path.name if self._tx_path else "unknown"
+        filename = (
+            self._tx_name
+            if self._tx_is_virtual
+            else (self._tx_path.name if self._tx_path else "unknown")
+        )
         file_path = str(self._tx_path) if self._tx_path else ""
         elapsed = (
             max(time.monotonic() - self._tx_started_at, 0.0) if self._tx_started_at else 0.0
         )
         speed_kbps = (self._tx_bytes_sent / 1024.0) / elapsed if elapsed > 0 else 0.0
+        is_virtual = self._tx_is_virtual
         self._close_tx_file()
         self._set_state(TransferState.ABORTED if aborted else TransferState.FAILED)
-        self._persist_record(
-            filename=filename,
-            file_path=file_path,
-            direction="TX",
-            size_bytes=self._tx_size_bytes,
-            speed_kbps=speed_kbps,
-            duration_sec=elapsed,
-            status=status,
-        )
+        if not is_virtual:
+            self._persist_record(
+                filename=filename,
+                file_path=file_path,
+                direction="TX",
+                size_bytes=self._tx_size_bytes,
+                speed_kbps=speed_kbps,
+                duration_sec=elapsed,
+                status=status,
+            )
+            self.transfer_failed.emit(reason)
         logger.warning(
             "%s TX failed: file=%s sent=%dB/%dB packets=%d/%d reason=%s",
             LogTag.FILE_SVC,
@@ -606,7 +710,6 @@ class FileTransferService(QObject):
             self._tx_total_packets,
             reason,
         )
-        self.transfer_failed.emit(reason)
 
     def _handle_packet(self, pkt: object) -> None:
         """Routes one decoded WinForm frame to the RX engine.
@@ -623,12 +726,15 @@ class FileTransferService(QObject):
             self._begin_receive(pkt)
             return
         if pkt.is_end:
-            self._finish_receive()
+            if self._rx_is_chat:
+                self._finish_virtual_receive()
+            else:
+                self._finish_receive()
             return
         self._write_chunk(pkt)
 
     def _begin_receive(self, pkt: WinFormPacket) -> None:
-        """Opens a staging file for a newly announced incoming transfer."""
+        """Opens a staging buffer or file for an incoming transfer."""
         try:
             file_name, total_packets = unpack_header_payload(pkt.data)
         except ValueError as exc:
@@ -639,35 +745,50 @@ class FileTransferService(QObject):
                 "%s RX restart: previous transfer '%s' replaced", LogTag.FILE_SVC, self._rx_name
             )
             self._discard_rx(keep_partial=False)
-        safe_name = sanitize_received_name(file_name)
+        self._rx_is_chat = is_chat_envelope_name(file_name)
+        safe_name = file_name.strip() if self._rx_is_chat else sanitize_received_name(file_name)
         self._rx_name = safe_name
         self._rx_total_packets = total_packets
         self._rx_received = set()
         self._rx_highest_end = 0
         self._rx_write_count = 0
         self._rx_started_at = time.monotonic()
-        self._transfers_dir.mkdir(parents=True, exist_ok=True)
-        part_path = self._transfers_dir / f".ir_rx_{safe_name}.part"
-        try:
-            self._rx_handle = part_path.open("w+b")
-        except OSError as exc:
-            logger.warning("%s RX cannot open staging file %s: %s", LogTag.FILE_SVC, part_path, exc)
-            self._rx_handle = None
-            return
-        self._rx_part_path = part_path
+        if self._rx_is_chat:
+            self._rx_handle = io.BytesIO()
+            self._rx_part_path = None
+        else:
+            self._transfers_dir.mkdir(parents=True, exist_ok=True)
+            part_path = self._transfers_dir / f".ir_rx_{safe_name}.part"
+            try:
+                self._rx_handle = part_path.open("w+b")
+            except OSError as exc:
+                logger.warning(
+                    "%s RX cannot open staging file %s: %s", LogTag.FILE_SVC, part_path, exc
+                )
+                self._rx_handle = None
+                return
+            self._rx_part_path = part_path
         self._set_state(TransferState.RECEIVING)
         self._rx_timer.start()
-        self.progress_updated.emit(0, 0.0, 0.0, 0, total_packets)
-        logger.info(
-            "%s RX start: file=%s packets=%d staging=%s",
-            LogTag.FILE_SVC,
-            safe_name,
-            total_packets,
-            part_path,
-        )
+        if not self._rx_is_chat:
+            self.progress_updated.emit(0, 0.0, 0.0, 0, total_packets)
+            logger.info(
+                "%s RX start: file=%s packets=%d staging=%s",
+                LogTag.FILE_SVC,
+                safe_name,
+                total_packets,
+                self._rx_part_path,
+            )
+        else:
+            logger.info(
+                "%s Chat envelope RX start: file=%s packets=%d (in-memory)",
+                LogTag.FILE_SVC,
+                safe_name,
+                total_packets,
+            )
 
     def _write_chunk(self, pkt: WinFormPacket) -> None:
-        """Writes one DATA frame at its nominal offset in the staging file."""
+        """Writes one DATA frame at its nominal offset in the staging buffer."""
         if self._state is not TransferState.RECEIVING or self._rx_handle is None:
             logger.debug(
                 "%s RX chunk ignored without active HEADER: seq=0x%08X",
@@ -694,20 +815,44 @@ class FileTransferService(QObject):
         self._rx_received.add(sequence)
         self._rx_highest_end = max(self._rx_highest_end, offset + len(pkt.data))
         self._rx_write_count += 1
-        if self._rx_write_count % _RX_FLUSH_INTERVAL == 0:
+        if not self._rx_is_chat and self._rx_write_count % _RX_FLUSH_INTERVAL == 0:
             try:
                 self._rx_handle.flush()
             except OSError as exc:
                 logger.warning("%s RX flush warning: %s", LogTag.FILE_SVC, exc)
         self._rx_timer.start()
-        total = self._rx_total_packets
-        received = len(self._rx_received)
-        pct = int(received * 100 / total) if total else 0
-        elapsed = max(time.monotonic() - self._rx_started_at, 0.0)
-        speed_kbps = (self._rx_highest_end / 1024.0) / elapsed if elapsed > 0 else 0.0
-        remaining = max(total - received, 0)
-        eta_sec = remaining * self._chunk_size / (self._baudrate() / 10.0)
-        self.progress_updated.emit(min(pct, 100), speed_kbps, eta_sec, received, total)
+        if not self._rx_is_chat:
+            total = self._rx_total_packets
+            received = len(self._rx_received)
+            pct = int(received * 100 / total) if total else 0
+            elapsed = max(time.monotonic() - self._rx_started_at, 0.0)
+            speed_kbps = (self._rx_highest_end / 1024.0) / elapsed if elapsed > 0 else 0.0
+            remaining = max(total - received, 0)
+            eta_sec = remaining * self._chunk_size / (self._baudrate() / 10.0)
+            self.progress_updated.emit(min(pct, 100), speed_kbps, eta_sec, received, total)
+
+    def _finish_virtual_receive(self) -> None:
+        """Finalizes an in-memory virtual envelope reception."""
+        if self._state is not TransferState.RECEIVING:
+            return
+        self._rx_timer.stop()
+        payload_bytes = b""
+        if isinstance(self._rx_handle, io.BytesIO):
+            self._rx_handle.seek(0)
+            payload_bytes = self._rx_handle.getvalue()[: self._rx_highest_end]
+            self._rx_handle.close()
+        self._rx_handle = None
+        file_name = self._rx_name
+        self._rx_is_chat = False
+        self._rx_name = ""
+        self._set_state(TransferState.COMPLETED)
+        logger.info(
+            "%s Virtual RX complete: name=%s len=%dB",
+            LogTag.FILE_SVC,
+            file_name,
+            len(payload_bytes),
+        )
+        self.virtual_transfer_completed.emit(file_name, payload_bytes)
 
     def _finish_receive(self) -> None:
         """Finalizes a received file after the END frame arrives."""
@@ -791,6 +936,11 @@ class FileTransferService(QObject):
     def _fail_rx(self, reason: str, status: str = "FAILED", aborted: bool = False) -> None:
         """Aborts a reception, optionally keeping the partial file."""
         self._rx_timer.stop()
+        if self._rx_is_chat:
+            self._discard_rx(keep_partial=False)
+            self._set_state(TransferState.ABORTED if aborted else TransferState.FAILED)
+            logger.warning("%s Chat envelope RX failed: %s", LogTag.FILE_SVC, reason)
+            return
         name = self._rx_name or "received.bin"
         elapsed = (
             max(time.monotonic() - self._rx_started_at, 0.0) if self._rx_started_at else 0.0
@@ -831,6 +981,7 @@ class FileTransferService(QObject):
         """Closes and removes the staging file unless it must be kept."""
         handle = self._rx_handle
         self._rx_handle = None
+        self._rx_is_chat = False
         if handle is not None:
             try:
                 handle.close()
