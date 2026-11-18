@@ -1,3 +1,3 @@
 """IR-OWC Lab Terminal application package."""
 
-__version__ = "0.8.8"
+__version__ = "1.0.0"
