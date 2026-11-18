@@ -196,35 +196,35 @@ class TestDualSerialTransportOpen:
 
         assert [handle.port for handle in serial_factory.created] == ["COM3", "COM4"]
         tx, rx = serial_factory.created
-        assert cast(object, transport._tx_serial) is tx
-        assert cast(object, transport._rx_serial) is rx
-        assert transport.tx_port == "COM3"
-        assert transport.rx_port == "COM4"
+        assert cast(object, transport._data_serial) is tx
+        assert cast(object, transport._ctrl_serial) is rx
+        assert transport.data_port == "COM3"
+        assert transport.ctrl_port == "COM4"
         assert transport.baudrate == 57600
-        assert transport.is_single_port is False
+        assert transport.control_baudrate == 115200
+        assert transport.has_control_port is True
         assert transport.is_open is True
         assert tx.baudrate == 57600
-        assert rx.baudrate == 57600
+        assert rx.baudrate == 115200
         assert tx.write_timeout == 1.0
-        assert rx.write_timeout is None
+        assert rx.write_timeout == 1.0
 
-    def test_missing_rx_port_reuses_tx_port(self, serial_factory: SerialFactory) -> None:
-        transport = DualSerialTransport("COM7", None, 115200)
+    def test_missing_ctrl_port_opens_data_only(self, serial_factory: SerialFactory) -> None:
+        transport = DualSerialTransport("COM7", None, 19200)
 
         transport.open()
 
         assert len(serial_factory.created) == 1
         handle = serial_factory.created[0]
-        assert cast(object, transport._tx_serial) is handle
-        assert cast(object, transport._rx_serial) is handle
-        assert transport.rx_port == "COM7"
-        assert transport.is_single_port is True
+        assert cast(object, transport._data_serial) is handle
+        assert transport._ctrl_serial is None
+        assert transport.data_port == "COM7"
+        assert transport.has_control_port is False
         assert transport.is_open is True
 
-    def test_single_port_detection_is_case_insensitive(self) -> None:
-        transport = DualSerialTransport("com3", "COM3", 115200)
-
-        assert transport.is_single_port is True
+    def test_control_port_presence_is_detected(self) -> None:
+        assert DualSerialTransport("COM3", "COM4", 19200).has_control_port is True
+        assert DualSerialTransport("COM3", None, 19200).has_control_port is False
 
     def test_rollback_closes_tx_when_rx_open_fails(self, serial_factory: SerialFactory) -> None:
         serial_factory.open_failures = {2: OSError("cannot open port COM4")}
@@ -235,8 +235,8 @@ class TestDualSerialTransportOpen:
 
         tx = serial_factory.created[0]
         assert tx.closed is True
-        assert transport._tx_serial is None
-        assert transport._rx_serial is None
+        assert transport._data_serial is None
+        assert transport._ctrl_serial is None
         assert transport.is_open is False
 
     def test_failed_tx_open_leaves_no_handle(self, serial_factory: SerialFactory) -> None:
@@ -246,8 +246,8 @@ class TestDualSerialTransportOpen:
         with pytest.raises(OSError):
             transport.open()
 
-        assert transport._tx_serial is None
-        assert transport._rx_serial is None
+        assert transport._data_serial is None
+        assert transport._ctrl_serial is None
         assert transport.is_open is False
 
     def test_create_serial_preserves_default_dtr_rts(
@@ -282,8 +282,8 @@ class TestOpenRetry:
         transport.open()
 
         assert transport.is_open is True
-        assert serial_factory.calls == 2
-        assert len(serial_factory.created) == 1
+        assert serial_factory.calls == 3
+        assert len(serial_factory.created) == 2
         assert no_sleep == [dual_module.INITIAL_RETRY_DELAY_SEC]
 
     def test_open_retries_when_open_raises_error_31(
@@ -301,7 +301,7 @@ class TestOpenRetry:
         transport.open()
 
         assert transport.is_open is True
-        assert serial_factory.calls == 2
+        assert serial_factory.calls == 3
         assert serial_factory.created[0].open_calls == 1
         assert serial_factory.created[1].open_calls == 1
         assert no_sleep == [dual_module.INITIAL_RETRY_DELAY_SEC]
@@ -325,8 +325,8 @@ class TestOpenRetry:
         assert len(tx_handles) == 3
         assert all(handle.closed for handle in tx_handles)
         assert all(handle.close_calls == 1 for handle in tx_handles)
-        assert transport._tx_serial is None
-        assert transport._rx_serial is None
+        assert transport._data_serial is None
+        assert transport._ctrl_serial is None
         assert transport.is_open is False
         assert no_sleep == [
             dual_module.INITIAL_RETRY_DELAY_SEC,
@@ -434,10 +434,10 @@ class TestDualSerialTransportIO:
     """Verifies TX writes and RX reads are routed to the right handle."""
 
     def test_write_goes_to_tx_and_read_from_rx(self, serial_factory: SerialFactory) -> None:
-        transport = DualSerialTransport("COM3", "COM4", 115200)
+        transport = DualSerialTransport("COM3", "COM4", 19200)
         transport.open()
         tx, rx = serial_factory.created
-        rx.pending.extend(b"optical")
+        tx.pending.extend(b"optical")
 
         assert transport.write(b"payload") == 7
         assert tx.written == [b"payload"]
@@ -448,8 +448,10 @@ class TestDualSerialTransportIO:
         assert transport.read(0) == b""
         assert transport.read() == b""
 
-    def test_single_port_handle_serves_both_directions(self, serial_factory: SerialFactory) -> None:
-        transport = DualSerialTransport("COM9", "COM9", 115200)
+    def test_data_only_handle_serves_both_directions(
+        self, serial_factory: SerialFactory
+    ) -> None:
+        transport = DualSerialTransport("COM9", None, 19200)
         transport.open()
         handle = serial_factory.created[0]
         handle.pending.extend(b"loop")
@@ -488,10 +490,10 @@ class TestDualSerialTransportIO:
         assert transport.in_waiting == 0
 
     def test_read_errors_propagate(self, serial_factory: SerialFactory) -> None:
-        transport = DualSerialTransport("COM3", "COM4", 115200)
+        transport = DualSerialTransport("COM3", "COM4", 19200)
         transport.open()
-        rx = serial_factory.created[1]
-        rx.fail_read = True
+        data = serial_factory.created[0]
+        data.fail_read = True
 
         with pytest.raises(OSError, match="read exploded"):
             transport.read(4)
@@ -510,11 +512,11 @@ class TestDualSerialTransportClose:
         assert tx.close_calls == 1
         assert rx.close_calls == 1
         assert transport.is_open is False
-        assert transport._tx_serial is None
-        assert transport._rx_serial is None
+        assert transport._data_serial is None
+        assert transport._ctrl_serial is None
 
-    def test_close_unified_handle_once(self, serial_factory: SerialFactory) -> None:
-        transport = DualSerialTransport("COM3", "COM3", 115200)
+    def test_close_data_only_handle_once(self, serial_factory: SerialFactory) -> None:
+        transport = DualSerialTransport("COM3", None, 19200)
         transport.open()
         handle = serial_factory.created[0]
 
@@ -546,20 +548,20 @@ class TestTransportFactoryDualPorts:
     """Verifies the factory builds the right transport for each port kind."""
 
     def test_physical_ports_create_dual_transport(self) -> None:
-        transport = create_transport("COM3", "COM4", 230400)
+        transport = create_transport("COM3", "COM4", 19200)
 
         assert isinstance(transport, DualSerialTransport)
-        assert transport.tx_port == "COM3"
-        assert transport.rx_port == "COM4"
-        assert transport.baudrate == 230400
+        assert transport.data_port == "COM3"
+        assert transport.ctrl_port == "COM4"
+        assert transport.baudrate == 19200
+        assert transport.control_baudrate == 115200
 
-    def test_rx_port_defaults_to_tx_port(self) -> None:
+    def test_missing_ctrl_port_defaults_to_data_only(self) -> None:
         transport = create_transport("/dev/ttyUSB0", None, 9600)
 
         assert isinstance(transport, DualSerialTransport)
-        assert transport.tx_port == "/dev/ttyUSB0"
-        assert transport.rx_port == "/dev/ttyUSB0"
-        assert transport.is_single_port is True
+        assert transport.data_port == "/dev/ttyUSB0"
+        assert transport.has_control_port is False
 
     def test_mock_port_stays_single_mock_transport(self) -> None:
         transport = create_transport("MOCK_COM_LOOPBACK", "MOCK_COM_LOOPBACK", 115200)
@@ -579,13 +581,13 @@ class TestSerialManagerDualPorts:
         manager = SerialManager()
         try:
             with qtbot.waitSignal(manager.ports_connected, timeout=2000) as blocker:
-                manager.connect_ports("MOCK_NODE_A", "MOCK_NODE_B", 57600)
+                manager.connect_ports("MOCK_NODE_A", "MOCK_NODE_B", 19200)
 
-            assert blocker.args == ["MOCK_NODE_A", "MOCK_NODE_B", 57600]
-            qtbot.waitUntil(lambda: manager.current_rx_port == "MOCK_NODE_B", timeout=1000)
+            assert blocker.args == ["MOCK_NODE_A", "MOCK_NODE_B", 19200]
+            qtbot.waitUntil(lambda: manager.current_ctrl_port == "MOCK_NODE_B", timeout=1000)
             assert manager.current_tx_port == "MOCK_NODE_A"
-            assert manager.current_rx_port == "MOCK_NODE_B"
-            assert manager.current_baud == 57600
+            assert manager.current_ctrl_port == "MOCK_NODE_B"
+            assert manager.current_baud == 19200
             assert manager.is_connected is True
         finally:
             manager.shutdown()
@@ -594,8 +596,8 @@ class TestSerialManagerDualPorts:
         manager = SerialManager()
         try:
             with qtbot.waitSignal(manager.ports_connected, timeout=2000) as blocker:
-                manager.connect_port("MOCK_COM_LOOPBACK", 115200)
+                manager.connect_port("MOCK_COM_LOOPBACK", 19200)
 
-            assert blocker.args == ["MOCK_COM_LOOPBACK", "MOCK_COM_LOOPBACK", 115200]
+            assert blocker.args == ["MOCK_COM_LOOPBACK", "", 19200]
         finally:
             manager.shutdown()

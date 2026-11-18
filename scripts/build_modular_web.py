@@ -180,7 +180,7 @@ def build_modular_components() -> None:
         <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline shrink-0"></span>
         <span id="footer-health-text" class="font-mono-caption text-mono-caption font-medium text-outline truncate">OFFLINE</span>
       </div>
-      <span class="sidebar-footer-detail text-[10px] font-mono text-outline tracking-widest">UART</span>
+      <span class="sidebar-footer-detail text-[10px] font-mono text-outline tracking-widest">DUAL COM</span>
     </div>
     <div class="sidebar-footer-detail text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1">
       <div class="flex items-center justify-between gap-2">
@@ -192,10 +192,6 @@ def build_modular_components() -> None:
         <span id="footer-baud-label" class="font-medium text-on-surface">--</span>
       </div>
     </div>
-    <button id="btn-calibrate" title="Ping Link Test" class="w-full mt-1 flex items-center justify-center gap-1 py-1 px-2 rounded-md bg-surface-container-low hover:bg-surface-container text-primary font-label-sm text-label-sm border border-outline-variant/40 transition-colors cursor-pointer">
-      <span class="material-symbols-outlined text-[14px]">wifi_tethering</span>
-      <span class="sidebar-action-label">Ping Link Test</span>
-    </button>
   </div>
 </aside>
 """
@@ -207,7 +203,6 @@ def build_modular_components() -> None:
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
   <title>SpectraLink IR-OWC Workstation</title>
-  <!-- Offline Local Fonts & Full Glyph TTF Icons -->
   <link rel="stylesheet" href="assets/css/local-fonts.css"/>
   <script src="assets/js/tailwindcss.js"></script>
   <script id="tailwind-config">
@@ -306,7 +301,6 @@ def build_modular_components() -> None:
   </script>
   <link rel="stylesheet" href="assets/css/app.css"/>
   <style>
-    /* Sleek Native Scrollbar */
     ::-webkit-scrollbar {{
       width: 6px;
       height: 6px;
@@ -330,7 +324,6 @@ def build_modular_components() -> None:
     .view-panel.active {{
       display: flex;
     }}
-    /* Reusable UI Feedback System: button spinner + toast/modal motion */
     @keyframes ui-spin {{
       to {{ transform: rotate(360deg); }}
     }}
@@ -360,32 +353,25 @@ def build_modular_components() -> None:
   <script src="qwebchannel.js"></script>
 </head>
 <body class="bg-[#F5F5F7] text-on-surface antialiased min-h-screen flex flex-col font-body-md text-body-md select-none overflow-hidden">
-  <!-- Window Container with Native macOS Frame -->
   <div class="w-full h-screen bg-[#F5F5F7] flex flex-col overflow-hidden">
     {chrome_header}
 
-    <!-- App Body: Left Navigation + Primary Content Canvas -->
     <div class="flex flex-1 overflow-hidden min-w-0">
       {sidebar_nav}
 
-      <!-- Main Operational Viewports -->
       <div class="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7] min-w-0">
-        <!-- View 1: Hardware Setup -->
         <div id="view-hardware" class="view-panel active flex-1 overflow-y-auto p-space-lg flex-col gap-space-lg bg-[#F5F5F7] min-w-0">
           {v1}
         </div>
 
-        <!-- View 2: File Transfer -->
-        <div id="view-file" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-xl flex-col gap-space-lg min-w-0">
+        <div id="view-file" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg min-w-0">
           {v2}
         </div>
 
-        <!-- View 3: Realtime Chat -->
-        <div id="view-chat" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-md min-w-0">
+        <div id="view-chat" class="view-panel flex-1 bg-[#F5F5F7] overflow-hidden flex-col min-w-0">
           {v3}
         </div>
 
-        <!-- View 4: Lab Diagnostics -->
         <div id="view-telemetry" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg min-w-0">
           {v4}
         </div>
@@ -395,10 +381,8 @@ def build_modular_components() -> None:
 
   {settings_modal}
 
-  <!-- Reusable UI Feedback mounts (see components/ui_feedback.html) -->
   {feedback_mounts}
 
-  <!-- Scripts -->
   <script src="js/ui_feedback.js"></script>
   <script src="js/ui_badges.js"></script>
   <script src="js/shared/utils.js"></script>

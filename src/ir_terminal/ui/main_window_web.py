@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QCloseEvent, QGuiApplication
 from PySide6.QtWebChannel import QWebChannel
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile, QWebEngineSettings
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -86,7 +86,7 @@ class WebMainWindow(QMainWindow):
             instance_context.display_name if instance_context else "single",
         )
 
-    def closeEvent(self, event: object) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         """Ensures worker thread and timers stop on window close (no QThread leak)."""
         logger.info(
             "%s WebMainWindow close requested; shutting down bridge+serial", LogTag.IPC_BRIDGE
@@ -109,7 +109,7 @@ class WebMainWindow(QMainWindow):
                 type(exc).__name__,
                 exc,
             )
-        super().closeEvent(event)  # type: ignore[arg-type]
+        super().closeEvent(event)
 
     def _init_window(self) -> None:
         """Configures window properties, minimum bounds, and title."""

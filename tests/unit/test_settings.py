@@ -10,11 +10,11 @@ import pytest
 from pytestqt.qtbot import QtBot
 
 from ir_terminal.core.serial_manager import SerialManager
-from ir_terminal.protocol.constants import MAX_FILE_SIZE_BYTES
-from ir_terminal.services.file_transfer_service import (
+from ir_terminal.protocol.constants import (
     MAX_CONFIGURABLE_FILE_SIZE_BYTES,
-    FileTransferService,
+    MAX_FILE_SIZE_BYTES,
 )
+from ir_terminal.services.file_transfer_service import FileTransferService
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.ui.backend_bridge import BackendBridge
 
@@ -217,7 +217,7 @@ class TestFileTransferServiceConfig:
         finally:
             manager.shutdown()
 
-    def test_custom_limit_enforced_on_start(self, qtbot: QtBot, tmp_path: Path) -> None:
+    def test_custom_limit_enforced_on_start(self, tmp_path: Path) -> None:
         """Verifies TX rejects files above the configured (lowered) limit."""
         manager = SerialManager()
         try:
@@ -233,7 +233,7 @@ class TestFileTransferServiceConfig:
                 tmp.write(payload)
                 tmp_path_str = tmp.name
             try:
-                with qtbot.waitSignal(service.transfer_failed, timeout=1000):
+                with pytest.raises(ValueError, match="exceeds configured cap"):
                     service.start_transfer(tmp_path_str)
             finally:
                 Path(tmp_path_str).unlink(missing_ok=True)

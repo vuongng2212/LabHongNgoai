@@ -1,4 +1,4 @@
-"""Non-blocking Serial Worker implementing Worker-Object Pattern on dedicated QThread."""
+"""Non-blocking serial worker running on a dedicated QThread."""
 
 from __future__ import annotations
 
@@ -14,37 +14,27 @@ from serial.tools import list_ports
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.transport_factory import create_transport
 from ir_terminal.protocol.constants import (
+    CONTROL_BAUDRATE,
     DEFAULT_BAUDRATE,
-    HW_POLL_MS,
-    MOCK_POLL_MS,
     RING_BUFFER_CAPACITY,
-    RX_COMPACT_THRESHOLD,
     SOCKET_CONNECT_TIMEOUT_SEC,
 )
-from ir_terminal.protocol.control_channel import ControlMessage, parse_control_line
-from ir_terminal.protocol.framer import FramerStats, parse_frames_with_stats
-from ir_terminal.protocol.packet import Packet
-from ir_terminal.protocol.stream_demux import demux_stream
-from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
-from ir_terminal.utils.path_helpers import is_dual_mock_enabled
+from ir_terminal.protocol.framer import parse_stream
+from ir_terminal.utils.logger import LogTag, format_hex_preview
+from ir_terminal.utils.path_helpers import is_dev_mode, is_dual_mock_enabled
 
 logger = logging.getLogger(__name__)
 
 
 def _natural_port_key(name: str) -> str:
-    """Sort key placing COM2 before COM10 (natural numeric ordering)."""
+    """Sort key placing COM2 before COM10 in natural numeric order."""
     return "".join(
         f"{int(part):08d}" if part.isdigit() else part.lower() for part in re.split(r"(\d+)", name)
     )
 
 
 def _windows_registry_ports() -> list[str]:
-    """Returns COM names from the Windows registry (virtual-COM fallback).
-
-    Some virtual COM drivers (older com0com, some USB-serial stacks) do not
-    appear in ``serial.tools.list_ports`` but are registered under
-    ``HARDWARE\\DEVICEMAP\\SERIALCOMM``. Non-Windows hosts return an empty list.
-    """
+    """Returns COM names registered in the Windows SERIALCOMM key."""
     try:
         winreg = importlib.import_module("winreg")
     except ImportError:
@@ -68,7 +58,7 @@ def _windows_registry_ports() -> list[str]:
 
 @dataclass(slots=True)
 class PortInfo:
-    """Detailed metadata describing a single selectable serial port."""
+    """Detailed metadata describing one selectable serial port."""
 
     device: str
     description: str
@@ -92,7 +82,7 @@ class PortInfo:
 
 
 def _format_hex_identifier(value: int | None) -> str | None:
-    """Formats a numeric USB identifier as a 4-character uppercase hex string."""
+    """Formats a numeric USB identifier as a four-character uppercase hex string."""
     if value is None:
         return None
     return f"{int(value) & 0xFFFF:04X}"
@@ -108,7 +98,7 @@ def _friendly_label(device: str, description: str, vid: str | None, pid: str | N
 
 
 def _virtual_port_info(device: str, description: str) -> PortInfo:
-    """Builds a PortInfo entry for an in-process virtual (non-hardware) port."""
+    """Builds a PortInfo entry for an in-process virtual port."""
     return PortInfo(
         device=device,
         description=description,
@@ -120,24 +110,8 @@ def _virtual_port_info(device: str, description: str) -> PortInfo:
     )
 
 
-def _tx_control_message(data: bytes) -> ControlMessage | None:
-    """Parses TX bytes as a valid ASCII control line when possible.
-
-    Args:
-        data: Outgoing bytes queued for UART TX.
-
-    Returns:
-        A parsed :class:`ControlMessage`, or None for binary/raw payloads.
-    """
-    try:
-        text = data.decode("ascii")
-    except UnicodeDecodeError:
-        return None
-    return parse_control_line(text)
-
-
 class SerialWorker(QObject):
-    """Background worker managing serial port I/O and emitting parsed packets."""
+    """Background worker owning COM1/COM2 I/O and WinForm frame parsing."""
 
     connected: ClassVar[Signal] = Signal(str, int)
     ports_connected: ClassVar[Signal] = Signal(str, str, int)
@@ -145,10 +119,10 @@ class SerialWorker(QObject):
     error_occurred: ClassVar[Signal] = Signal(str)
     raw_data_received: ClassVar[Signal] = Signal(bytes)
     raw_data_sent: ClassVar[Signal] = Signal(bytes)
-    packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
-    control_message_received: ClassVar[Signal] = Signal(str)
+    packet_received: ClassVar[Signal] = Signal(object)
     ports_changed: ClassVar[Signal] = Signal(list)
-    framer_error: ClassVar[Signal] = Signal(str, int)  # (kind, count delta)
+    baud_changed: ClassVar[Signal] = Signal(int)
+    baud_command_sent: ClassVar[Signal] = Signal(int, str)
 
     def __init__(
         self,
@@ -160,13 +134,12 @@ class SerialWorker(QObject):
         link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
         link_token: str | None = None,
     ) -> None:
-        """Initializes non-blocking serial worker instance.
+        """Initializes the worker without opening any port.
 
         Args:
-            link_endpoints: Optional LINK_* -> (host, port) map for dual mode.
-            include_link: Whether LINK_A/B are offered in the port list
-                (defaults to the IR_ENABLE_DUAL_MOCK env gate).
-            link_connect_retries: Extra LINK connect attempts on open.
+            link_endpoints: Optional LINK_* to ``(host, port)`` map.
+            include_link: Whether LINK_A/B appear in the port list.
+            link_connect_retries: Extra LINK connect attempts.
             link_retry_interval_sec: Delay between LINK connect attempts.
             link_connect_timeout_sec: Per-attempt LINK connect timeout.
             link_token: Optional broker handshake token.
@@ -174,9 +147,7 @@ class SerialWorker(QObject):
         super().__init__()
         self._transport: ITransport | None = None
         self._rx_accumulation = bytearray()
-        self._rx_consumed = 0
         self._rx_dropped = 0
-        self._framer_stats = FramerStats()
         self._last_ports: list[PortInfo] = []
         self._port_poll_timer: QTimer | None = None
         self._poll_timer: QTimer | None = None
@@ -187,73 +158,116 @@ class SerialWorker(QObject):
         self._link_connect_timeout_sec = link_connect_timeout_sec
         self._link_token = link_token
         self._link_lost_pending = False
-        self._current_tx_port = ""
-        self._current_rx_port = ""
+        self._current_data_port = ""
+        self._current_ctrl_port = ""
         self._current_baud = DEFAULT_BAUDRATE
+        self._current_ctrl_baud = CONTROL_BAUDRATE
+        self._packets_received = 0
         logger.debug(
-            "%s SerialWorker initialized: include_link=%s link_retries=%d "
-            "link_retry_interval=%.2fs link_timeout=%.2fs",
+            "%s SerialWorker initialized: include_link=%s link_retries=%d",
             LogTag.HW_SERIAL,
             self._include_link,
             self._link_connect_retries,
-            self._link_retry_interval_sec,
-            self._link_connect_timeout_sec,
         )
 
     @property
+    def current_data_port(self) -> str:
+        """Returns the active COM1 data port name."""
+        return self._current_data_port
+
+    @property
+    def current_ctrl_port(self) -> str:
+        """Returns the active COM2 control port name."""
+        return self._current_ctrl_port
+
+    @property
     def current_tx_port(self) -> str:
-        """Returns the active TX port name."""
-        return self._current_tx_port
+        """Returns the data port for compatibility with TX-oriented callers."""
+        return self._current_data_port
 
     @property
     def current_rx_port(self) -> str:
-        """Returns the active RX port name."""
-        return self._current_rx_port
+        """Returns the data port for compatibility with RX-oriented callers."""
+        return self._current_data_port
 
     @property
     def current_baud(self) -> int:
-        """Returns the active baud rate."""
+        """Returns the active optical data baudrate."""
         return self._current_baud
 
+    @property
+    def current_control_baud(self) -> int:
+        """Returns the fixed COM2 control baudrate."""
+        return self._current_ctrl_baud
+
+    @property
+    def packets_received(self) -> int:
+        """Returns the number of WinForm frames decoded since the last open."""
+        return self._packets_received
+
     def _on_link_lost(self) -> None:
-        """Records that the socket transport dropped (handled on next poll)."""
+        """Records that the virtual link dropped for the next poll cycle."""
         self._link_lost_pending = True
 
     @Slot(str, int)
     def open_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Opens one port used for both RX and TX (backward-compatible entry).
+        """Opens one shared data/control port for backward-compatible callers.
 
         Args:
-            port_name: Target port identifier.
-            baudrate: Baud rate integer.
+            port_name: Port identifier used for both roles.
+            baudrate: Optical data baudrate.
         """
         self.open_ports(port_name, port_name, baudrate)
 
     @Slot(str, str, int)
-    def open_ports(self, tx_port: str, rx_port: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Opens independent TX/RX serial connections and starts periodic polling.
+    def open_ports(
+        self,
+        data_port: str,
+        ctrl_port: str = "",
+        baudrate: int = DEFAULT_BAUDRATE,
+    ) -> None:
+        """Opens COM1 at the optical rate and COM2 at the MCU rate.
 
         Args:
-            tx_port: Target port identifier used for writes.
-            rx_port: Target port identifier used for reads.
-            baudrate: Baud rate integer.
+            data_port: COM1 optical data port.
+            ctrl_port: COM2 control port, or an empty string.
+            baudrate: Optical data baudrate.
         """
-        tx_name = (tx_port or "").strip()
-        rx_name = (rx_port or "").strip() or tx_name
+        self.open_hardware_ports(data_port, ctrl_port, baudrate, CONTROL_BAUDRATE)
+
+    @Slot(str, str, int, int)
+    def open_hardware_ports(
+        self,
+        data_port: str,
+        ctrl_port: str,
+        baudrate: int = DEFAULT_BAUDRATE,
+        ctrl_baudrate: int = CONTROL_BAUDRATE,
+    ) -> None:
+        """Opens COM1 and COM2 and starts the RX polling timer.
+
+        Args:
+            data_port: COM1 optical data port.
+            ctrl_port: COM2 control port, or an empty string.
+            baudrate: Optical data baudrate.
+            ctrl_baudrate: Fixed MCU control baudrate.
+        """
+        data_name = (data_port or "").strip()
+        ctrl_name = (ctrl_port or "").strip()
         try:
             self.close_port()
             logger.info(
-                "%s Opening serial ports: tx=%s rx=%s at %d bps",
+                "%s Opening hardware ports: COM1=%s @%d COM2=%s @%d",
                 LogTag.HW_SERIAL,
-                tx_name,
-                rx_name,
+                data_name,
                 baudrate,
+                ctrl_name or "<none>",
+                ctrl_baudrate,
             )
-
             self._transport = create_transport(
-                tx_port=tx_name,
-                rx_port=rx_name,
+                data_port=data_name,
+                ctrl_port=ctrl_name or None,
                 baudrate=baudrate,
+                ctrl_baudrate=ctrl_baudrate,
                 link_endpoints=self._link_endpoints,
                 link_connect_retries=self._link_connect_retries,
                 link_retry_interval_sec=self._link_retry_interval_sec,
@@ -264,61 +278,42 @@ class SerialWorker(QObject):
             if hasattr(self._transport, "on_link_lost"):
                 self._transport.on_link_lost = self._on_link_lost
             self._link_lost_pending = False
-            logger.info(
-                "%s Transport created: %s for tx=%s rx=%s baud=%d",
-                LogTag.HW_SERIAL,
-                transport_kind,
-                tx_name,
-                rx_name,
-                baudrate,
-            )
-
             self._transport.open()
             self._rx_accumulation = bytearray()
-            self._rx_consumed = 0
             self._rx_dropped = 0
-            self._framer_stats = FramerStats()
-            self._current_tx_port = tx_name
-            self._current_rx_port = rx_name
-            self._current_baud = baudrate
+            self._packets_received = 0
+            self._current_data_port = data_name
+            self._current_ctrl_port = ctrl_name
+            self._current_baud = int(baudrate)
+            self._current_ctrl_baud = int(ctrl_baudrate)
 
-            from ir_terminal.core.mock_serial import MockSerialPort
-
-            poll_ms = MOCK_POLL_MS if isinstance(self._transport, MockSerialPort) else HW_POLL_MS
+            poll_ms = self._transport.poll_interval_ms
             self._poll_timer = QTimer(self)
-            self._poll_timer.setInterval(poll_ms)  # 500 Hz mock / 100 Hz hardware
+            self._poll_timer.setInterval(poll_ms)
             self._poll_timer.timeout.connect(self._poll_serial)
             self._poll_timer.start()
-            logger.debug(
-                "%s Poll timer started: interval=%dms mock=%s",
-                LogTag.HW_SERIAL,
-                poll_ms,
-                poll_ms == MOCK_POLL_MS,
-            )
             self._start_port_watcher()
 
             logger.info(
-                "%s Port OPENED: tx=%s rx=%s @ %d bps via %s poll=%dms rx_cap=%dB",
+                "%s Hardware OPEN: COM1=%s @%d COM2=%s @%d via %s poll=%dms",
                 LogTag.HW_SERIAL,
-                tx_name,
-                rx_name,
+                data_name,
                 baudrate,
+                ctrl_name or "<none>",
+                ctrl_baudrate,
                 transport_kind,
                 poll_ms,
-                RING_BUFFER_CAPACITY,
             )
-            self.connected.emit(tx_name, baudrate)
-            self.ports_connected.emit(tx_name, rx_name, baudrate)
-
+            self.connected.emit(data_name, int(baudrate))
+            self.ports_connected.emit(data_name, ctrl_name, int(baudrate))
         except Exception as exc:
-            self._current_tx_port = ""
-            self._current_rx_port = ""
+            self._current_data_port = ""
+            self._current_ctrl_port = ""
             logger.exception(
-                "%s Failed to open serial ports tx=%s rx=%s @ %d bps (%s: %s)",
+                "%s Hardware open FAILED: COM1=%s COM2=%s (%s: %s)",
                 LogTag.HW_SERIAL,
-                tx_name,
-                rx_name,
-                baudrate,
+                data_name,
+                ctrl_name or "<none>",
                 type(exc).__name__,
                 exc,
             )
@@ -326,181 +321,90 @@ class SerialWorker(QObject):
 
     @Slot()
     def close_port(self) -> None:
-        """Stops polling timer and cleanly closes serial transport."""
-        was_active = self._transport is not None or bool(self._current_tx_port or self._current_rx_port)
-        transport_kind = type(self._transport).__name__ if self._transport else "none"
-        buffered = len(self._rx_accumulation) - self._rx_consumed
-        stats = self._framer_stats.snapshot()
-        logger.debug(
-            "%s Port close requested: transport=%s was_active=%s tx=%s rx=%s",
-            LogTag.HW_SERIAL,
-            transport_kind,
-            was_active,
-            self._current_tx_port or "<none>",
-            self._current_rx_port or "<none>",
+        """Stops polling and closes the transport safely."""
+        was_active = self._transport is not None or bool(
+            self._current_data_port or self._current_ctrl_port
         )
+        transport_kind = type(self._transport).__name__ if self._transport else "none"
+        buffered = len(self._rx_accumulation)
         if self._poll_timer is not None:
             self._poll_timer.stop()
             self._poll_timer = None
-            logger.debug("%s Poll timer stopped", LogTag.HW_SERIAL)
         self._stop_port_watcher()
-
         if self._transport is not None:
             try:
                 self._transport.close()
             except Exception as exc:
                 logger.warning(
-                    "%s Error during transport close (%s): %s: %s",
+                    "%s Transport close warning (%s): %s",
                     LogTag.HW_SERIAL,
                     transport_kind,
-                    type(exc).__name__,
                     exc,
                 )
-
         self._transport = None
         self._rx_accumulation = bytearray()
-        self._rx_consumed = 0
         self._link_lost_pending = False
-        self._current_tx_port = ""
-        self._current_rx_port = ""
+        self._current_data_port = ""
+        self._current_ctrl_port = ""
         if was_active:
             logger.info(
-                "%s Port CLOSED (%s): buffered=%dB dropped=%dB frames_ok=%d "
-                "crc_err=%d eof_err=%d len_err=%d noise=%dB",
+                "%s Hardware CLOSED (%s): buffered=%dB packets=%d dropped=%dB",
                 LogTag.HW_SERIAL,
                 transport_kind,
                 buffered,
+                self._packets_received,
                 self._rx_dropped,
-                stats["frames_ok"],
-                stats["crc_errors"],
-                stats["eof_errors"],
-                stats["len_errors"],
-                stats["noise_bytes"],
             )
             self.disconnected.emit()
 
     @Slot(bytes)
     def inject_rx_data(self, data: bytes) -> None:
-        """Thread-safe RX injection slot (replaces direct transport access).
+        """Injects raw COM1 bytes into the RX accumulation buffer.
 
         Args:
-            data: Raw bytes to feed into the RX accumulation buffer.
+            data: Raw bytes to parse as an incoming optical stream.
         """
         if not data:
             return
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s RX inject: len=%dB hex=%s",
-                LogTag.HW_SERIAL,
-                len(data),
-                format_hex_preview(data),
-            )
         self._append_rx_chunk(data)
-        self._drain_rx_buffer(emit_raw=False)
+        self._drain_rx_buffer()
 
     def _append_rx_chunk(self, chunk: bytes) -> None:
-        """Appends chunk with a hard cap; drops oldest on overflow (counted)."""
+        """Appends RX bytes and bounds the buffer to the ring capacity."""
         self._rx_accumulation.extend(chunk)
-        live = len(self._rx_accumulation) - self._rx_consumed
-        if live > RING_BUFFER_CAPACITY:
-            overflow = live - RING_BUFFER_CAPACITY
+        overflow = len(self._rx_accumulation) - RING_BUFFER_CAPACITY
+        if overflow > 0:
             del self._rx_accumulation[:overflow]
-            self._rx_consumed = max(0, self._rx_consumed - overflow)
             self._rx_dropped += overflow
             logger.warning(
-                "%s RX accumulation overflow: dropped %d oldest bytes "
-                "(cap=%dB total_dropped=%dB incoming_hex=%s)",
+                "%s RX accumulation overflow: dropped %d oldest bytes (cap=%dB)",
                 LogTag.HW_SERIAL,
                 overflow,
                 RING_BUFFER_CAPACITY,
-                self._rx_dropped,
-                format_hex_preview(chunk, max_bytes=16),
             )
 
-    def _drain_rx_buffer(self, emit_raw: bool = True) -> None:
-        """Parses accumulated bytes and emits packets with framer diagnostics."""
-        before = self._framer_stats.snapshot()
-        pending = memoryview(self._rx_accumulation)[self._rx_consumed :]
-        pending_len = len(pending)
-        try:
-            demux_result = demux_stream(pending, self._framer_stats)
-            packets = demux_result.packets
-            remaining = demux_result.remaining
-            events = demux_result.events
-        except Exception:
-            logger.exception(
-                "%s RX demux failed; falling back to frame-only parser (scanned=%dB)",
-                LogTag.PROTO_FRAME,
-                pending_len,
-            )
-            packets, remaining = parse_frames_with_stats(pending, self._framer_stats)[:2]
-            events = list(packets)
-        pending.release()
-        self._rx_consumed = len(self._rx_accumulation) - len(remaining)
-        if self._rx_consumed >= RX_COMPACT_THRESHOLD:
-            del self._rx_accumulation[: self._rx_consumed]
-            self._rx_consumed = 0
-        after = self._framer_stats.snapshot()
-        for kind in ("crc_errors", "eof_errors", "len_errors"):
-            delta = after[kind] - before[kind]
-            if delta > 0:
-                logger.warning(
-                    "%s Framer %s x%d (scanned=%dB parsed=%d totals=%s)",
-                    LogTag.PROTO_FRAME,
-                    kind,
-                    delta,
-                    pending_len,
-                    len(packets),
-                    after,
-                )
-                self.framer_error.emit(kind, delta)
-        if after["noise_bytes"] != before["noise_bytes"]:
+    def _drain_rx_buffer(self) -> None:
+        """Parses complete WinForm frames and emits one signal per packet."""
+        packets, remaining = parse_stream(self._rx_accumulation)
+        self._rx_accumulation = remaining
+        for packet in packets:
+            self._packets_received += 1
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
-                    "%s Framer noise_bytes=%d (+%d) scanned=%dB",
+                    "%s RX packet seq=0x%08X len=%dB payload_hex=%s",
                     LogTag.PROTO_FRAME,
-                    after["noise_bytes"],
-                    after["noise_bytes"] - before["noise_bytes"],
-                    pending_len,
+                    packet.sequence,
+                    packet.length,
+                    format_hex_preview(packet.data, max_bytes=16),
                 )
-        for event in events:
-            if isinstance(event, ControlMessage):
-                if event.baudrate is not None:
-                    logger.info(
-                        "%s RX control %s: baud=%d reason=%r raw=%r",
-                        LogTag.BAUD_CTRL,
-                        event.kind,
-                        event.baudrate,
-                        event.reason,
-                        event.raw,
-                    )
-                else:
-                    logger.info(
-                        "%s RX control %s: reason=%r raw=%r",
-                        LogTag.BAUD_CTRL,
-                        event.kind,
-                        event.reason,
-                        event.raw,
-                    )
-                self.control_message_received.emit(event.raw)
-                continue
-            pkt = event
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(
-                    "%s RX packet %s crc=0x%08X payload_hex=%s",
-                    LogTag.PROTO_FRAME,
-                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload), pkt.crc32),
-                    pkt.crc32 & 0xFFFFFFFF,
-                    format_hex_preview(pkt.payload, max_bytes=16),
-                )
-            self.packet_received.emit(pkt)
+            self.packet_received.emit(packet)
 
     @Slot(bytes)
     def send_bytes(self, data: bytes) -> None:
-        """Transmits raw binary bytes to the serial transport.
+        """Writes raw bytes to the COM1 data channel.
 
         Args:
-            data: Raw bytes to write out to UART.
+            data: Raw bytes to transmit.
         """
         if not self._transport or not self._transport.is_open:
             logger.warning(
@@ -509,61 +413,95 @@ class SerialWorker(QObject):
                 len(data),
                 format_hex_preview(data),
             )
-            self.error_occurred.emit("Cannot send data: Serial port is not connected")
+            self.error_occurred.emit("Cannot send data: serial link is not connected")
             return
-
         try:
             self._transport.write(data)
-            if logger.isEnabledFor(logging.DEBUG):
-                self._describe_tx_bytes(data)
             self.raw_data_sent.emit(data)
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "%s TX bytes len=%dB hex=%s",
+                    LogTag.PROTO_FRAME,
+                    len(data),
+                    format_hex_preview(data),
+                )
         except Exception as exc:
             logger.exception(
-                "%s Write error (%s: %s): len=%dB hex=%s",
+                "%s Write error (%s: %s): len=%dB",
                 LogTag.HW_SERIAL,
                 type(exc).__name__,
                 exc,
                 len(data),
-                format_hex_preview(data),
             )
             self.error_occurred.emit(f"Write error: {exc}")
 
+    @Slot(int)
+    def set_baud(self, baud: int) -> None:
+        """Sends the COM2 baud command and reconfigures COM1.
+
+        Args:
+            baud: Target optical baudrate.
+        """
+        if not self._transport or not self._transport.is_open:
+            self.error_occurred.emit("Cannot change baudrate: serial link is not connected")
+            return
+        try:
+            code = self._transport.send_baud_command(baud)
+            self._transport.reconfigure_data_baud(baud)
+            self._current_baud = int(baud)
+            logger.info(
+                "%s Baud switch complete: code=%r baud=%d",
+                LogTag.BAUD_CTRL,
+                code,
+                baud,
+            )
+            self.baud_command_sent.emit(int(baud), code)
+            self.baud_changed.emit(int(baud))
+        except Exception as exc:
+            logger.exception(
+                "%s Baud switch FAILED (%s: %s) target=%d",
+                LogTag.BAUD_CTRL,
+                type(exc).__name__,
+                exc,
+                baud,
+            )
+            self.error_occurred.emit(f"Baud switch failed: {exc}")
+
     @Slot()
     def _poll_serial(self) -> None:
-        """Periodically polls for incoming serial bytes."""
+        """Polls COM1 for bytes and parses complete frames."""
         if self._transport is None:
             return
         if self._link_lost_pending:
             self._link_lost_pending = False
             logger.error(
-                "%s Link LOST: peer/broker disconnected (port=%s); port closed",
+                "%s Link LOST: peer or broker disconnected (transport=%s)",
                 LogTag.HW_SERIAL,
                 type(self._transport).__name__,
             )
             self.error_occurred.emit("Link lost: peer or broker disconnected")
             self.close_port()
-            self.disconnected.emit()
             return
         if not self._transport.is_open:
             return
-
         try:
             available = self._transport.in_waiting
-            if available > 0:
-                chunk = self._transport.read(available)
-                if chunk:
-                    if logger.isEnabledFor(logging.DEBUG):
-                        logger.debug(
-                            "%s Poll RX: req=%dB got=%dB hex=%s",
-                            LogTag.HW_SERIAL,
-                            available,
-                            len(chunk),
-                            format_hex_preview(chunk),
-                        )
-                    self.raw_data_received.emit(chunk)
-                    self._append_rx_chunk(chunk)
-                    self._drain_rx_buffer(emit_raw=False)
-
+            if available <= 0:
+                return
+            chunk = self._transport.read(available)
+            if not chunk:
+                return
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "%s Poll RX: req=%dB got=%dB hex=%s",
+                    LogTag.HW_SERIAL,
+                    available,
+                    len(chunk),
+                    format_hex_preview(chunk),
+                )
+            self.raw_data_received.emit(chunk)
+            self._append_rx_chunk(chunk)
+            self._drain_rx_buffer()
         except Exception as exc:
             logger.exception(
                 "%s Serial read poll error (%s: %s); closing port",
@@ -574,56 +512,9 @@ class SerialWorker(QObject):
             self.error_occurred.emit(f"Read error: {exc}")
             self.close_port()
 
-    def _describe_tx_bytes(self, data: bytes) -> None:
-        """Logs a one-line TX descriptor, decoding the frame header when possible."""
-        control = _tx_control_message(data)
-        if control is not None:
-            if control.baudrate is not None:
-                logger.debug(
-                    "%s TX control %s: baud=%d payload=%dB raw=%r",
-                    LogTag.BAUD_CTRL,
-                    control.kind,
-                    control.baudrate,
-                    len(data),
-                    control.raw,
-                )
-            else:
-                logger.debug(
-                    "%s TX control %s: reason=%r payload=%dB raw=%r",
-                    LogTag.BAUD_CTRL,
-                    control.kind,
-                    control.reason,
-                    len(data),
-                    control.raw,
-                )
-            return
-        if len(data) >= 6 and data[0] == 0x55 and data[1] == 0xAA:
-            seq = data[2]
-            opcode = data[3]
-            payload_len = int.from_bytes(data[4:6], "little")
-            logger.debug(
-                "%s TX bytes %s frame_len=%dB hex=%s",
-                LogTag.PROTO_FRAME,
-                format_frame_summary(seq, opcode, payload_len),
-                len(data),
-                format_hex_preview(data),
-            )
-        else:
-            logger.debug(
-                "%s TX raw len=%dB hex=%s (no SOF header)",
-                LogTag.HW_SERIAL,
-                len(data),
-                format_hex_preview(data),
-            )
-
     def _start_port_watcher(self) -> None:
-        """Starts hotplug polling (emits ports_changed only on change)."""
+        """Starts the hotplug port watcher."""
         self._last_ports = scan_available_port_infos(self._include_link)
-        logger.debug(
-            "%s Hotplug watcher started: initial_ports=%s",
-            LogTag.HW_SERIAL,
-            self._last_ports,
-        )
         if self._port_poll_timer is None:
             self._port_poll_timer = QTimer(self)
             self._port_poll_timer.setInterval(1500)
@@ -631,15 +522,14 @@ class SerialWorker(QObject):
             self._port_poll_timer.start()
 
     def _stop_port_watcher(self) -> None:
-        """Stops hotplug polling."""
+        """Stops the hotplug port watcher."""
         if self._port_poll_timer is not None:
             self._port_poll_timer.stop()
             self._port_poll_timer = None
-            logger.debug("%s Hotplug watcher stopped", LogTag.HW_SERIAL)
 
     @Slot()
     def _poll_ports(self) -> None:
-        """Emits ports_changed when the OS port list differs."""
+        """Emits ports_changed when the OS port list changes."""
         try:
             current = scan_available_port_infos(self._include_link)
             if current != self._last_ports:
@@ -661,28 +551,38 @@ class SerialWorker(QObject):
 
     @property
     def rx_dropped_bytes(self) -> int:
-        """Returns cumulative RX accumulation overflow drops."""
+        """Returns cumulative RX overflow drops."""
         return self._rx_dropped
 
     @property
     def framer_stats_snapshot(self) -> dict[str, int]:
-        """Returns current framer diagnostics."""
-        return self._framer_stats.snapshot()
+        """Returns a minimal parser statistics snapshot for backward compatibility."""
+        return {
+            "frames_ok": self._packets_received,
+            "noise_bytes": 0,
+            "crc_errors": 0,
+            "eof_errors": 0,
+            "len_errors": 0,
+        }
+
+    def _describe_tx_bytes(self, data: bytes) -> None:
+        """Logs a one-line TX descriptor for debugging."""
+        logger.debug(
+            "%s TX summary len=%dB packet=%s",
+            LogTag.PROTO_FRAME,
+            len(data),
+            isinstance(data, (bytes, bytearray)),
+        )
 
 
 def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo]:
-    """Scans available ports and returns detailed metadata for each one.
-
-    Merges ``pyserial`` enumeration with the Windows registry so virtual COM
-    drivers that pyserial misses still show up, then appends
-    ``MOCK_COM_LOOPBACK`` and (when enabled) ``LINK_A``/``LINK_B``.
+    """Scans host serial ports and appends the virtual mock ports.
 
     Args:
-        include_link: Whether to list the LINK_A/B virtual ports. None falls
-            back to the IR_ENABLE_DUAL_MOCK env gate (back-compat).
+        include_link: Whether to list LINK_A/B virtual ports.
 
     Returns:
-        Naturally sorted, de-duplicated list of PortInfo records.
+        Naturally sorted, de-duplicated PortInfo records.
     """
     infos: list[PortInfo] = []
     seen: set[str] = set()
@@ -733,48 +633,28 @@ def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo
                 label=f"{extra} - Windows Registry Serial Port",
             )
         )
-    try:
-        from pathlib import Path
-
-        for pty_file in sorted(Path("/tmp").glob("LINK_*")):
-            pty_path = str(pty_file)
-            if pty_path not in seen and (pty_file.exists() or pty_file.is_symlink()):
-                seen.add(pty_path)
-                infos.append(
-                    PortInfo(
-                        device=pty_path,
-                        description="Virtual Dual COM (PTY)",
-                        manufacturer=None,
-                        vid=None,
-                        pid=None,
-                        hwid="",
-                        label=f"{pty_path} - Virtual Dual COM (PTY)",
-                    )
-                )
-    except OSError:
-        pass
-    infos.append(_virtual_port_info("MOCK_COM_LOOPBACK", "Virtual Loopback"))
-    link_enabled = is_dual_mock_enabled() if include_link is None else include_link
-    if link_enabled:
-        infos.append(_virtual_port_info("LINK_A", "Virtual Dual-Link"))
-        infos.append(_virtual_port_info("LINK_B", "Virtual Dual-Link"))
-        infos.append(_virtual_port_info("LINK_A_TX", "Virtual Dual-Link TX"))
-        infos.append(_virtual_port_info("LINK_A_RX", "Virtual Dual-Link RX"))
-        infos.append(_virtual_port_info("LINK_B_TX", "Virtual Dual-Link TX"))
-        infos.append(_virtual_port_info("LINK_B_RX", "Virtual Dual-Link RX"))
+    if is_dev_mode():
+        infos.append(_virtual_port_info("MOCK_COM_LOOPBACK", "Virtual Loopback"))
+        infos.append(_virtual_port_info("MOCK_COM1", "Virtual COM1 Data"))
+        infos.append(_virtual_port_info("MOCK_COM2", "Virtual COM2 Control"))
+        link_enabled = is_dual_mock_enabled() if include_link is None else include_link
+        if link_enabled:
+            infos.append(_virtual_port_info("LINK_A", "Virtual Dual-Link"))
+            infos.append(_virtual_port_info("LINK_B", "Virtual Dual-Link"))
+            infos.append(_virtual_port_info("LINK_A_TX", "Virtual Dual-Link TX"))
+            infos.append(_virtual_port_info("LINK_A_RX", "Virtual Dual-Link RX"))
+            infos.append(_virtual_port_info("LINK_B_TX", "Virtual Dual-Link TX"))
+            infos.append(_virtual_port_info("LINK_B_RX", "Virtual Dual-Link RX"))
     return sorted(infos, key=lambda info: _natural_port_key(info.device))
 
 
 def scan_available_ports(include_link: bool | None = None) -> list[str]:
-    """Scans and returns available port device names plus MOCK options.
-
-    Backward-compatible string projection of :func:`scan_available_port_infos`.
+    """Scans and returns available port device names plus virtual options.
 
     Args:
-        include_link: Whether to list the LINK_A/B virtual ports. None falls
-            back to the IR_ENABLE_DUAL_MOCK env gate (back-compat).
+        include_link: Whether to list LINK_A/B virtual ports.
 
     Returns:
-        Naturally sorted, de-duplicated list of port identifiers.
+        Naturally sorted port identifiers.
     """
     return [info.device for info in scan_available_port_infos(include_link)]

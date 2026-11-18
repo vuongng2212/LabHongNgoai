@@ -22,30 +22,19 @@ from ir_terminal.config import (
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.core.serial_worker import PortInfo
 from ir_terminal.protocol.constants import (
-    BAUD_ACK_TIMEOUT_MS,
-    DEFAULT_HEALTH_CHECK_SEC,
+    CONTROL_BAUDRATE,
     DEFAULT_OPTICAL_BAUDRATE,
-    PHYSICAL_BAUDRATE,
     SUPPORTED_BAUDRATES,
-    Opcode,
 )
-from ir_terminal.protocol.control_channel import (
-    ControlKind,
-    format_set_baud,
-    parse_control_line,
-)
-from ir_terminal.protocol.packet import Packet
+from ir_terminal.protocol.packet import WinFormPacket
 from ir_terminal.services.chat_service import ChatService
-from ir_terminal.services.file_transfer_service import FileTransferService, TransferState
+from ir_terminal.services.file_transfer_service import FileTransferService
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.services.telemetry_service import TelemetryService
-from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview, opcode_name
+from ir_terminal.utils.logger import LogTag, format_hex_preview
 from ir_terminal.utils.path_helpers import get_logs_dir
 
 logger = logging.getLogger(__name__)
-
-_PING_HEALTH_PAYLOAD: bytes = b"IR_HEALTH"
-_PING_MANUAL_PAYLOAD: bytes = b"IR_PING"
 
 
 class BackendBridge(QObject):
@@ -54,40 +43,30 @@ class BackendBridge(QObject):
     portConnected: ClassVar[Signal] = Signal(str, str, int)
     portDisconnected: ClassVar[Signal] = Signal()
     errorOccurred: ClassVar[Signal] = Signal(str)
-    pingResult: ClassVar[Signal] = Signal(float, int)  # (rtt_ms, seq)
-    healthResult: ClassVar[Signal] = Signal(float, int)  # (rtt_ms, seq) silent auto check
-    rawRxData: ClassVar[Signal] = Signal(str)  # hex string
-    rawTxData: ClassVar[Signal] = Signal(str)  # hex string
+    pingResult: ClassVar[Signal] = Signal(float, int)
+    healthResult: ClassVar[Signal] = Signal(float, int)
+    rawRxData: ClassVar[Signal] = Signal(str)
+    rawTxData: ClassVar[Signal] = Signal(str)
 
     closeWindowRequested: ClassVar[Signal] = Signal()
     minimizeWindowRequested: ClassVar[Signal] = Signal()
     maximizeWindowRequested: ClassVar[Signal] = Signal()
 
-    chatMessageReceived: ClassVar[Signal] = Signal(str, str, bool)  # (text, time, is_outgoing)
-    chatFrameInspected: ClassVar[Signal] = Signal(str, int, int, int)  # (hex, seq, cmd, len)
+    chatMessageReceived: ClassVar[Signal] = Signal(str, str, bool)
 
-    transferProgress: ClassVar[Signal] = Signal(
-        int, float, float, int, int
-    )  # (pct, speed_kbps, eta_sec, cur_chunk, total_chunks)
-    transferCompleted: ClassVar[Signal] = Signal(
-        str, int, float, str
-    )  # (filename, bytes_sent, elapsed_sec, crc_hex)
-    transferFailed: ClassVar[Signal] = Signal(str)  # (reason)
-    transferStateChanged: ClassVar[Signal] = Signal(str)  # (state)
+    transferProgress: ClassVar[Signal] = Signal(int, float, float, int, int)
+    transferCompleted: ClassVar[Signal] = Signal(str, int, float, str)
+    transferFailed: ClassVar[Signal] = Signal(str)
+    transferStateChanged: ClassVar[Signal] = Signal(str)
 
     opticalBaudChanged: ClassVar[Signal] = Signal(int)
     opticalBaudPending: ClassVar[Signal] = Signal(int)
     baudControlStatus: ClassVar[Signal] = Signal(str, str)
 
-    telemetryUpdated: ClassVar[Signal] = Signal(
-        float, float, float, int, int
-    )  # (speed_kbps, loss_pct, rtt_ms, chunks_count, frames_count)
-    snifferFrameLogged: ClassVar[Signal] = Signal(
-        str, str, str, str, str, str, float
-    )  # (time_str, frame_id, carrier, type_str, payload_preview, checksum_status, latency_ms)
-    portsChanged: ClassVar[Signal] = Signal(str)  # JSON list of ports
-    chatTruncated: ClassVar[Signal] = Signal(str, int)  # (reason, original_bytes)
-    settingsChanged: ClassVar[Signal] = Signal(str)  # JSON transfer settings
+    telemetryUpdated: ClassVar[Signal] = Signal(float, float, float, int, int)
+    snifferFrameLogged: ClassVar[Signal] = Signal(str, str, str, str, str, str, float)
+    portsChanged: ClassVar[Signal] = Signal(str)
+    settingsChanged: ClassVar[Signal] = Signal(str)
 
     def __init__(
         self,
@@ -115,10 +94,14 @@ class BackendBridge(QObject):
         self._launch_config = launch_config
         self._instance_context = instance_context
         self._storage = storage_service or StorageService()
-        self._chat_service = chat_service or ChatService(self._serial_manager, self._storage)
         self._file_service = file_service or FileTransferService(
             self._serial_manager, storage_service=self._storage
         )
+        self._chat_service = chat_service or ChatService(
+            self._serial_manager, self._storage, file_transfer_service=self._file_service
+        )
+        if self._chat_service.file_transfer_service is None:
+            self._chat_service.set_file_transfer_service(self._file_service)
         self._telemetry = telemetry_service or TelemetryService(storage_service=self._storage)
 
         self._last_ping_time: float = 0.0
@@ -131,21 +114,7 @@ class BackendBridge(QObject):
             else DEFAULT_OPTICAL_BAUDRATE
         )
         self._pending_optical_baud: int | None = None
-        self._baud_request_generation: int = 0
-
         self._is_connected = False
-        self._health_interval_sec = DEFAULT_HEALTH_CHECK_SEC
-        self._health_timer = QTimer(self)
-        self._health_timer.setSingleShot(False)
-        self._health_timer.setInterval(int(self._health_interval_sec * 1000))
-        self._health_timer.timeout.connect(self._on_health_tick)
-
-        self._baud_ack_timer = QTimer(self)
-        self._baud_ack_timer.setSingleShot(True)
-        self._baud_ack_timer.setInterval(BAUD_ACK_TIMEOUT_MS)
-        self._baud_ack_timer.timeout.connect(self._on_baud_ack_timeout)
-        self._baud_retry_count = 0
-        self._max_baud_retries = 2
 
         self._wire_signals()
 
@@ -158,19 +127,14 @@ class BackendBridge(QObject):
         self._serial_manager.raw_rx.connect(self._on_raw_rx)
         self._serial_manager.raw_tx.connect(self._on_raw_tx)
         self._serial_manager.packet_received.connect(self._on_packet_received)
-        self._serial_manager.control_message_received.connect(self._on_control_message)
+        self._serial_manager.baud_changed.connect(self._on_baud_changed)
+        self._serial_manager.baud_command_sent.connect(self._on_baud_command_sent)
         try:
             self._serial_manager.ports_changed.connect(self._on_ports_changed)
-            self._serial_manager.framer_error.connect(self._on_framer_error)
         except Exception:
             pass
 
         self._chat_service.message_received.connect(self.chatMessageReceived)
-        self._chat_service.frame_inspected.connect(self.chatFrameInspected)
-        try:
-            self._chat_service.message_truncated.connect(self.chatTruncated)
-        except Exception:
-            pass
 
         self._file_service.progress_updated.connect(self._on_transfer_progress)
         self._file_service.transfer_completed.connect(self.transferCompleted)
@@ -180,166 +144,84 @@ class BackendBridge(QObject):
         self._telemetry.telemetry_updated.connect(self.telemetryUpdated)
         self._telemetry.sniffer_frame_logged.connect(self.snifferFrameLogged)
 
-    def _on_link_up(self, tx_port: str, rx_port: str, physical_baud: int) -> None:
-        """Starts health checks and announces the optical rate once linked."""
-        if physical_baud != PHYSICAL_BAUDRATE:
-            logger.warning(
-                "%s Bridge link UP with unexpected physical baudrate=%d expected=%d",
-                LogTag.HW_SERIAL,
-                physical_baud,
-                PHYSICAL_BAUDRATE,
-            )
+    def _on_link_up(self, data_port: str, ctrl_port: str, baudrate: int) -> None:
+        """Announces COM1/COM2 once both handles are open.
+
+        Args:
+            data_port: COM1 optical data port.
+            ctrl_port: COM2 STM32 control port, or an empty string.
+            baudrate: Optical data baudrate applied to COM1.
+        """
         self._is_connected = True
-        if self._health_interval_sec > 0:
-            self._health_timer.start()
+        self._optical_baud = int(baudrate)
+        self._pending_optical_baud = None
         logger.info(
-            "%s Bridge link UP: tx=%s rx=%s physical=%d optical=%d "
-            "health_every=%.1fs auto_ping=%s",
+            "%s Bridge link UP: COM1=%s @%d COM2=%s @%d",
             LogTag.IPC_BRIDGE,
-            tx_port,
-            rx_port,
-            physical_baud,
-            self._optical_baud,
-            self._health_interval_sec,
-            self._health_timer.isActive(),
+            data_port,
+            baudrate,
+            ctrl_port or "<none>",
+            CONTROL_BAUDRATE,
         )
-        self.portConnected.emit(tx_port, rx_port, self._optical_baud)
+        self.portConnected.emit(data_port, ctrl_port, self._optical_baud)
         self.opticalBaudChanged.emit(self._optical_baud)
-        QTimer.singleShot(200, self._sync_optical_baud)
+        self.baudControlStatus.emit(
+            "ok",
+            f"COM1 {data_port} @ {self._optical_baud} bps • COM2 "
+            f"{ctrl_port or '<none>'} @ {CONTROL_BAUDRATE} bps",
+        )
+        if ctrl_port:
+            QTimer.singleShot(200, lambda: self._request_baud(self._optical_baud))
 
     def _on_link_down(self) -> None:
-        """Stops periodic health checks once the optical link is closed."""
+        """Clears bridge connection state when the hardware link closes."""
         was_connected = self._is_connected
         self._is_connected = False
-        self._health_timer.stop()
-        self._baud_ack_timer.stop()
         self._pending_optical_baud = None
-        logger.info(
-            "%s Bridge link DOWN (was_connected=%s) health_timer_stopped",
-            LogTag.IPC_BRIDGE,
-            was_connected,
-        )
+        logger.info("%s Bridge link DOWN (was_connected=%s)", LogTag.IPC_BRIDGE, was_connected)
 
-    def _sync_optical_baud(self) -> None:
-        """Sends the desired optical rate after the physical link is open."""
+    def _request_baud(self, baudrate: int) -> None:
+        """Sends one COM2 baud command and reconfigures COM1.
+
+        Args:
+            baudrate: Target optical baudrate.
+        """
         if not self._is_connected:
+            self.baudControlStatus.emit("error", "Link is not connected")
             return
-        if self._optical_baud not in SUPPORTED_BAUDRATES:
-            logger.warning(
-                "%s Skipping SET_BAUD for unsupported optical rate %d",
-                LogTag.BAUD_CTRL,
-                self._optical_baud,
-            )
+        if baudrate not in SUPPORTED_BAUDRATES:
+            self.baudControlStatus.emit("error", f"Unsupported optical baudrate {baudrate}")
             return
-        self._pending_optical_baud = self._optical_baud
-        self._baud_retry_count = 0
-        self._baud_request_generation += 1
-        self.opticalBaudPending.emit(self._optical_baud)
-        self._baud_ack_timer.start()
+        self._pending_optical_baud = baudrate
+        logger.info("%s Sending COM2 baud command: %d", LogTag.BAUD_CTRL, baudrate)
+        self._serial_manager.send_baud_command(baudrate)
+
+    def _on_baud_command_sent(self, baudrate: int, code: str) -> None:
+        """Reports the exact control code written to COM2.
+
+        Args:
+            baudrate: Target optical baudrate.
+            code: Two-character firmware command.
+        """
         logger.info(
-            "%s Sync optical baudrate on link-up: %d",
-            LogTag.BAUD_CTRL,
-            self._optical_baud,
+            "%s COM2 command sent: %r -> %d bps", LogTag.BAUD_CTRL, code, baudrate
         )
-        self._serial_manager.send_control_line(format_set_baud(self._optical_baud))
+        self.baudControlStatus.emit("ok", f"COM2 command {code!r} for {baudrate} bps")
 
-    def _on_baud_ack_timeout(self) -> None:
-        """Clears a pending request without touching the physical link."""
-        pending = self._pending_optical_baud
-        if pending is None:
-            return
-        if self._baud_retry_count < self._max_baud_retries and self._is_connected:
-            self._baud_retry_count += 1
-            logger.info(
-                "%s Retrying SET_BAUD:%d (attempt %d/%d)",
-                LogTag.BAUD_CTRL,
-                pending,
-                self._baud_retry_count,
-                self._max_baud_retries,
-            )
-            self._baud_ack_timer.start()
-            self._serial_manager.send_control_line(format_set_baud(pending))
-            return
-        self._pending_optical_baud = None
-        self._baud_retry_count = 0
-        logger.warning(
-            "%s No BAUD_OK for pending optical rate %d; keeping %d",
-            LogTag.BAUD_CTRL,
-            pending,
-            self._optical_baud,
-        )
-        self.baudControlStatus.emit("timeout", f"No BAUD_OK for {pending} bps")
+    def _on_baud_changed(self, baudrate: int) -> None:
+        """Stores a confirmed optical rate and notifies the UI.
 
-    def _on_control_message(self, message: str) -> None:
-        """Applies a validated baud-control line received from the STM32."""
-        parsed = parse_control_line(message)
-        if parsed is None:
-            logger.debug("%s Ignored control line=%r", LogTag.BAUD_CTRL, message)
-            return
-
-        if parsed.kind == ControlKind.BAUD_OK:
-            value = parsed.baudrate
-            if value is None:
-                return
-            if self._pending_optical_baud is None:
-                if value != self._optical_baud:
-                    logger.debug(
-                        "%s Ignored stale BAUD_OK=%d active=%d",
-                        LogTag.BAUD_CTRL,
-                        value,
-                        self._optical_baud,
-                    )
-                    return
-            elif value != self._pending_optical_baud:
-                logger.debug(
-                    "%s Ignored mismatched BAUD_OK=%d pending=%d",
-                    LogTag.BAUD_CTRL,
-                    value,
-                    self._pending_optical_baud,
-                )
-                return
-            self._apply_optical_baud(value, "ok")
-            return
-
-        if parsed.kind == ControlKind.NOTIFY_BAUD:
-            value = parsed.baudrate
-            if value is None:
-                return
-            self._baud_request_generation += 1
-            self._apply_optical_baud(value, "notify")
-            return
-
-        if parsed.kind == ControlKind.BAUD_ERR:
-            self._pending_optical_baud = None
-            self._baud_ack_timer.stop()
-            logger.warning(
-                "%s Baud change rejected by STM32: %s (keeping %d)",
-                LogTag.BAUD_CTRL,
-                parsed.reason,
-                self._optical_baud,
-            )
-            self.baudControlStatus.emit("error", parsed.reason)
-            return
-
-        if parsed.kind == ControlKind.SET_BAUD:
-            logger.debug("%s Ignored SET_BAUD echo=%r", LogTag.BAUD_CTRL, message)
-
-    def _apply_optical_baud(self, baudrate: int, status: str) -> None:
-        """Stores a confirmed optical rate and notifies the UI."""
+        Args:
+            baudrate: New COM1 optical baudrate.
+        """
         previous = self._optical_baud
         self._optical_baud = int(baudrate)
         self._pending_optical_baud = None
-        self._baud_retry_count = 0
-        self._baud_ack_timer.stop()
         logger.info(
-            "%s Optical baudrate %s: %d -> %d",
-            LogTag.BAUD_CTRL,
-            status,
-            previous,
-            self._optical_baud,
+            "%s Optical baudrate applied: %d -> %d", LogTag.BAUD_CTRL, previous, self._optical_baud
         )
         self.opticalBaudChanged.emit(self._optical_baud)
-        self.baudControlStatus.emit(status, f"{self._optical_baud} bps")
+        self.baudControlStatus.emit("ok", f"COM1 reconfigured to {self._optical_baud} bps")
 
     def _on_ports_changed(self, ports: list[PortInfo]) -> None:
         """Forwards hotplug port-list changes to the Web UI."""
@@ -372,52 +254,12 @@ class BackendBridge(QObject):
             "label": device,
         }
 
-    def _on_framer_error(self, kind: str, count: int) -> None:
-        """Counts framer corruption as link loss for telemetry."""
-        try:
-            logger.debug(
-                "%s Framer %s x%d -> telemetry loss counter",
-                LogTag.PROTO_FRAME,
-                kind,
-                count,
-            )
-            self._telemetry.record_framer_error(kind, int(count))
-        except Exception as exc:
-            logger.debug(
-                "%s framer_error forward failed (%s: %s) kind=%s count=%d",
-                LogTag.IPC_BRIDGE,
-                type(exc).__name__,
-                exc,
-                kind,
-                count,
-            )
-
     def shutdown(self) -> None:
-        """Stops health timer (called on window close / app quit)."""
+        """Stops bridge timers (called on window close / app quit)."""
         try:
-            self._health_timer.stop()
-            self._baud_ack_timer.stop()
+            self._file_service.cancel_transfer()
         except Exception:
             pass
-
-    def _on_health_tick(self) -> None:
-        """Transmits one silent link health-check ping when the channel is idle."""
-        if not self._is_connected:
-            return
-        if self._pending_optical_baud is not None:
-            return
-        if self._file_service.state in (
-            TransferState.HANDSHAKING,
-            TransferState.TRANSFERRING,
-            TransferState.FINALIZING,
-        ):
-            return
-        self._ping_seq = (self._ping_seq + 1) % 256
-        self._last_ping_time = time.time()
-        self._serial_manager.send_packet(
-            seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_HEALTH_PAYLOAD
-        )
-        self._telemetry.record_packet_sent(self._ping_seq, Opcode.PING, len(_PING_HEALTH_PAYLOAD))
 
     def _on_raw_rx(self, data: bytes) -> None:
         """Handles incoming raw bytes from transport."""
@@ -444,65 +286,27 @@ class BackendBridge(QObject):
         self.rawTxData.emit(data.hex(" ").upper())
 
     def _on_packet_received(self, pkt: object) -> None:
-        """Handles parsed incoming packet for RTT and telemetry tracking."""
-        if not isinstance(pkt, Packet):
+        """Registers one decoded WinForm frame with the telemetry service.
+
+        Args:
+            pkt: Frame emitted by the serial worker.
+        """
+        if not isinstance(pkt, WinFormPacket):
             logger.debug(
-                "%s Bridge ignored non-Packet: type=%s",
+                "%s Bridge ignored non-WinFormPacket: type=%s",
                 LogTag.IPC_BRIDGE,
                 type(pkt).__name__,
             )
             return
-
-        rtt_ms = 0.0
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "%s Bridge PKT %s (%s) crc=0x%08X payload_hex=%s",
+                "%s Bridge PKT seq=0x%08X len=%dB payload_hex=%s",
                 LogTag.PROTO_FRAME,
-                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
-                opcode_name(pkt.opcode),
-                pkt.crc32 & 0xFFFFFFFF,
-                format_hex_preview(pkt.payload, max_bytes=16),
+                pkt.sequence,
+                pkt.length,
+                format_hex_preview(pkt.data, max_bytes=16),
             )
-        if pkt.opcode == Opcode.PING:
-            if self._is_connected:
-                self._serial_manager.send_packet(
-                    seq=pkt.seq, opcode=Opcode.PONG, payload=pkt.payload
-                )
-                self._telemetry.record_packet_sent(pkt.seq, Opcode.PONG, len(pkt.payload))
-                logger.info(
-                    "%s Auto-PONG %s echo_len=%dB payload_hex=%s",
-                    LogTag.PROTO_FRAME,
-                    format_frame_summary(pkt.seq, Opcode.PONG, len(pkt.payload)),
-                    len(pkt.payload),
-                    format_hex_preview(pkt.payload, max_bytes=16),
-                )
-            else:
-                logger.debug(
-                    "%s PING ignored (link down): %s",
-                    LogTag.PROTO_FRAME,
-                    format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
-                )
-        elif pkt.opcode == Opcode.PONG:
-            if self._last_ping_time > 0:
-                rtt_ms = (time.time() - self._last_ping_time) * 1000.0
-            else:
-                rtt_ms = 0.0
-            self._telemetry.record_rtt(rtt_ms)
-            is_health = pkt.payload == _PING_HEALTH_PAYLOAD
-            logger.info(
-                "%s PONG %s rtt=%.1fms kind=%s payload_hex=%s",
-                LogTag.PROTO_FRAME,
-                format_frame_summary(pkt.seq, pkt.opcode, len(pkt.payload)),
-                rtt_ms,
-                "health" if is_health else "manual",
-                format_hex_preview(pkt.payload, max_bytes=16),
-            )
-            if is_health:
-                self.healthResult.emit(rtt_ms, pkt.seq)
-            else:
-                self.pingResult.emit(rtt_ms, pkt.seq)
-
-        self._telemetry.record_packet_received(pkt, latency_ms=rtt_ms)
+        self._telemetry.record_packet_received(pkt, latency_ms=0.0)
 
     def _on_transfer_progress(
         self, pct: int, speed_kbps: float, eta_sec: float, cur_chunk: int, total_chunks: int
@@ -554,11 +358,14 @@ class BackendBridge(QObject):
             "window_title": ctx.window_title if ctx else "SpectraLink IR-OWC Workstation",
             "data_dir": str(ctx.data_dir) if ctx else "",
             "preferred_port": cfg.preferred_port if cfg else None,
+            "com1_port": cfg.effective_tx_port if cfg else None,
+            "com2_port": cfg.effective_rx_port if cfg else None,
             "tx_port": cfg.effective_tx_port if cfg else None,
             "rx_port": cfg.effective_rx_port if cfg else None,
             "baud": cfg.baud if cfg else DEFAULT_BAUD,
             "default_baudrate": cfg.baud if cfg else DEFAULT_BAUD,
-            "physical_baudrate": PHYSICAL_BAUDRATE,
+            "physical_baudrate": CONTROL_BAUDRATE,
+            "control_baudrate": CONTROL_BAUDRATE,
             "default_optical_baudrate": self._optical_baud,
             "supported_baudrates": self._configured_baudrates(),
             "transport": cfg.transport if cfg else "auto",
@@ -612,11 +419,14 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def getConnectedPorts(self) -> str:
-        """Returns active ports plus physical and optical baudrates as JSON."""
+        """Returns active COM1/COM2 ports and baudrates as JSON."""
         payload = {
-            "tx_port": self._serial_manager.current_tx_port,
-            "rx_port": self._serial_manager.current_rx_port,
-            "physical_baudrate": PHYSICAL_BAUDRATE,
+            "com1_port": self._serial_manager.current_data_port,
+            "com2_port": self._serial_manager.current_ctrl_port,
+            "tx_port": self._serial_manager.current_data_port,
+            "rx_port": self._serial_manager.current_data_port,
+            "physical_baudrate": CONTROL_BAUDRATE,
+            "control_baudrate": CONTROL_BAUDRATE,
             "baudrate": self._optical_baud,
             "pending_baudrate": self._pending_optical_baud,
         }
@@ -624,53 +434,43 @@ class BackendBridge(QObject):
 
     @Slot(str, int)
     def connectPort(self, port_name: str, baudrate: int) -> None:
-        """Connects one shared TX/RX serial port (backward-compatible slot).
+        """Connects one data port without a control channel.
 
         Args:
-            port_name: Target serial port device name.
-            baudrate: Baud rate integer.
+            port_name: COM1 data port identifier.
+            baudrate: Optical data baudrate.
         """
-        self.connectDualPorts(port_name, port_name, baudrate)
+        self.connectDualPorts(port_name, "", baudrate)
 
     @Slot(str, str, int)
-    def connectDualPorts(self, tx_port: str, rx_port: str, baudrate: int) -> None:
-        """Connects independent TX/RX ports at the fixed physical UART rate.
+    def connectDualPorts(self, com1_data: str, com2_ctrl: str, baudrate: int) -> None:
+        """Opens COM1 at the optical rate and COM2 at the fixed MCU rate.
 
         Args:
-            tx_port: Target serial port device name used for writes.
-            rx_port: Target serial port device name used for reads.
-            baudrate: Desired optical/IR baudrate; never applied to the UART.
+            com1_data: COM1 optical data port.
+            com2_ctrl: COM2 STM32 control port, or an empty string.
+            baudrate: Optical data baudrate for COM1.
         """
         try:
-            tx_name = (tx_port or "").strip()
-            rx_name = (rx_port or "").strip() or tx_name
-            if not tx_name:
+            data_name = (com1_data or "").strip()
+            ctrl_name = (com2_ctrl or "").strip()
+            if not data_name:
                 logger.warning(
-                    "%s Connect rejected: empty TX port name (baud=%d)",
+                    "%s Connect rejected: empty COM1 port name (baud=%d)",
                     LogTag.HW_SERIAL,
                     baudrate,
                 )
-                self.errorOccurred.emit("Connect failed: empty TX port name")
+                self.errorOccurred.emit("Connect failed: empty COM1 port name")
                 return
-            if baudrate <= 0:
-                logger.warning(
-                    "%s Connect rejected: invalid baudrate=%d tx=%s rx=%s",
-                    LogTag.HW_SERIAL,
-                    baudrate,
-                    tx_name,
-                    rx_name,
-                )
-                self.errorOccurred.emit(f"Connect failed: invalid baudrate {baudrate}")
-                return
-            if baudrate == PHYSICAL_BAUDRATE:
+            if baudrate == CONTROL_BAUDRATE:
                 baudrate = DEFAULT_OPTICAL_BAUDRATE
             if baudrate not in SUPPORTED_BAUDRATES:
                 logger.warning(
-                    "%s Connect rejected: unsupported optical baudrate=%d tx=%s rx=%s",
+                    "%s Connect rejected: unsupported optical baudrate=%d COM1=%s COM2=%s",
                     LogTag.BAUD_CTRL,
                     baudrate,
-                    tx_name,
-                    rx_name,
+                    data_name,
+                    ctrl_name or "<none>",
                 )
                 self.errorOccurred.emit(
                     f"Connect failed: unsupported optical baudrate {baudrate}"
@@ -678,32 +478,56 @@ class BackendBridge(QObject):
                 return
             self._optical_baud = int(baudrate)
             self._pending_optical_baud = None
-            self._baud_ack_timer.stop()
             logger.info(
-                "%s UI dual connect requested: tx=%s rx=%s physical=%d optical=%d connected=%s",
+                "%s UI dual connect requested: COM1=%s @%d COM2=%s @%d connected=%s",
                 LogTag.HW_SERIAL,
-                tx_name,
-                rx_name,
-                PHYSICAL_BAUDRATE,
+                data_name,
                 self._optical_baud,
+                ctrl_name or "<none>",
+                CONTROL_BAUDRATE,
                 self._is_connected,
             )
-            self._serial_manager.connect_ports(tx_name, rx_name, PHYSICAL_BAUDRATE)
+            self._serial_manager.connect_ports(
+                data_name, ctrl_name or None, self._optical_baud, CONTROL_BAUDRATE
+            )
         except Exception as exc:
             logger.exception(
-                "%s connectDualPorts slot FAILED (%s: %s) tx=%s rx=%s baud=%d",
+                "%s connectDualPorts slot FAILED (%s: %s) COM1=%s COM2=%s baud=%d",
                 LogTag.HW_SERIAL,
                 type(exc).__name__,
                 exc,
-                tx_port,
-                rx_port,
+                com1_data,
+                com2_ctrl,
                 baudrate,
             )
             self.errorOccurred.emit(f"Connect failed: {exc}")
 
+    @Slot(str, str, int)
+    def connectHardwarePorts(self, com1_data: str, com2_ctrl: str, baud_ir: int) -> None:
+        """WinForm-style alias for :meth:`connectDualPorts`.
+
+        Args:
+            com1_data: COM1 optical data port.
+            com2_ctrl: COM2 STM32 control port.
+            baud_ir: Optical data baudrate.
+        """
+        self.connectDualPorts(com1_data, com2_ctrl, baud_ir)
+
     @Slot(int, result=str)
     def setOpticalBaud(self, baudrate: int) -> str:
-        """Requests a new optical rate without touching the physical UART.
+        """Requests a COM2 baud command and a COM1 reconfigure.
+
+        Args:
+            baudrate: One of the supported optical rates.
+
+        Returns:
+            JSON object with ``ok`` plus connection and baudrate state.
+        """
+        return self.sendBaudCommand(baudrate)
+
+    @Slot(int, result=str)
+    def sendBaudCommand(self, baudrate: int) -> str:
+        """Sends the two-character baud command over COM2.
 
         Args:
             baudrate: One of the supported optical rates.
@@ -717,9 +541,7 @@ class BackendBridge(QObject):
             return json.dumps({"ok": False, "error": f"Invalid baudrate {baudrate!r}"})
         if request not in SUPPORTED_BAUDRATES:
             logger.warning(
-                "%s setOpticalBaud rejected: unsupported rate=%d",
-                LogTag.BAUD_CTRL,
-                request,
+                "%s Baud command rejected: unsupported rate=%d", LogTag.BAUD_CTRL, request
             )
             return json.dumps(
                 {"ok": False, "error": f"Unsupported optical baudrate {request}"}
@@ -727,18 +549,14 @@ class BackendBridge(QObject):
         if not self._is_connected:
             self._optical_baud = request
             logger.info(
-                "%s setOpticalBaud while disconnected: storing desired=%d",
+                "%s Baud command while disconnected: storing desired=%d",
                 LogTag.BAUD_CTRL,
                 request,
             )
             return json.dumps({"ok": True, "connected": False, "baudrate": request})
-        if self._file_service.state in (
-            TransferState.HANDSHAKING,
-            TransferState.TRANSFERRING,
-            TransferState.FINALIZING,
-        ):
+        if self._file_service.state.is_active:
             logger.warning(
-                "%s setOpticalBaud rejected during transfer: state=%s requested=%d",
+                "%s Baud command rejected during transfer: state=%s requested=%d",
                 LogTag.BAUD_CTRL,
                 self._file_service.state.name,
                 request,
@@ -752,25 +570,26 @@ class BackendBridge(QObject):
             )
         if request == self._optical_baud and self._pending_optical_baud is None:
             return json.dumps({"ok": True, "connected": True, "baudrate": request})
-        self._pending_optical_baud = request
-        self._baud_request_generation += 1
-        self._baud_ack_timer.start()
-        self.opticalBaudPending.emit(request)
-        logger.info(
-            "%s UI optical baudrate request=%d active=%d generation=%d",
-            LogTag.BAUD_CTRL,
-            request,
-            self._optical_baud,
-            self._baud_request_generation,
-        )
-        self._serial_manager.send_control_line(format_set_baud(request))
+        self._request_baud(request)
         return json.dumps(
             {"ok": True, "connected": True, "baudrate": request, "pending": True}
         )
 
+    @Slot(int, result=str)
+    def sendBaudSelection(self, baudrate: int) -> str:
+        """WinForm-style alias for :meth:`sendBaudCommand`.
+
+        Args:
+            baudrate: Target optical baudrate.
+
+        Returns:
+            JSON result object.
+        """
+        return self.sendBaudCommand(baudrate)
+
     @Slot()
     def disconnectPort(self) -> None:
-        """Disconnects current Serial connection."""
+        """Disconnects the current COM1/COM2 hardware link."""
         try:
             logger.info(
                 "%s UI disconnect requested (connected=%s)", LogTag.HW_SERIAL, self._is_connected
@@ -787,54 +606,18 @@ class BackendBridge(QObject):
 
     @Slot()
     def sendPing(self) -> None:
-        """Transmits manual PING frame over optical link (echo shown as toast)."""
-        try:
-            self._ping_seq = (self._ping_seq + 1) % 256
-            self._last_ping_time = time.time()
-            self._serial_manager.send_packet(
-                seq=self._ping_seq, opcode=Opcode.PING, payload=_PING_MANUAL_PAYLOAD
-            )
-            self._telemetry.record_packet_sent(
-                self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD)
-            )
-            logger.info(
-                "%s UI manual PING %s payload=%s connected=%s",
-                LogTag.PROTO_FRAME,
-                format_frame_summary(self._ping_seq, Opcode.PING, len(_PING_MANUAL_PAYLOAD)),
-                _PING_MANUAL_PAYLOAD.decode("ascii", errors="replace"),
-                self._is_connected,
-            )
-        except Exception as exc:
-            logger.exception(
-                "%s sendPing FAILED (%s: %s) seq=%d",
-                LogTag.PROTO_FRAME,
-                type(exc).__name__,
-                exc,
-                self._ping_seq,
-            )
-            self.errorOccurred.emit(f"Ping failed: {exc}")
+        """Rejects the legacy ping action: the firmware has no PING opcode."""
+        logger.warning("%s Legacy ping rejected: unsupported by WinForm protocol", LogTag.PROTO_FRAME)
+        self.errorOccurred.emit("Ping is not supported by the WinForm firmware protocol")
 
     @Slot(float)
     def setAutoPingInterval(self, seconds: float) -> None:
-        """Configures automatic link health-check period.
+        """Ignores the legacy health-check interval.
 
         Args:
-            seconds: Interval between silent health pings; <= 0 disables.
+            seconds: Requested interval, retained only for UI compatibility.
         """
-        self._health_interval_sec = seconds
-        if seconds > 0:
-            self._health_timer.setInterval(int(seconds * 1000))
-            if self._is_connected:
-                self._health_timer.start()
-        else:
-            self._health_timer.stop()
-        logger.info(
-            "%s Health interval set to %.2fs (connected=%s timer_active=%s)",
-            LogTag.IPC_BRIDGE,
-            seconds,
-            self._is_connected,
-            self._health_timer.isActive(),
-        )
+        logger.info("%s Auto-ping disabled (requested %.2fs)", LogTag.IPC_BRIDGE, seconds)
 
     @Slot(str)
     def sendChat(self, text: str) -> None:
@@ -856,7 +639,11 @@ class BackendBridge(QObject):
                 preview,
                 self._is_connected,
             )
-            self._chat_service.send_message(text)
+            success = self._chat_service.send_message(text)
+            if not success:
+                self.errorOccurred.emit(
+                    "Optical link is busy. Please wait for the current transfer to complete."
+                )
         except Exception as exc:
             logger.exception(
                 "%s sendChat FAILED (%s: %s) preview=%r",
@@ -894,7 +681,7 @@ class BackendBridge(QObject):
             except OSError:
                 size = -1
             logger.info(
-                "%s UI startFileTransfer: path=%s size=%dB connected=%s arq_state=%s",
+                "%s UI startFileTransfer: path=%s size=%dB connected=%s stream_state=%s",
                 LogTag.FILE_SVC,
                 file_path,
                 size,
@@ -914,14 +701,14 @@ class BackendBridge(QObject):
 
     @Slot()
     def abortFileTransfer(self) -> None:
-        """Aborts current optical file transfer."""
+        """Cancels the current optical file transmission or reception."""
         try:
             logger.info(
-                "%s UI abortFileTransfer: arq_state=%s",
+                "%s UI abortFileTransfer: stream_state=%s",
                 LogTag.FILE_SVC,
                 self._file_service.state.name,
             )
-            self._file_service.abort_transfer()
+            self._file_service.cancel_transfer()
         except Exception as exc:
             logger.exception(
                 "%s abortFileTransfer FAILED (%s: %s)",
@@ -930,6 +717,63 @@ class BackendBridge(QObject):
                 exc,
             )
             self.errorOccurred.emit(f"Abort failed: {exc}")
+
+    @Slot()
+    def stopFileTransfer(self) -> None:
+        """WinForm-style alias for :meth:`abortFileTransfer`."""
+        self.abortFileTransfer()
+
+    @Slot(result=str)
+    def chooseSaveFolder(self) -> str:
+        """Opens a directory chooser and persists the receive folder.
+
+        Returns:
+            Selected directory path, or an empty string on cancellation.
+        """
+        try:
+            current = str(self._file_service.transfers_dir_path)
+            chosen = QFileDialog.getExistingDirectory(
+                self._dialog_parent(),
+                "Select Receive Folder",
+                current,
+            )
+            if not chosen:
+                return ""
+            applied = self._file_service.set_transfers_dir(chosen)
+            payload = json.dumps(self._file_service.get_config())
+            self.settingsChanged.emit(payload)
+            logger.info("%s Receive folder set via UI: %s", LogTag.IPC_BRIDGE, applied)
+            return str(applied)
+        except Exception as exc:
+            logger.exception("%s chooseSaveFolder failed: %s", LogTag.IPC_BRIDGE, exc)
+            self.errorOccurred.emit(f"Choose folder failed: {exc}")
+            return ""
+
+    @Slot(result=str)
+    def chooseDestinationFolder(self) -> str:
+        """WinForm-style alias for :meth:`chooseSaveFolder`."""
+        return self.chooseSaveFolder()
+
+    @Slot(bool, result=str)
+    def setAutoSaveOption(self, enabled: bool) -> str:
+        """Persists the AutoSave flag and returns the updated settings.
+
+        Args:
+            enabled: True to keep partial receptions.
+
+        Returns:
+            JSON transfer configuration.
+        """
+        try:
+            config = self._file_service.update_config(auto_save=bool(enabled))
+            payload = json.dumps(config)
+            self.settingsChanged.emit(payload)
+            logger.info("%s AutoSave set via UI: %s", LogTag.IPC_BRIDGE, enabled)
+            return payload
+        except Exception as exc:
+            logger.exception("%s setAutoSaveOption failed: %s", LogTag.IPC_BRIDGE, exc)
+            self.errorOccurred.emit(f"AutoSave update failed: {exc}")
+            return json.dumps({"ok": False, "error": str(exc)})
 
     def _dialog_parent(self) -> QWidget | None:
         """Returns a QWidget parent for file dialogs when available."""
@@ -1039,11 +883,23 @@ class BackendBridge(QObject):
                 max_bytes = int(float(str(data["max_file_size_mb"])) * 1024 * 1024)
             raw_dir = data.get("transfers_dir")
             transfers_dir: str | None = str(raw_dir) if raw_dir is not None else None
-            if max_bytes is None and (transfers_dir is None or not transfers_dir.strip()):
+            auto_save: bool | None = None
+            if "auto_save" in data:
+                raw_flag = data["auto_save"]
+                if isinstance(raw_flag, str):
+                    auto_save = raw_flag.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    auto_save = bool(raw_flag)
+            if (
+                max_bytes is None
+                and (transfers_dir is None or not transfers_dir.strip())
+                and auto_save is None
+            ):
                 return json.dumps({"ok": False, "error": "No settings to update"})
             config = self._file_service.update_config(
                 max_file_size_bytes=max_bytes,
                 transfers_dir=transfers_dir,
+                auto_save=auto_save,
             )
             payload = json.dumps(config)
             self.settingsChanged.emit(payload)
@@ -1061,7 +917,7 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def browseTransfersDir(self) -> str:
-        """Opens a native directory chooser for the receive folder.
+        """Opens a directory chooser and persists the receive folder.
 
         Returns:
             Selected directory path string or empty string on cancellation.
@@ -1073,7 +929,11 @@ class BackendBridge(QObject):
                 "Select Default Transfers Directory",
                 current,
             )
-            return chosen or ""
+            if not chosen:
+                return ""
+            applied = self._file_service.set_transfers_dir(chosen)
+            self.settingsChanged.emit(json.dumps(self._file_service.get_config()))
+            return str(applied)
         except Exception as exc:
             logger.exception("%s browseTransfersDir failed: %s", LogTag.IPC_BRIDGE, exc)
             self.errorOccurred.emit(f"Browse directory failed: {exc}")

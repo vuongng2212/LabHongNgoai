@@ -7,6 +7,10 @@ function initChatController() {
 
   function doSend() {
     if (!chatInput) return;
+    if (sendBtn && sendBtn.disabled) {
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Link busy', 'Optical link is currently transmitting; please wait.');
+      return;
+    }
     const text = chatInput.value.trim();
     if (!text) {
       if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Empty message', 'Type a text message before sending.');
@@ -83,11 +87,29 @@ function initChatController() {
       appendChatMessage(text, timeStr, isOutgoing);
     });
 
-    window.bridge.chatFrameInspected.connect((hexDump, seq, opcode, len) => {
-      if (hexDumpElem) {
-        hexDumpElem.innerText = `[FRAME SEQ #${seq} | CMD 0x${opcode.toString(16).padStart(2, '0').toUpperCase()} | LEN ${len}B]\n` + hexDump;
-      }
-    });
+    if (window.bridge.transferStateChanged) {
+      window.bridge.transferStateChanged.connect((state) => {
+        const busy = state === 'SENDING' || state === 'RECEIVING';
+        if (sendBtn) {
+          sendBtn.disabled = busy;
+          sendBtn.classList.toggle('opacity-50', busy);
+          sendBtn.classList.toggle('cursor-not-allowed', busy);
+        }
+        const badge = document.getElementById('chat-link-state');
+        if (badge) {
+          if (window.UIBadge) {
+            window.UIBadge.set('chat-link-state', {
+              tone: busy ? 'warning' : 'neutral',
+              label: busy ? 'CHANNEL BUSY' : 'LINK STANDBY'
+            });
+          } else {
+            badge.dataset.tone = busy ? 'warning' : 'neutral';
+            const labelElem = badge.querySelector('.ui-badge__label');
+            if (labelElem) labelElem.textContent = busy ? 'CHANNEL BUSY' : 'LINK STANDBY';
+          }
+        }
+      });
+    }
 
     if (typeof window.bridge.getChatHistory === 'function') {
       window.bridge.getChatHistory((historyJson) => {
@@ -137,8 +159,8 @@ function initChatController() {
           ${escapeHtml(text)}
         </div>
         <div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
-          <span class="material-symbols-outlined text-[13px]">done_all</span>
-          <span class="font-medium">ACK Confirmed</span>
+          <span class="material-symbols-outlined text-[13px]">send</span>
+          <span class="font-medium">Streamed (Open-Loop)</span>
         </div>
       `;
     } else {
@@ -155,9 +177,9 @@ function initChatController() {
         <div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
           <span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40 font-mono">880nm NIR</span>
           <span>•</span>
-          <span class="text-secondary font-medium">CRC32 Valid</span>
+          <span class="text-secondary font-medium">OPEN-LOOP</span>
           <span>•</span>
-          <span>0 Dropped</span>
+          <span>Envelope</span>
         </div>
       `;
     }

@@ -6,11 +6,11 @@
             </p>
 </div>
 <div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant min-w-0">
-<span>CHUNK: <strong class="text-on-surface font-semibold">240 B</strong></span>
+<span>CHUNK: <strong class="text-on-surface font-semibold">256 B</strong></span>
 <span class="text-outline-variant">•</span>
-<span>CRC-32: <strong class="text-on-surface font-semibold">IEEE 802.3</strong></span>
+<span>INTEGRITY: <strong class="text-on-surface font-semibold">Open-Loop</strong></span>
 <span class="text-outline-variant">•</span>
-<span>ARQ: <strong class="text-on-surface font-semibold">Stop-and-Wait</strong></span>
+<span>FLOW: <strong class="text-on-surface font-semibold">Paced Streaming</strong></span>
 </div>
 </div>
 <div class="split-grid">
@@ -19,7 +19,7 @@
 <span class="material-symbols-outlined text-[26px]" data-icon="upload_file">upload_file</span>
 </div>
 <h3 id="file-limit-hint" class="text-headline-md font-headline-md text-on-surface mb-1">
-              Drop file to transmit (unlimited size)
+              Drop file to transmit (256-byte paced frames)
             </h3>
 <p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
               Supports PDF, images, firmware binaries, and raw packet captures
@@ -33,7 +33,7 @@
 </div>
 <div class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="verified_user">verified_user</span>
-<span>Automatically framed into 240-byte chunks with CRC-32</span>
+<span>Automatically framed into 256-byte chunks with paced open-loop streaming</span>
 </div>
 </div>
 <div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between min-w-0">
@@ -43,10 +43,10 @@
 <span class="text-title-sm font-title-sm font-semibold text-on-surface">Active Transmission</span>
 </div>
 <div class="flex items-center gap-2 font-mono-caption text-mono-caption text-on-surface-variant">
-<span>CH-A</span>
+<span>COM1 DATA</span>
 <span id="file-active-status" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
 <span class="ui-badge__dot"></span>
-<span class="ui-badge__label">ARQ IDLE</span>
+<span class="ui-badge__label">STREAM IDLE</span>
 </span>
 </div>
 </div>
@@ -79,11 +79,11 @@
 <span class="text-mono-caption font-mono-caption uppercase text-outline">Throughput</span>
 <span id="file-speed" class="text-headline-md font-headline-md text-on-surface font-semibold">0.0 <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span></span>
 </div>
-<div class="flex flex-col border-l border-black/[0.06] pl-3">
+<div class="flex flex-col">
 <span class="text-mono-caption font-mono-caption uppercase text-outline">ETA</span>
 <span id="file-eta" class="text-headline-md font-headline-md text-on-surface font-semibold">--</span>
 </div>
-<div class="flex flex-col border-l border-black/[0.06] pl-3">
+<div class="flex flex-col">
 <span class="text-mono-caption font-mono-caption uppercase text-outline">Chunks</span>
 <span id="file-packets" class="text-headline-md font-headline-md text-on-surface font-semibold">0<span class="text-label-sm font-label-sm font-normal text-outline">/0</span></span>
 </div>
@@ -101,6 +101,7 @@
 </div>
 </div>
 </div>
+
 <div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md min-w-0">
 <div class="flex flex-wrap items-center justify-between gap-space-md">
 <div class="flex flex-wrap items-center gap-space-md min-w-0">
@@ -110,7 +111,7 @@
 </div>
 <span class="flex items-center gap-1 font-mono-caption text-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="check_circle">check_circle</span>
-<span>CRC-32 verified</span>
+<span>Open-loop paced</span>
 </span>
 </div>
 <div class="relative w-full sm:w-auto">
@@ -126,7 +127,7 @@
 <th class="px-space-md font-medium">Size</th>
 <th class="px-space-md font-medium">Direction</th>
 <th class="px-space-md font-medium">Timestamp</th>
-<th class="px-space-md font-medium">CRC-32</th>
+<th class="px-space-md font-medium">Mode</th>
 <th class="px-space-md font-medium">State</th>
 <th class="px-space-md text-right font-medium">Actions</th>
 </tr>
@@ -137,7 +138,7 @@
   <div class="flex flex-col items-center justify-center gap-1">
     <span class="material-symbols-outlined text-[22px] text-outline">folder_off</span>
     <span class="font-medium text-on-surface">No file transfers recorded yet</span>
-    <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
+    <span class="text-label-sm text-outline">Transferred files will be logged here as open-loop paced streams.</span>
   </div>
 </td>
 </tr>
@@ -146,11 +147,11 @@
 </div>
 <div class="flex flex-wrap items-center justify-between gap-2 text-mono-caption font-mono-caption text-outline px-1">
 <div class="flex flex-wrap items-center gap-space-md">
-<span>Stop-and-Wait ARQ</span>
+<span>Open-Loop Paced</span>
 <span>•</span>
-<span>CRC-32 IEEE 802.3</span>
+<span>No checksum</span>
 <span>•</span>
-<span>Chunk size: <strong class="text-on-surface font-medium">240 bytes</strong></span>
+<span>Chunk size: <strong class="text-on-surface font-medium">256 bytes</strong></span>
 </div>
 <span>Optical carrier 880 nm</span>
 </div>

@@ -84,12 +84,12 @@ class TestBridgeClientContract:
     """Verifies the JavaScript bridge calls the dual-port backend API."""
 
     def test_dual_port_api_wired(self) -> None:
-        """Connect, rescan, signals, and ribbon summary use TX/RX pairs."""
+        """Connect, rescan, signals, and ribbon summary use COM1/COM2 pairs."""
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
-        assert "connectDualPorts(txPort, rxPort, selectedBaud)" in script
+        assert "connectHardwarePorts(com1Port, com2Port, selectedBaud)" in script
         assert "getAvailableBaudrates" in script
-        assert "portConnected.connect((txPort, rxPort, baud)" in script
-        assert "TX: ' + txPort + ' • RX: ' + rxPort" in script
+        assert "portConnected.connect((com1Port, com2Port, baud)" in script
+        assert "'COM1: ' + com1Port + ' • COM2: ' + (com2Port || 'none')" in script
 
     def test_connect_button_uses_explicit_disconnect_state(self) -> None:
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
@@ -111,11 +111,13 @@ class TestBridgeClientContract:
         assert "const DEFAULT_BAUDRATES = [2400, 4800, 9600, 19200];" in script
 
     def test_baud_click_uses_optical_control_channel(self) -> None:
-        """Clicking a baud button sends SET_BAUD instead of reconnecting."""
+        """Applying a baud sends the COM2 control command instead of reconnecting."""
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
-        assert "setOpticalBaud(" in script
+        hardware_html = (COMPONENTS_DIR / "view_hardware.html").read_text(encoding="utf-8")
+        assert "sendBaudCommand(" in script
         assert "opticalBaudChanged.connect" in script
         assert "pendingBaud" in script
+        assert 'id="btn-send-baud"' in hardware_html
 
     def test_hardware_view_shows_fixed_physical_uart(self) -> None:
         """The hardware card labels the optical selector and the fixed UART."""
@@ -131,11 +133,12 @@ class TestBridgeClientContract:
         assert "targetRx && !entries.some" in script
 
 
-    def test_manual_ping_has_auto_timeout_timer(self) -> None:
-        """Manual ping clears loading and warns when no echo arrives in 1.5s."""
+    def test_baud_apply_reports_com2_command_result(self) -> None:
+        """The Apply Baud button reports the result of the COM2 command."""
         script = (WEB_DIR / "js" / "bridge_client.js").read_text(encoding="utf-8")
-        assert "pingFailTimer" in script
-        assert "1500" in script
+        assert "btn-send-baud" in script
+        assert "Baud command sent" in script
+        assert "COM2 sent the code for " in script
 
     def test_settings_modal_debug_diagnostics_contract(self, index_html: str) -> None:
         modal_html = (COMPONENTS_DIR / "settings_modal.html").read_text(encoding="utf-8")
@@ -168,10 +171,10 @@ class TestLauncherContract:
     """Verifies the hardware launcher accepts four independent COM ports."""
 
     def test_com_pair_accepts_four_ports(self) -> None:
-        """Start_Com_Pair maps TX_A, RX_A, TX_B, and RX_B onto CLI flags."""
+        """Start_Com_Pair maps dual COM ports onto CLI flags."""
         script = (REPO_ROOT / "scripts" / "Start_Com_Pair.cmd").read_text(encoding="utf-8")
-        assert "Start_Com_Pair.cmd [TX_A] [RX_A] [TX_B] [RX_B]" in script
-        assert "--tx-port %TX_A%" in script
-        assert "--rx-port %RX_A%" in script
-        assert "--tx-port %TX_B%" in script
-        assert "--rx-port %RX_B%" in script
+        assert "Start_Com_Pair.cmd [DATA_A] [CTRL_A] [DATA_B] [CTRL_B]" in script
+        assert "--data-port %DATA_A%" in script
+        assert "--ctrl-port %CTRL_A%" in script
+        assert "--data-port %DATA_B%" in script
+        assert "--ctrl-port %CTRL_B%" in script

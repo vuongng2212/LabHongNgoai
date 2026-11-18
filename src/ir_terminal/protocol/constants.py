@@ -1,101 +1,82 @@
-"""Protocol constants, frame magic bytes, opcodes, and timing parameters.
+"""Wire-format constants for the WinForm C# compatible IR-OWC protocol.
 
-Hardware Interface: STM32F407 + MCP2122 + TFDU4101 (Infrared Transceiver).
-Frame Alignment: Little-Endian for multi-byte numeric fields.
+The firmware contract is defined by ``docs/WFF.txt``. A frame is an 8-byte
+header followed by a variable payload:
+
+    [0xAA][0x55][sequence uint32 LE][length uint16 LE][payload: length bytes]
+
+Packet identity is carried by ``sequence``: ``0xFFFFFFFF`` marks a file
+header, ``0xFFFFFFFE`` marks the end of a transfer, and any other value is a
+zero-based data chunk index.
 """
 
 from __future__ import annotations
 
-SOF_MAGIC: int = 0xAA55
+SYNC_MAGIC: bytes = b"\xAA\x55"
 
-EOF_MAGIC: int = 0x55AA
+SYNC_BYTE_1: int = 0xAA
 
-HEADER_SIZE: int = 6
+SYNC_BYTE_2: int = 0x55
 
-FOOTER_SIZE: int = 6
+SEQ_HEADER: int = 0xFFFFFFFF
 
-TOTAL_OVERHEAD: int = HEADER_SIZE + FOOTER_SIZE
+SEQ_END: int = 0xFFFFFFFE
 
-MAX_PAYLOAD_SIZE: int = 512
+PACKET_SIZE: int = 256
 
-MAX_CHUNK_DATA_SIZE: int = MAX_PAYLOAD_SIZE - 2  # 510
+HEADER_OVERHEAD: int = 8
 
-MAX_EXTENDED_CHUNK_DATA_SIZE: int = MAX_PAYLOAD_SIZE - 4  # 508
+MAX_HEADER_PAYLOAD_SIZE: int = 65535
 
-MAX_V1_CHUNK_COUNT: int = 0xFFFF
+BAUD_COMMANDS: dict[int, str] = {
+    19200: "00",
+    9600: "01",
+    4800: "10",
+    2400: "11",
+}
 
-MAX_EXTENDED_CHUNK_COUNT: int = 0xFFFFFFFF
+BAUD_CMD_MAP: dict[int, str] = BAUD_COMMANDS
 
-MAX_CHUNK_COUNT: int = MAX_EXTENDED_CHUNK_COUNT
+OPTICAL_BAUDRATES: tuple[int, ...] = (2400, 4800, 9600, 19200)
 
-DEFAULT_CHUNK_SIZE: int = 240
+SUPPORTED_BAUDRATES: tuple[int, ...] = OPTICAL_BAUDRATES
+
+AVAILABLE_BAUDRATES: tuple[int, ...] = SUPPORTED_BAUDRATES
+
+DEFAULT_OPTICAL_BAUDRATE: int = 19200
+
+CONTROL_BAUDRATE: int = 115200
+
+PHYSICAL_BAUDRATE: int = CONTROL_BAUDRATE
+
+DEFAULT_BAUDRATE: int = DEFAULT_OPTICAL_BAUDRATE
+
+MCU_BAUDRATES: tuple[int, ...] = (1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200)
+
+BAUD_COMMAND_TERMINATOR: bytes = b"\r"
+
+BAUD_SWITCH_GUARD_MS: int = 50
+
+PACED_DELAY_SAFETY_MS: int = 10
+
+RX_INACTIVITY_TIMEOUT_SEC: float = 3.0
 
 MAX_FILE_SIZE_BYTES: int = 0
 
-PROTOCOL_MAX_FILE_SIZE_BYTES: int = MAX_EXTENDED_CHUNK_COUNT * MAX_EXTENDED_CHUNK_DATA_SIZE
-
-DEFAULT_HEALTH_CHECK_SEC: float = 0.0
-
-MAX_FRAME_SIZE: int = HEADER_SIZE + MAX_PAYLOAD_SIZE + FOOTER_SIZE
-
-
-class Opcode:
-    """Protocol operation codes (1 byte uint8)."""
-
-    DATA_CHUNK: int = 0x01  # Binary data chunk for file transfer
-    DATA_TEXT: int = 0x02  # UTF-8 text message for realtime chat
-
-    ACK: int = 0x10  # Acknowledge successful packet reception
-    NACK: int = 0x11  # Negative Acknowledge (CRC error or out-of-order)
-
-    PING: int = 0x20  # Optical link ping echo request
-    PONG: int = 0x21  # Optical link pong echo response
-
-    TRANSFER_START: int = 0x30  # Initiates file transfer session (metadata payload)
-    TRANSFER_END: int = 0x31  # Finalizes file transfer session (CRC-32 verify; SHA-256 is Post-MVP)
-    TRANSFER_PAUSE: int = 0x32  # Pause/abort session (MVP: ABORT payload on user cancel)
-    TRANSFER_RESUME: int = 0x33  # Reserved for Post-MVP auto-resume, not used by MVP ARQ
-
-    TRANSFER_START_LARGE: int = 0x34
-    DATA_CHUNK_LARGE: int = 0x35
-    TRANSFER_END_LARGE: int = 0x36
-
-
-class AckStatus:
-    """Acknowledgment status codes for Stop-and-Wait ARQ (1 byte uint8)."""
-
-    OK: int = 0x00  # Packet successfully received and verified
-    CRC_ERROR: int = 0x01  # CRC-32 checksum mismatch
-    OUT_OF_ORDER: int = 0x02  # Sequence number out of expected order
-    TIMEOUT: int = 0x03  # Transmission timeout / retry limit exceeded
-
-
-DEFAULT_ACK_TIMEOUT_SEC: float = 0.250  # 250 ms
-
-MAX_RETRY_COUNT: int = 5
-
-PHYSICAL_BAUDRATE: int = 115200
-DEFAULT_OPTICAL_BAUDRATE: int = 9600
-OPTICAL_BAUDRATES: tuple[int, ...] = (
-    2400,
-    4800,
-    9600,
-    19200,
-)
-SUPPORTED_BAUDRATES: tuple[int, ...] = OPTICAL_BAUDRATES
-AVAILABLE_BAUDRATES: tuple[int, ...] = SUPPORTED_BAUDRATES
-DEFAULT_BAUDRATE: int = PHYSICAL_BAUDRATE
-BAUD_ACK_TIMEOUT_MS: int = 1000
+MAX_CONFIGURABLE_FILE_SIZE_BYTES: int = 0xFFFFFFFF
 
 RING_BUFFER_CAPACITY: int = 65536
 
 RX_COMPACT_THRESHOLD: int = 4096
 
 SOCKET_RECV_CHUNK: int = 4096
+
 SOCKET_CONNECT_TIMEOUT_SEC: float = 3.0
+
 SOCKET_READ_TIMEOUT_SEC: float = 0.02
 
 MOCK_POLL_MS: int = 2
+
 HW_POLL_MS: int = 10
 
 SHUTDOWN_WAIT_MS: int = 3000

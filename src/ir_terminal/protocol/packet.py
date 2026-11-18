@@ -1,54 +1,39 @@
-"""Immutable domain data classes for protocol packets and headers."""
+"""Immutable packet model for the WinForm C# compatible wire format."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ir_terminal.protocol.constants import SEQ_END, SEQ_HEADER
+
 
 @dataclass(frozen=True)
-class Header:
-    """Fixed-size protocol header (6 bytes).
+class WinFormPacket:
+    """One decoded frame from the optical link.
 
     Attributes:
-        sof: Start of Frame magic delimiter (0xAA55).
-        seq: Sequence number (0..255).
-        opcode: Command operation code (see Opcode constants).
-        length: Byte length of the accompanying payload.
+        sequence: Frame identifier. ``SEQ_HEADER`` marks a file header,
+            ``SEQ_END`` marks the end of a transfer, and any other value is a
+            zero-based data chunk index.
+        length: Payload byte count as carried by the wire header.
+        data: Raw payload bytes.
     """
 
-    sof: int
-    seq: int
-    opcode: int
+    sequence: int
     length: int
-
-
-@dataclass(frozen=True)
-class Packet:
-    """Complete verified protocol packet including Header, Payload, and CRC-32.
-
-    Attributes:
-        header: Parsed 6-byte header metadata.
-        payload: Raw binary payload data.
-        crc32: 32-bit CRC checksum computed over Header + Payload.
-        eof: End of Frame magic delimiter (0x55AA).
-    """
-
-    header: Header
-    payload: bytes
-    crc32: int
-    eof: int
+    data: bytes
 
     @property
-    def seq(self) -> int:
-        """Convenience property for packet sequence number."""
-        return self.header.seq
+    def is_header(self) -> bool:
+        """Returns True when this frame announces a new incoming file."""
+        return self.sequence == SEQ_HEADER
 
     @property
-    def opcode(self) -> int:
-        """Convenience property for packet opcode."""
-        return self.header.opcode
+    def is_end(self) -> bool:
+        """Returns True when this frame terminates an incoming file."""
+        return self.sequence == SEQ_END
 
     @property
-    def payload_length(self) -> int:
-        """Convenience property for packet payload length."""
-        return self.header.length
+    def is_data(self) -> bool:
+        """Returns True when this frame carries a zero-based data chunk."""
+        return not self.is_header and not self.is_end

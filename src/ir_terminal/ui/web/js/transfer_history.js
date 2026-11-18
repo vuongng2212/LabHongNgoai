@@ -64,7 +64,7 @@
             <div class="flex flex-col items-center justify-center gap-1">
               <span class="material-symbols-outlined text-[24px] text-outline">folder_off</span>
               <span class="font-medium text-on-surface">No optical file transfers recorded yet</span>
-              <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
+              <span class="text-label-sm text-outline">Transferred files will be logged here as open-loop paced streams.</span>
             </div>
           </td>
         `;
@@ -97,7 +97,7 @@
           <td class="px-space-md font-mono-data text-on-surface-variant">${sizeStr}</td>
           <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.direction || '—')}</td>
           <td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">${esc(item.timestamp || 'Today')}</td>
-          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.crc32_hex || '—')}</td>
+          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.crc32_hex || 'Open-Loop')}</td>
           <td class="px-space-md">
             <span class="inline-flex items-center gap-1.5 text-mono-caption font-mono-caption ${stateTone}">
               <span class="w-1.5 h-1.5 rounded-full ${stateDot}"></span>
@@ -109,8 +109,8 @@
               <button data-action="open-location" data-idx="${rowIdx}" class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant hover:text-primary transition-colors" title="Open storage location">
                 <span class="material-symbols-outlined text-[16px]">folder_open</span>
               </button>
-              <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Verified Checksum">
-                <span class="material-symbols-outlined text-[16px]">verified</span>
+              <button class="w-7 h-7 flex items-center justify-center rounded hover:bg-surface-container-high text-on-surface-variant transition-colors" title="Open-loop paced transfer">
+                <span class="material-symbols-outlined text-[16px]">bolt</span>
               </button>
             </div>
           </td>

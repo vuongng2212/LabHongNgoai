@@ -28,6 +28,7 @@ from ir_terminal.utils.path_helpers import (
     get_logs_dir,
     get_transfers_dir,
     get_webengine_dirs,
+    is_dev_mode,
     is_dual_mock_enabled,
     normalize_instance_id,
 )
@@ -56,6 +57,8 @@ class LaunchConfig:
     instance: str | None = None
     transport: str = "auto"
     port: str | None = None
+    data_port: str | None = None
+    ctrl_port: str | None = None
     tx_port: str | None = None
     rx_port: str | None = None
     baud: int = DEFAULT_BAUD
@@ -67,6 +70,7 @@ class LaunchConfig:
     auto_connect: bool = False
     allow_multiple: bool = False
     broker_only: bool = False
+    dev_mode: bool = False
     window_pos: str = "normal"
     loss_rate: float = 0.0
     latency_ms: float = 5.0
@@ -87,20 +91,30 @@ class LaunchConfig:
         return self.effective_link_role in ("host", "join")
 
     @property
-    def effective_tx_port(self) -> str | None:
-        """Returns the TX port: explicit ``--tx-port`` wins over ``--port``."""
-        for candidate in (self.tx_port, self.port):
+    def effective_data_port(self) -> str | None:
+        """Returns the primary COM1 Data port."""
+        for candidate in (self.data_port, self.tx_port, self.port):
             if candidate and candidate.strip():
                 return candidate.strip()
         return None
 
     @property
-    def effective_rx_port(self) -> str | None:
-        """Returns the RX port: explicit ``--rx-port`` wins over ``--port``."""
-        for candidate in (self.rx_port, self.port):
+    def effective_ctrl_port(self) -> str | None:
+        """Returns the COM2 STM32 Control port."""
+        for candidate in (self.ctrl_port, self.rx_port, self.port):
             if candidate and candidate.strip():
                 return candidate.strip()
         return None
+
+    @property
+    def effective_tx_port(self) -> str | None:
+        """Legacy alias: returns COM1 data port."""
+        return self.effective_data_port
+
+    @property
+    def effective_rx_port(self) -> str | None:
+        """Legacy alias: returns COM2 control port."""
+        return self.effective_ctrl_port
 
     @property
     def preferred_port(self) -> str | None:
@@ -262,14 +276,24 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         help="Explicit port name: COM11, LINK_A, MOCK_COM_LOOPBACK.",
     )
     parser.add_argument(
+        "--data-port",
+        default=None,
+        help="Explicit COM1 Data port (optical IR channel).",
+    )
+    parser.add_argument(
+        "--ctrl-port",
+        default=None,
+        help="Explicit COM2 Control port (STM32 baud switcher at 115200 bps).",
+    )
+    parser.add_argument(
         "--tx-port",
         default=None,
-        help="Explicit TX port name (overrides --port for outgoing bytes).",
+        help="Legacy alias for --data-port.",
     )
     parser.add_argument(
         "--rx-port",
         default=None,
-        help="Explicit RX port name (overrides --port for incoming bytes).",
+        help="Legacy alias for --ctrl-port.",
     )
     parser.add_argument(
         "--baud",
@@ -307,6 +331,11 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         help="Run only the in-app link broker (headless), no UI.",
     )
     parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Developer mode: expose MOCK_* and LINK_* virtual ports in the UI.",
+    )
+    parser.add_argument(
         "--window-pos",
         choices=WINDOW_POSITIONS,
         default="normal",
@@ -342,6 +371,8 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         instance=instance,
         transport=str(args.transport),
         port=args.port,
+        data_port=args.data_port,
+        ctrl_port=args.ctrl_port,
         tx_port=args.tx_port,
         rx_port=args.rx_port,
         baud=int(args.baud),
@@ -353,6 +384,7 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         auto_connect=bool(args.auto_connect),
         allow_multiple=bool(args.allow_multiple),
         broker_only=bool(args.broker_only),
+        dev_mode=bool(args.dev) or is_dev_mode(),
         window_pos=str(args.window_pos),
         loss_rate=float(args.loss),
         latency_ms=float(args.latency_ms),

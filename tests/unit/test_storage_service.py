@@ -261,7 +261,7 @@ class TestConcurrency:
             try:
                 for i in range(25):
                     storage.save_chat_message("T", f"t{n}-{i}", "00:00:00", i, True)
-            except Exception as exc:  # pragma: no cover - any error fails the test
+            except Exception as exc:
                 errors.append(exc)
 
         threads = [threading.Thread(target=worker, args=(n,)) for n in range(8)]

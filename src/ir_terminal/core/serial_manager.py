@@ -1,4 +1,4 @@
-"""High-level Serial Connection Manager coordinating Worker Thread lifecycle."""
+"""High-level coordinator for the dual-port serial worker thread."""
 
 from __future__ import annotations
 
@@ -14,43 +14,38 @@ from ir_terminal.core.serial_worker import (
     scan_available_ports,
 )
 from ir_terminal.protocol.constants import (
+    CONTROL_BAUDRATE,
     DEFAULT_BAUDRATE,
     SHUTDOWN_WAIT_MS,
     SOCKET_CONNECT_TIMEOUT_SEC,
 )
-from ir_terminal.protocol.control_channel import encode_control_line
-from ir_terminal.protocol.framer import pack_frame
-from ir_terminal.protocol.packet import Packet
-from ir_terminal.utils.logger import (
-    LogTag,
-    format_frame_summary,
-    format_hex_preview,
-    opcode_name,
-)
+from ir_terminal.protocol.framer import pack_packet
+from ir_terminal.utils.logger import LogTag, format_hex_preview
 from ir_terminal.utils.path_helpers import is_dual_mock_enabled
 
 logger = logging.getLogger(__name__)
 
 
 class SerialManager(QObject):
-    """Coordinates the background QThread and exposes high-level API to UI/Services."""
+    """Coordinates the worker QThread and exposes the hardware API to services."""
 
-    connected: ClassVar[Signal] = Signal(str, int)  # (port, baud)
+    connected: ClassVar[Signal] = Signal(str, int)
     ports_connected: ClassVar[Signal] = Signal(str, str, int)
     disconnected: ClassVar[Signal] = Signal()
     error_occurred: ClassVar[Signal] = Signal(str)
     raw_tx: ClassVar[Signal] = Signal(bytes)
     raw_rx: ClassVar[Signal] = Signal(bytes)
-    packet_received: ClassVar[Signal] = Signal(Packet)  # (Packet)
-    control_message_received: ClassVar[Signal] = Signal(str)
+    packet_received: ClassVar[Signal] = Signal(object)
     ports_changed: ClassVar[Signal] = Signal(list)
-    framer_error: ClassVar[Signal] = Signal(str, int)
+    baud_changed: ClassVar[Signal] = Signal(int)
+    baud_command_sent: ClassVar[Signal] = Signal(int, str)
 
     _sig_open: ClassVar[Signal] = Signal(str, int)
-    _sig_open_dual: ClassVar[Signal] = Signal(str, str, int)
+    _sig_open_hw: ClassVar[Signal] = Signal(str, str, int, int)
     _sig_close: ClassVar[Signal] = Signal()
     _sig_send: ClassVar[Signal] = Signal(bytes)
     _sig_inject: ClassVar[Signal] = Signal(bytes)
+    _sig_set_baud: ClassVar[Signal] = Signal(int)
 
     def __init__(
         self,
@@ -62,12 +57,12 @@ class SerialManager(QObject):
         link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
         link_token: str | None = None,
     ) -> None:
-        """Initializes the manager and its background worker thread.
+        """Initializes the manager and starts its worker thread.
 
         Args:
-            link_endpoints: Optional LINK_* -> (host, port) map for dual mode.
-            include_link: Whether LINK_A/B appear in the port list (None = env).
-            link_connect_retries: Extra LINK connect attempts on open.
+            link_endpoints: Optional LINK_* to ``(host, port)`` map.
+            include_link: Whether LINK ports appear in the scan list.
+            link_connect_retries: Extra LINK connect attempts.
             link_retry_interval_sec: Delay between LINK connect attempts.
             link_connect_timeout_sec: Per-attempt LINK connect timeout.
             link_token: Optional broker handshake token.
@@ -86,10 +81,11 @@ class SerialManager(QObject):
         self._worker.moveToThread(self._thread)
 
         self._sig_open.connect(self._worker.open_port)
-        self._sig_open_dual.connect(self._worker.open_ports)
+        self._sig_open_hw.connect(self._worker.open_hardware_ports)
         self._sig_close.connect(self._worker.close_port)
         self._sig_send.connect(self._worker.send_bytes)
         self._sig_inject.connect(self._worker.inject_rx_data)
+        self._sig_set_baud.connect(self._worker.set_baud)
 
         self._worker.connected.connect(self.connected)
         self._worker.ports_connected.connect(self.ports_connected)
@@ -98,213 +94,221 @@ class SerialManager(QObject):
         self._worker.raw_data_sent.connect(self.raw_tx)
         self._worker.raw_data_received.connect(self.raw_rx)
         self._worker.packet_received.connect(self.packet_received)
-        self._worker.control_message_received.connect(self.control_message_received)
         self._worker.ports_changed.connect(self.ports_changed)
-        self._worker.framer_error.connect(self.framer_error)
+        self._worker.baud_changed.connect(self.baud_changed)
+        self._worker.baud_command_sent.connect(self.baud_command_sent)
 
         self._thread.start()
+        self._is_connected = False
+        self._current_data_port = ""
+        self._current_ctrl_port = ""
+        self._current_baud = DEFAULT_BAUDRATE
+        self._current_ctrl_baud = CONTROL_BAUDRATE
+        self.ports_connected.connect(self._on_ports_connected)
+        self._worker.disconnected.connect(self._on_disconnected)
+        self._worker.baud_changed.connect(self._on_baud_changed)
         logger.debug(
-            "%s Manager worker thread started: running=%s dispatch=queued-signals",
+            "%s Manager worker thread started: running=%s",
             LogTag.HW_SERIAL,
             self._thread.isRunning(),
         )
-        self._is_connected = False
-        self._current_port = ""
-        self._current_tx_port = ""
-        self._current_rx_port = ""
-        self._current_baud = DEFAULT_BAUDRATE
 
-        self.connected.connect(self._on_connected)
-        self.ports_connected.connect(self._on_ports_connected)
-        self.disconnected.connect(self._on_disconnected)
-
-    def _on_connected(self, port: str, baud: int) -> None:
+    def _on_ports_connected(self, data_port: str, ctrl_port: str, baud: int) -> None:
+        """Stores the active port and baudrate state after a successful open."""
         self._is_connected = True
-        self._current_port = port
-        self._current_tx_port = port
+        self._current_data_port = data_port
+        self._current_ctrl_port = ctrl_port
         self._current_baud = baud
         logger.info(
-            "%s Manager link UP: port=%s baud=%d",
+            "%s Manager link UP: COM1=%s @%d COM2=%s @%d",
             LogTag.HW_SERIAL,
-            port,
+            data_port,
             baud,
-        )
-
-    def _on_ports_connected(self, tx_port: str, rx_port: str, baud: int) -> None:
-        self._is_connected = True
-        self._current_tx_port = tx_port
-        self._current_rx_port = rx_port
-        self._current_baud = baud
-        logger.info(
-            "%s Manager dual link UP: tx=%s rx=%s baud=%d",
-            LogTag.HW_SERIAL,
-            tx_port,
-            rx_port,
-            baud,
+            ctrl_port or "<none>",
+            self._current_ctrl_baud,
         )
 
     def _on_disconnected(self) -> None:
+        """Clears connection state after the worker closes the transport."""
         logger.info(
-            "%s Manager link DOWN: was port=%s baud=%d",
+            "%s Manager link DOWN: was COM1=%s @%d",
             LogTag.HW_SERIAL,
-            self._current_port,
+            self._current_data_port,
             self._current_baud,
         )
         self._is_connected = False
-        self._current_port = ""
-        self._current_tx_port = ""
-        self._current_rx_port = ""
+        self._current_data_port = ""
+        self._current_ctrl_port = ""
+
+    def _on_baud_changed(self, baudrate: int) -> None:
+        """Stores the optical rate confirmed by the worker.
+
+        Args:
+            baudrate: New COM1 optical baudrate.
+        """
+        self._current_baud = int(baudrate)
+        logger.info("%s Manager optical baudrate now %d bps", LogTag.BAUD_CTRL, baudrate)
 
     @property
     def is_connected(self) -> bool:
-        """Returns True if serial port is actively connected."""
+        """Returns True while the hardware link is open."""
         return self._is_connected
 
     @property
     def current_port(self) -> str:
-        """Returns current active port name."""
-        return self._current_port
+        """Returns the active data port name."""
+        return self._current_data_port
+
+    @property
+    def current_data_port(self) -> str:
+        """Returns the active COM1 data port name."""
+        return self._current_data_port
+
+    @property
+    def current_ctrl_port(self) -> str:
+        """Returns the active COM2 control port name."""
+        return self._current_ctrl_port
 
     @property
     def current_tx_port(self) -> str:
-        """Returns current active TX port name."""
-        return self._current_tx_port
+        """Returns the data port for TX-oriented callers."""
+        return self._current_data_port
 
     @property
     def current_rx_port(self) -> str:
-        """Returns current active RX port name."""
-        return self._current_rx_port
+        """Returns the data port for RX-oriented callers."""
+        return self._current_data_port
 
     @property
     def current_baud(self) -> int:
-        """Returns the physical UART baudrate (always 115200 in the active path)."""
+        """Returns the active optical data baudrate."""
         return self._current_baud
+
+    @property
+    def current_control_baud(self) -> int:
+        """Returns the fixed COM2 control baudrate."""
+        return self._current_ctrl_baud
 
     def connect_ports(
         self,
-        tx_port: str,
-        rx_port: str,
+        data_port: str,
+        ctrl_port: str | None = None,
         baudrate: int = DEFAULT_BAUDRATE,
+        ctrl_baudrate: int = CONTROL_BAUDRATE,
     ) -> None:
-        """Requests opening independent TX/RX serial ports in background thread."""
+        """Requests opening COM1 and COM2 in the worker thread.
+
+        Args:
+            data_port: COM1 optical data port.
+            ctrl_port: COM2 control port, or None when no control channel exists.
+            baudrate: Optical data baudrate.
+            ctrl_baudrate: Fixed MCU control baudrate.
+        """
+        data_name = (data_port or "").strip()
+        ctrl_name = (ctrl_port or "").strip()
+        self._current_ctrl_baud = int(ctrl_baudrate)
         logger.info(
-            "%s Manager connect requested: tx=%s rx=%s baud=%d (dispatch to worker thread)",
+            "%s Manager connect: COM1=%s @%d COM2=%s @%d",
             LogTag.HW_SERIAL,
-            tx_port,
-            rx_port,
+            data_name,
             baudrate,
+            ctrl_name or "<none>",
+            ctrl_baudrate,
         )
-        self._sig_open_dual.emit(tx_port, rx_port, baudrate)
+        self._sig_open_hw.emit(data_name, ctrl_name, int(baudrate), int(ctrl_baudrate))
 
     def connect_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Requests opening a single shared serial port (backward-compatible)."""
-        self.connect_ports(port_name, port_name, baudrate)
+        """Requests opening one data port without a control channel.
+
+        Args:
+            port_name: Port identifier used for COM1 data.
+            baudrate: Optical data baudrate.
+        """
+        self.connect_ports(port_name, None, baudrate)
 
     def disconnect_port(self) -> None:
-        """Requests closing serial port in background thread."""
+        """Requests closing the hardware link in the worker thread."""
         logger.info(
-            "%s Manager disconnect requested: current_port=%s",
+            "%s Manager disconnect requested: COM1=%s",
             LogTag.HW_SERIAL,
-            self._current_port,
+            self._current_data_port,
         )
         self._sig_close.emit()
 
     def inject_raw_rx(self, data: bytes) -> None:
-        """Injects simulated raw bytes via worker thread (thread-safe)."""
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s Manager RX inject: len=%dB hex=%s",
-                LogTag.HW_SERIAL,
-                len(data),
-                format_hex_preview(data),
-            )
+        """Injects raw bytes through the worker thread.
+
+        Args:
+            data: Raw bytes to parse as an incoming optical stream.
+        """
         self._sig_inject.emit(data)
 
     def send_raw(self, data: bytes) -> None:
-        """Sends raw byte sequence through serial worker."""
+        """Sends raw bytes through the worker thread.
+
+        Args:
+            data: Raw bytes to transmit on COM1.
+        """
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "%s Manager TX raw: len=%dB hex=%s connected=%s port=%s",
+                "%s Manager TX raw: len=%dB hex=%s connected=%s",
                 LogTag.HW_SERIAL,
                 len(data),
                 format_hex_preview(data),
                 self._is_connected,
-                self._current_port,
             )
         self._sig_send.emit(data)
 
-    def send_control_line(self, message: str) -> None:
-        """Transmits one ASCII control line through the existing worker queue.
+    def send_packet(self, sequence: int, data: bytes = b"") -> None:
+        """Packs and transmits one WinForm frame.
 
         Args:
-            message: Control line such as ``SET_BAUD:19200``. A single trailing
-                newline is appended; any existing ``\\r\\n`` is stripped.
+            sequence: Frame identifier.
+            data: Payload bytes.
         """
         try:
-            payload = encode_control_line(message)
-        except ValueError as exc:
-            logger.warning(
-                "%s TX control rejected (%s): input=%r",
-                LogTag.BAUD_CTRL,
-                exc,
-                message,
-            )
-            self.error_occurred.emit(f"Control message rejected: {exc}")
-            return
-        logger.info(
-            "%s TX control line=%r port=%s connected=%s",
-            LogTag.BAUD_CTRL,
-            message.strip(),
-            self._current_port or self._current_tx_port or "<no-port>",
-            self._is_connected,
-        )
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s TX control payload: len=%dB hex=%s",
-                LogTag.BAUD_CTRL,
-                len(payload),
-                format_hex_preview(payload),
-            )
-        self._sig_send.emit(payload)
-
-    def send_packet(self, seq: int, opcode: int, payload: bytes = b"") -> None:
-        """Packs and transmits a structured protocol frame."""
-        try:
-            frame = pack_frame(seq=seq, opcode=opcode, payload=payload)
+            frame = pack_packet(sequence, data)
         except Exception:
             logger.exception(
-                "%s Manager pack FAILED %s payload_hex=%s",
+                "%s Manager pack FAILED: seq=0x%08X len=%dB",
                 LogTag.PROTO_FRAME,
-                format_frame_summary(seq, opcode, len(payload)),
-                format_hex_preview(payload, max_bytes=16),
+                sequence,
+                len(data),
             )
             raise
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "%s Manager TX %s (%s) port=%s frame_len=%dB frame_hex=%s",
+                "%s Manager TX frame: seq=0x%08X payload=%dB frame=%dB",
                 LogTag.PROTO_FRAME,
-                format_frame_summary(seq, opcode, len(payload)),
-                opcode_name(opcode),
-                self._current_port or "<no-port>",
+                sequence,
+                len(data),
                 len(frame),
-                format_hex_preview(frame),
             )
         self.send_raw(frame)
 
+    def send_baud_command(self, baudrate: int) -> None:
+        """Queues a COM2 baud switch and COM1 reconfigure.
+
+        Args:
+            baudrate: Target optical baudrate.
+        """
+        logger.info("%s Manager baud switch requested: %d", LogTag.BAUD_CTRL, baudrate)
+        self._sig_set_baud.emit(int(baudrate))
+
     def get_port_list(self) -> list[str]:
-        """Scans for available serial ports on the host system."""
+        """Scans and returns available port identifiers."""
         return scan_available_ports(self._include_link)
 
     def get_port_info_list(self) -> list[PortInfo]:
-        """Scans for available serial ports including VID/PID/description."""
+        """Scans and returns available port metadata."""
         return scan_available_port_infos(self._include_link)
 
     def shutdown(self) -> None:
-        """Cleanly halts background thread and worker."""
+        """Stops the worker thread and releases hardware handles."""
         logger.info(
-            "%s Manager shutdown: requesting worker close (port=%s, connected=%s)",
+            "%s Manager shutdown: requesting worker close (COM1=%s connected=%s)",
             LogTag.HW_SERIAL,
-            self._current_port,
+            self._current_data_port,
             self._is_connected,
         )
         try:
@@ -312,11 +316,9 @@ class SerialManager(QObject):
             self._thread.quit()
             if not self._thread.wait(SHUTDOWN_WAIT_MS):
                 logger.warning(
-                    "%s SerialManager thread did not stop in %d ms (thread_running=%s, port=%s)",
+                    "%s SerialManager thread did not stop in %d ms",
                     LogTag.HW_SERIAL,
                     SHUTDOWN_WAIT_MS,
-                    self._thread.isRunning(),
-                    self._current_port,
                 )
             else:
                 logger.info("%s SerialManager worker thread stopped cleanly", LogTag.HW_SERIAL)

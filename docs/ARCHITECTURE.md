@@ -1,263 +1,315 @@
-# KIẾN TRÚC HỆ THỐNG & QUY CHUẨN PHÁT TRIỂN (CONVENTIONS & BEST PRACTICES)
-**Dự án:** IR-OWC Lab Terminal — xem index tại `docs/README.md`. Mọi ví dụ opcode/tree dưới đây phải khớp `docs/PROTOCOL.md` và code thực tế.
-**Dự án:** IR-OWC Lab Terminal (Desktop Application cho Phòng Thí Nghiệm Truyền Thông Quang Không Dây Hồng Ngoại)  
-**Tech-Stack:** Python 3.11+, PySide6 (Qt6), PySerial, PyQtGraph, UV Package Manager  
-**Chuẩn lập trình:** Clean Layered Architecture, Event-Driven (Qt Signals/Slots), SOLID / KISS / DRY / YAGNI, Google-Style Docstrings, Strict Typing, TDD.
+# KIẾN TRÚC HỆ THỐNG & QUY CHUẨN PHÁT TRIỂN
+
+**Dự án:** IR-OWC Lab Terminal — Desktop PC ↔ STM32F407 + MCP2122 + TFDU4101.
+**Giao thức:** tương thích WinForm C# (`docs/WFF.txt`).
+**Tech stack:** Python 3.11+, PySide6 (Qt6), PySerial, QWebEngine, `uv`.
+**Chuẩn code:** phân tầng rõ ràng, Qt Signals/Slots, SOLID / KISS / DRY / YAGNI,
+Google-style docstring, strict typing, TDD.
+
+Wire format và pacing: xem `docs/PROTOCOL.md`.
 
 ---
 
-## 1. NGUYÊN TẮC THIẾT KẾ PHẦN MỀM CỐT LÕI (CORE DESIGN PRINCIPLES)
+## 1. NGUYÊN TẮC THIẾT KẾ
 
-Dự án tuân thủ nghiêm ngặt các nguyên lý kỹ nghệ phần mềm để đảm bảo hệ thống dễ kiểm thử, mở rộng và bàn giao cho đội IoT / khách hàng:
+### 1.1. SOLID
 
-### 1.1. Bộ nguyên lý SOLID
-1. **Single Responsibility Principle (SRP - Đơn trách nhiệm):**
-   - Mỗi module / class chỉ đảm nhận một lý do duy nhất để thay đổi.
-   - `Framer`: Chỉ làm nhiệm vụ parse byte stream thành `Packet` và tính CRC-32; không quan tâm gói tin được gửi qua cổng COM nào hay hiển thị lên UI ra sao.
-   - `SerialWorker`: Chỉ quản lý vòng lặp đọc/ghi byte thô từ phần cứng; không can thiệp vào logic nghiệp vụ (chat/file).
-   - `FileTransferService`: Chỉ xử lý chia nhỏ file (chunking), reassembly và tính hash; không gọi trực tiếp các hàm giao diện Qt.
-   - `HardwareSetupView`: Chỉ xử lý tương tác giao diện màn hình kết nối; không chứa logic kết nối serial trực tiếp.
+1. **Single Responsibility**
+   - `Framer`: đóng/mở khung byte và giữ phần đuôi chưa đủ dữ liệu; không biết
+     cổng COM hay UI.
+   - `SerialWorker`: vòng lặp đọc/ghi byte trên worker thread; không chứa logic
+     file.
+   - `FileTransferService`: chia file, gửi theo nhịp, ghi file nhận; không gọi
+     widget.
+   - `BackendBridge`: chuyển slot Qt thành lệnh service và phát signal cho SPA.
+   - `HardwareSetupView` (HTML/JS): chỉ tương tác giao diện.
 
-2. **Open/Closed Principle (OCP - Đóng để sửa, Mở để rộng):**
-   - Các tầng nghiệp vụ phụ thuộc vào Abstract Interface (`ITransport` — ABC duy nhất hiện tại).
-   - Khi cần đổi từ giao tiếp `PySerialTransport` (cổng COM) sang `MockSerialPort` (kiểm thử) hoặc `SocketTransport` (WiFi/Ethernet sau này), chỉ cần tạo class mới hiện thực interface mà không sửa 1 dòng code nào trong `FileTransferService` hay `ChatService`.
+2. **Open/Closed**
+   - Transport phụ thuộc `ITransport`: `DualSerialTransport`, `SocketTransport`,
+     `MockSerialPort`.
+   - Thêm transport mới không sửa service hay UI.
 
-3. **Liskov Substitution Principle (LSP - Thay thế Liskov):**
-   - `MockSerialPort` và `HardwareSerialPort` phải có cùng hành vi chuẩn: cùng trả về `bytes`, cùng ném ra `SerialTimeoutException` hoặc `SerialException` đồng nhất khi mất kết nối, đảm bảo test chạy đúng với thực tế phần cứng.
+3. **Liskov**
+   - Mọi transport trả `bytes`, ném lỗi serial đồng nhất và expose cùng thuộc
+     tính `is_open`, `baudrate`.
 
-4. **Interface Segregation Principle (ISP - Phân tách Interface):**
-   - Không tạo các "God Object" hay Interface khổng lồ chứa tất cả các hàm. Giao tiếp liên tầng qua Qt Signals (`message_received`, `progress_updated`/`transfer_completed`, `telemetry_updated`); chỉ có `ITransport` là ABC duy nhất (`core/interfaces.py`).
+4. **Interface Segregation**
+   - Giao tiếp liên tầng bằng Qt Signals; `ITransport` là abstraction duy nhất.
+   - Không có "god object" cho giao thức.
 
-5. **Dependency Inversion Principle (DIP - Đảo ngược phụ thuộc):**
-   - High-level modules (Services, UI Controllers) không phụ thuộc trực tiếp vào Low-level modules (PySerial C-bindings). Cả hai đều phụ thuộc vào Abstraction (`ITransport`).
-   - Việc tiêm phụ thuộc (Dependency Injection / Wiring) được thực hiện tập trung tại `src/ir_terminal/app.py`.
+5. **Dependency Inversion**
+   - Service và UI không import thư viện serial trực tiếp.
+   - Wiring tập trung tại `src/ir_terminal/app.py`.
 
-### 1.2. KISS - DRY - YAGNI
-- **KISS (Keep It Simple, Stupid):** Giữ giao thức Stop-and-Wait ARQ đơn giản, rõ ràng, không cố cài đặt Sliding Window phức tạp khi đặc tính kênh truyền quang hồng ngoại trong phòng lab là Half-Duplex và tốc độ 115.2 kbps.
-- **DRY (Don't Repeat Yourself):** Toàn bộ magic numbers, byte delimiters (SOF `0xAA55`, EOF `0x55AA`), Opcode (`0x02 DATA_TEXT`, `0x01 DATA_CHUNK`, `0x10 ACK`, `0x20 PING` — xem `docs/PROTOCOL.md`) chỉ được định nghĩa một lần duy nhất tại `protocol/constants.py`.
-- **YAGNI (You Aren't Gonna Need It):** Không viết sẵn các tính năng vượt scope như mã hóa AES-256, nén file zip phức tạp, multi-hop mesh routing khi chưa có trong yêu cầu MVP 3 tuần.
+### 1.2. KISS / DRY / YAGNI
+
+- **KISS:** giao thức chỉ có HEADER, DATA, END. Không ARQ, không CRC, không
+  state machine bắt tay.
+- **DRY:** `SYNC_MAGIC`, `SEQ_HEADER`, `SEQ_END`, `PACKET_SIZE`,
+  `HEADER_OVERHEAD`, `BAUD_COMMANDS` chỉ định nghĩa tại
+  `protocol/constants.py`.
+- **YAGNI:** không thêm SHA-256, resume tự động, nén, mã hóa hay mesh routing
+  khi firmware không hỗ trợ.
 
 ---
 
-## 2. QUY CHUẨN COMMENT & TÀI LIỆU HÓA CODE (CODE COMMENTS & DOCSTRINGS)
+## 2. QUY CHUẨN COMMENT & DOCSTRING
 
-Ngôn ngữ sử dụng trong code, docstring, commit và tài liệu kỹ thuật: **100% Tiếng Anh (English)**.
+Ngôn ngữ code, docstring và commit: **tiếng Anh**. Tài liệu người dùng: tiếng
+Việt.
 
-### 2.1. Chuẩn Docstring: Google Python Style Guide (PEP 257)
-Mọi Module, Class, và Public Method bắt buộc phải có docstring theo định dạng Google Style:
+### 2.1. Không dùng inline comment
+
+Trong `.py` và `.js` của dự án:
+
+- Không `# comment` giải thích.
+- Không `// comment` giải thích.
+- Không comment trang trí hay chia section.
+- Không `/* ... */`.
+
+Thông tin cần giải thích nằm trong:
+
+1. Docstring module/class/hàm.
+2. Tên biến và hàm tự mô tả.
+3. Tài liệu trong `docs/`.
+
+Ngoại lệ duy nhất là file vendored `ui/web/qwebchannel.js` giữ nguyên license
+và comment upstream.
+
+### 2.2. Google-style docstring
+
+Mọi module, class và public method đều có docstring:
 
 ```python
-def parse_frame(raw_buffer: bytes) -> tuple[Packet | None, bytes]:
-    """Extracts and validates the first valid protocol frame from the raw buffer.
-
-    Scans for the Start-of-Frame (SOF: 0xAA55) delimiter, extracts the packet
-    header, validates payload length, checks the CRC-32 checksum against corruption,
-    and strips the parsed bytes from the buffer.
+def pack_packet(sequence: int, data: bytes) -> bytes:
+    """Serializes one WinForm frame.
 
     Args:
-        raw_buffer: Byte sequence accumulated from the serial receiver ring buffer.
+        sequence: Frame identifier (uint32).
+        data: Payload bytes.
 
     Returns:
-        A tuple containing:
-            - Packet instance if a valid, verified frame was parsed; otherwise None.
-            - Remaining unprocessed bytes in the buffer.
+        Wire bytes: sync magic, sequence, length and payload.
 
     Raises:
-        FrameCorruptedError: If CRC-32 mismatch is detected for a complete frame.
+        ValueError: If the sequence or payload length does not fit the header.
     """
 ```
 
-### 2.2. Quy tắc Comment cấu trúc nhị phân và phần cứng (Hardware Protocol Comments)
-Khi thao tác với `struct.pack`, `struct.unpack`, hoặc toán tử bitwise (`<<`, `>>`, `&`, `|`), **BẮT BUỘC** phải có inline comment ghi rõ:
-1. Byte Offset (Vị trí byte).
-2. Tên trường (Field Name).
-3. Kiểu dữ liệu & Endianness (uint8, uint16-LE, uint32-LE).
-4. Ý nghĩa vật lý / Đơn vị.
+### 2.3. Mô tả layout nhị phân
+
+Offset, kiểu dữ liệu và endianness được mô tả trong docstring của hàm hoặc
+module, không dùng comment trong thân hàm:
 
 ```python
-# PACKET HEADER STRUCTURE (Total: 6 bytes)
-# Offset 0-1: Start of Frame (SOF) -> 0xAA55 (uint16, Little-Endian: 0x55, 0xAA)
-# Offset 2  : Sequence Number      -> 0x00..0xFF (uint8)
-# Offset 3  : Opcode / Command     -> 0x02=TEXT, 0x01=CHUNK, 0x10=ACK, 0x20=PING (uint8, xem PROTOCOL.md)
-# Offset 4-5: Payload Length (N)   -> 0..512 bytes (uint16, Little-Endian)
-header_bytes = struct.pack("<HBBH", SOF_MAGIC, seq_id, opcode, payload_len)
-```
+def pack_header_payload(file_name: str, total_packets: int) -> bytes:
+    """Serializes the HEADER packet payload.
 
-### 2.3. Nguyên tắc "Self-Documenting Code" vs "Why-Comment"
-- **Không comment những thứ hiển nhiên:**
-  * ❌ `# Increment index: i = i + 1`
-  * ❌ `# Check if port is open: if port.is_open:`
-- **Bắt buộc comment giải thích lý do kỹ thuật (The "WHY" & Hardware constraints):**
-  * ✅ `# Sleep 5ms to allow MCP2122 baud rate generator PLL to settle after baud switch.`
-  * ✅ `# Limit chunk size to 256 bytes to prevent STM32 USB-CDC internal ring buffer overflow.`
-  * ✅ `# Invert carrier sense threshold due to TFDU4101 active-low RXD output.`
+    Layout: ``nameLength uint16 LE``, ``name UTF-8``,
+    ``totalPackets int32 LE``.
+    """
+```
 
 ---
 
-## 3. CẤU TRÚC THƯ MỤC DỰ ÁN CHUẨN (PROJECT DIRECTORY STRUCTURE)
+## 3. CẤU TRÚC THƯ MỤC
 
 ```text
 LabHongNgoai/
-├── LAB_BaoGia.xlsx               # Báo giá/phạm vi chuẩn (MVP 7.5tr + Post-MVP riêng)
-├── README.md                     # Giới thiệu + chạy nhanh (test hiện tại: 234 passed)
-├── docs/                         # 4 file duy nhất, không thêm file planning rời
-│   ├── README.md                 # Index + đối chiếu BaoGia↔code (đọc trước)
-│   ├── PROTOCOL.md               # Wire format chốt + code C STM32
-│   ├── ARCHITECTURE.md           # Kiến trúc code + quy chuẩn dev (file này)
-│   ├── ACCEPTANCE.md             # Nghiệm thu HW 3 bước + demo 6 bước
-│   └── screenshots/              # Ảnh 4 màn hình dùng cho README + demo
-├── src/
-│   └── ir_terminal/
-│       ├── __init__.py
-│       ├── __main__.py            # Entry point chạy app: `uv run python -m ir_terminal`
-│       ├── app.py                 # QApplication lifecycle, CLI/lock/broker, DI container
-│       ├── config.py              # LaunchConfig + InstanceContext (CLI flags, A/B isolation)
-│       │
-│       ├── core/                  # [TẦNG CORE] Quản lý I/O & Threading
-│       │   ├── __init__.py
-│       │   ├── interfaces.py      # Abstract Base Classes (ITransport)
-│       │   ├── serial_worker.py   # QObject Worker trên QThread + poll timer (10ms HW / 2ms mock)
-│       │   ├── serial_manager.py  # Quản lý vòng đời COM (Connect, Disconnect, Scan)
-│       │   ├── pyserial_transport.py # PySerial 8N1 (timeout 0.05 / write 0.2)
-│       │   ├── socket_transport.py   # TCP transport LINK_A/LINK_B (retry + token + link-lost)
-│       │   ├── link_broker.py     # Broker TCP in-app (host node), relay A<->B, LOS/loss/latency
-│       │   ├── transport_factory.py  # Chọn PySerial / Socket / Mock theo tên cổng
-│       │   ├── ring_buffer.py     # Bộ đệm vòng byte stream chống tràn
-│       │   └── mock_serial.py     # Giả lập Serial (drop rate, latency, LOS blockage)
-│       │
-│       ├── protocol/              # [TẦNG GIAO THỨC] Định nghĩa & Đóng gói Frame
-│       │   ├── __init__.py
-│       │   ├── constants.py       # SOF, EOF, OPCODES, TIMEOUTS (chunk mặc định 240B, CRC-32, legacy + large limits)
-│       │   ├── framer.py          # pack_frame / parse_frames_from_buffer + CRC-32
-│       │   ├── packet.py          # Immutable Dataclasses (Packet, Header)
-│       │   └── file_payloads.py   # FileStart/Chunk/End (legacy u16 + large u32/u64) + Ack payloads
-│       │
-│       ├── services/              # [TẦNG DỊCH VỤ] Nghiệp vụ ứng dụng
-│       │   ├── __init__.py
-│       │   ├── file_transfer_service.py # Qt compatibility façade, settings, signals, wiring
-│       │   ├── file_transfer/           # Transfer handlers + protocol/integrity/file primitives
-│       │   │   ├── tx_manager.py        # TX Stop-and-Wait handling
-│       │   │   ├── rx_manager.py        # RX validation, ordering, ACK/NACK, publish flow
-│       │   │   ├── protocol_adapter.py  # Legacy/large payload encode/decode
-│       │   │   ├── chunk_buffer.py      # Bounded chunk reads + RX staging/publish
-│       │   │   ├── integrity_verifier.py # Streaming CRC-32 comparisons
-│       │   │   ├── state_coordinator.py # Transfer state owner
-│       │   │   └── file_transfer_types.py # Shared TransferState
-│       │   ├── chat_service.py    # Gửi/nhận DATA_TEXT UTF-8 + lưu file JSON
-│       │   ├── storage_service.py # File JSON chat/file/telemetry + export CSV
-│       │   └── telemetry_service.py # Throughput/RTT/loss/sniffer (BER hiển thị, chưa đo thực)
-│       │
-│       ├── ui/                    # [TẦNG GIAO DIỆN] QWebEngine SPA
-│       │   ├── __init__.py
-│       │   ├── main_window_web.py # QMainWindow + QWebEngineView + QWebChannel
-│       │   ├── backend_bridge.py  # Slots/Signals Python↔JS
-│       │   └── web/               # HTML/Tailwind/JS (4 views: hardware/file/chat/telemetry)
-│       │
-│       └── utils/                 # [TIỆN ÍCH]
-│           ├── __init__.py
-│           ├── logger.py          # Rotating file logger + LogTag (retarget theo instance)
-│           ├── instance_lock.py   # QLockFile chống mở trùng 1 instance (--allow-multiple)
-│           └── path_helpers.py    # Resolve asset + data/ (dev, frozen, IR_DATA_DIR, instance A/B)
-│
-├── data/                          # Runtime (tự tạo): JSON stores, transfers/, logs/, instances/<A|B>/ + webengine/<cache|storage>
-├── tests/                         # pytest (hiện tại 234 passed)
-│   ├── unit/                      # framer, payloads, chat, file ARQ, storage, telemetry, mock, bridge, config, broker, lock
-│   └── integration/               # 2-node mock E2E, lifecycle, concurrent, serial_manager, dual-link
-│
+├── README.md
+├── docs/
+│   ├── README.md                 # index
+│   ├── PROTOCOL.md               # wire format hiện hành
+│   ├── ARCHITECTURE.md           # file này
+│   ├── ACCEPTANCE.md             # runbook nghiệm thu
+│   ├── WFF.txt                   # WinForm C# reference
+│   └── screenshots/
+├── src/ir_terminal/
+│   ├── __main__.py
+│   ├── app.py                    # lifecycle, CLI, lock, DI
+│   ├── config.py                 # LaunchConfig + InstanceContext
+│   ├── core/
+│   │   ├── interfaces.py         # ITransport
+│   │   ├── serial_worker.py      # QObject worker trên QThread
+│   │   ├── serial_manager.py     # coordinator + signals
+│   │   ├── dual_serial_transport.py # COM1 (Quang) + COM2 (STM32)
+│   │   ├── socket_transport.py   # TCP loopback / virtual link
+│   │   ├── link_broker.py        # broker hai node
+│   │   ├── transport_factory.py
+│   │   ├── ring_buffer.py
+│   │   └── mock_serial.py
+│   ├── protocol/
+│   │   ├── constants.py
+│   │   ├── framer.py
+│   │   └── packet.py
+│   ├── services/
+│   │   ├── file_transfer_service.py # open-loop paced streaming
+│   │   ├── chat_service.py       # virtual file envelope
+│   │   ├── storage_service.py
+│   │   └── telemetry_service.py
+│   ├── ui/
+│   │   ├── main_window_web.py
+│   │   ├── backend_bridge.py
+│   │   └── web/                  # HTML/Tailwind/JS SPA
+│   └── utils/
+│       ├── logger.py
+│       ├── instance_lock.py
+│       └── path_helpers.py
+├── tests/
+│   ├── unit/
+│   └── integration/
 ├── scripts/
-│   └── build_standalone.py        # Đóng gói PyInstaller
-├── pyproject.toml                 # Cấu hình uv, dependencies, ruff, mypy, pytest
-└── ir_terminal.spec               # PyInstaller spec
+│   ├── build_modular_web.py
+│   ├── build_standalone.py
+│   ├── run_dual_mock.sh
+│   └── *.cmd
+├── pyproject.toml
+└── ir_terminal.spec
 ```
 
-### 3.1. Quy tắc đường dẫn dữ liệu runtime
+---
 
-- `get_app_root()` trả về thư mục chứa executable khi `sys.frozen` (PyInstaller one-file/one-folder), ngược lại là repo root.
-- `get_app_data_dir()` tạo và trả về `<app root>/data/`; `get_data_dir()`, `get_transfers_dir()`, `get_logs_dir()` đều suy ra từ đây.
-- `IR_DATA_DIR` ghi đè hoàn toàn gốc `data/` (test/portable). `IR_INSTANCE=A|B` (hoặc `--instance`) tách sang `data/instances/<A|B>/` để hai app dual-mock không chia sẻ JSON/file/log.
-- Không hard-code `~/.ir_terminal` hoặc đường dẫn tuyệt đối của máy dev trong code; mọi thư mục phải được tạo bằng `mkdir(parents=True, exist_ok=True)`.
-- Thư mục nhận file (`transfers_dir`) cấu hình được từ UI (*Settings → Default receive directory (Files only)*), lưu vào `settings.json` dưới dạng **tuyệt đối** (`Path(dir).expanduser().resolve()`) và được **validate** khi Save (tạo nếu thiếu, từ chối nếu trỏ vào file/thư mục không truy cập được → trả lỗi ra UI). `default_transfers_dir` (mặc định `data/transfers/`) luôn được expose để nút **Reset to default** quay lại.
-- `file_transfer_service` **khóa thư mục đích cho từng phiên nhận**: `_rx_dest_dir` được chụp tại `TRANSFER_START`, dùng chung cho file tạm `.ir_rx_*.part` và lần publish cuối (`.part` → file thật), nên đổi setting giữa phiên không gây `EXDEV`. Khi `load_settings` gặp đường dẫn đã lưu không dùng được, ghi **warning** rõ ràng và giữ mặc định (không fallback im lặng).
-- Chỉ đường dẫn nhận file đổi được từ UI; JSON/`logs/` luôn nằm trong `data/` (chỉ đổi qua `IR_DATA_DIR`).
+## 4. DỮ LIỆU RUNTIME
 
-### 3.1.1. Chế độ hai node trên một PC (zero-driver)
+- `get_app_root()`: thư mục executable khi frozen, ngược lại repo root.
+- `get_app_data_dir()`: `<app root>/data/`; `get_data_dir()`,
+  `get_transfers_dir()`, `get_logs_dir()` suy ra từ đây.
+- `IR_DATA_DIR` ghi đè gốc `data/`.
+- `IR_INSTANCE=A|B` hoặc `--instance` tách sang `data/instances/<ID>/`.
+- Không hard-code đường dẫn home; mọi thư mục tạo bằng
+  `mkdir(parents=True, exist_ok=True)`.
+- Thư mục nhận file đổi được từ UI, lưu tuyệt đối sau `expanduser().resolve()`.
+  `default_transfers_dir` luôn được expose để reset.
+- Chỉ file nhận đổi chỗ; JSON và `logs/` luôn trong `data/`.
 
-Một bản build duy nhất chạy được 2 node độc lập bằng cờ CLI (không cần driver ảo):
+### 4.1. Hai node trên một PC
 
 | Cờ | Ý nghĩa |
-|----|---------|
-| `--instance A\|B` | Tách `data/instances/<ID>/` (JSON, transfers, logs, WebEngine, lock) |
-| `--link-role off\|host\|join\|auto` | `host` = Node A + broker in-app; `join` = Node B; `auto` suy ra từ instance |
-| `--link-base-port 6001` | `LINK_A` = base, `LINK_B` = base+1 |
-| `--port COM11\|LINK_A\|MOCK_COM_LOOPBACK` | Ép cổng dùng chung cho TX và RX |
-| `--tx-port COM3` | Cổng COM phát (ghi dữ liệu xuống board) |
-| `--rx-port COM4` | Cổng COM thu (đọc dữ liệu quang từ board) |
-| `--baud 115200` | Baud rate |
-| `--auto-connect` | Tự kết nối cổng ưu tiên sau khi UI sẵn sàng |
-| `--window-pos left\|right\|normal` | Chia đôi màn hình cho demo 2 node |
-| `--allow-multiple` | Bỏ qua lock (debug) |
-| `--broker-only` | Chỉ chạy broker headless (dev) |
-| `--loss/--latency-ms/--los` | Mô phỏng suy hao/trễ/chắn tia của broker |
+| :--- | :--- |
+| `--instance A\|B` | Tách dữ liệu, lock và WebEngine profile |
+| `--link-role off\|host\|join\|auto` | Host chạy broker in-app |
+| `--link-base-port 6001` | `LINK_A` = base, `LINK_B` = base + 1 |
+| `--port`, `--tx-port`, `--rx-port` | Ép cổng hoặc cặp cổng |
+| `--baud` | Baudrate dữ liệu quang |
+| `--auto-connect` | Tự kết nối sau khi UI sẵn sàng |
+| `--window-pos left\|right\|normal` | Chia màn hình demo |
+| `--allow-multiple` | Bỏ lock (debug) |
+| `--broker-only` | Chạy broker headless |
+| `--loss`, `--latency-ms`, `--los` | Mô phỏng kênh quang |
 
-- `config.py:LaunchConfig` là nguồn chuẩn cho CLI/env; `InstanceContext` tạo sẵn mọi thư mục và identity (title, station names, profile key).
-- `utils/instance_lock.py` dùng `QLockFile` tại `data/instances/<ID>/app.lock`; hai node A/B dùng lock khác nhau nên chạy song song được, mở trùng cùng node sẽ bị chặn.
-- `core/link_broker.py` được host khởi động **trong process** (không cần `scripts/`), bind `127.0.0.1`, dùng `SO_EXCLUSIVEADDRUSE` trên Windows, hỗ trợ retry khi node join khởi động trước.
-- `QWebEngineProfile` riêng cho từng instance (`data/instances/<ID>/webengine/{cache,storage}`) để tránh hỏng cache/cookie SQLite khi 2 process chạy đồng thời.
-- Windows: `Start_Dual_Demo.cmd` (link mode) và `Start_Com_Pair.cmd` (virtual COM) được copy cạnh `.exe` sau build.
-
-### 3.2. Cấu trúc nội bộ file transfer
-
-`FileTransferService` giữ import path, constructor, public properties/methods và Qt signal contract để tương thích UI/callers. TX/RX handlers được tách trong `services/file_transfer/tx_manager.py` và `rx_manager.py`; các primitive protocol, CRC, staging file và state nằm ở `protocol_adapter.py`, `integrity_verifier.py`, `chunk_buffer.py`, `state_coordinator.py` và `file_transfer_types.py`.
-
-Đây là bước tách module theo hành vi; TX/RX handlers hiện vẫn dùng session fields chung trên façade để giữ tương thích. Disk I/O và CRC scan vẫn đồng bộ theo semantics cũ. Chuyển chúng sang worker thread cần async command/result flow và ACK-after-write contract riêng; không được xem việc SerialWorker có QThread là bằng chứng rằng file I/O đã chạy nền.
+`QLockFile` đặt tại `data/instances/<ID>/app.lock`. Mỗi instance có
+`QWebEngineProfile` riêng để tránh hỏng cache/cookie SQLite.
 
 ---
 
-## 4. NGUYÊN TẮC LUỒNG THREADING & NON-BLOCKING HARDWARE I/O
+## 5. LUỒNG THREADING
 
-### Quy tắc bất biến (Inviolable Rules):
-1. **Không bao giờ block Main Thread (UI Thread):**
-   - Mọi thao tác I/O phần cứng (`serial.read()`, `serial.write()`) và chờ timeout phải chạy trên Worker Thread. Serial transport đáp ứng quy tắc này qua `SerialWorker`; file transfer vẫn stream với RAM giới hạn theo chunk, nhưng CRC scan và RX disk writes hiện chạy đồng bộ trong thread affinity của service (thường là UI thread). Đây là giới hạn đã biết, xem §3.2.
-2. **Worker-Object Pattern với `moveToThread(QThread)`:**
-   - Không bao giờ kế thừa trực tiếp từ `QThread` để override `run()` chứa business logic.
-   - Luôn tạo class `SerialWorker(QObject)`, chuyển sang thread riêng bằng `worker.moveToThread(thread)` và điều khiển qua Qt Signals/Slots.
-3. **Giao tiếp liên luồng an toàn (Thread-Safe Inter-thread Communication):**
-   - Dữ liệu giữa Worker Thread và UI Thread được truyền qua Qt Signal với Type định danh rõ ràng (`Signal(bytes)`, `Signal(Packet)`, `Signal(TransferState)`).
-   - Tuyệt đối không truy cập trực tiếp widget của UI từ Worker Thread.
+### 5.1. Quy tắc bất biến
+
+1. **Không block UI thread:** mọi `read()`, `write()`, flush, chờ serial nằm
+   trên worker thread.
+2. **Worker-Object Pattern:** `SerialWorker(QObject)` được
+   `moveToThread(QThread)`; không override `QThread.run()`.
+3. **Giao tiếp qua signal:** worker phát `raw_data_received`,
+   `packet_received`, `error_occurred`, `baud_changed`; manager chuyển tiếp.
+4. **Không truy cập widget từ worker.**
+
+### 5.2. Đường đi dữ liệu
+
+```text
+COM1 byte stream
+  -> SerialWorker._poll_serial
+  -> framer.parse_stream
+  -> SerialWorker.packet_received(WinFormPacket)
+  -> SerialManager.packet_received
+  -> FileTransferService._handle_packet
+  -> BackendBridge.fileProgress / transferCompleted
+  -> JS controller
+```
+
+`parse_stream` bỏ byte nhiễu trước `AA 55`, giữ đuôi khung chưa đủ dữ liệu và
+trả `(packets, remaining_buffer)`.
+
+### 5.3. File I/O
+
+- TX đọc từng chunk theo offset từ file handle đang mở; RAM không tăng theo
+  kích thước file.
+- RX ghi thẳng vào file tạm `.ir_rx_*.part`, flush định kỳ mỗi 16 lần ghi.
+- `QTimer` single-shot điều nhịp gửi; không dùng `sleep` trên UI thread.
+- Không có ACK nên không có retransmit; watchdog 3 giây kết thúc phiên nhận
+  khi END không đến.
 
 ---
 
-## 5. QUY CHUẨN KIỂM SOÁT KIỂU TĨNH & CHẤT LƯỢNG MÃ NGUỒN
+## 6. GIAO THỨC VÀ SERVICE
 
-1. **Strict Typing (Không ngoại lệ):**
-   - Cấm `Any`, cấm `type: ignore` (nếu bắt buộc phải dùng do thư viện C, phải comment lý do rõ ràng).
-   - Toàn bộ hàm, tham số, biến phải có Type Hint rõ ràng (`int | str`, `list[Packet]`, `Callable[[bytes], None]`).
-   - Sử dụng `@dataclass(frozen=True)` cho các object truyền dữ liệu để đảm bảo tính bất biến (Immutability).
-2. **Linting & Formatting (Ruff + Mypy):**
-   - Enforce line length: **100 characters**.
-   - Mypy chạy ở mức `strict = true` (`disallow_untyped_defs = true`, `no_implicit_optional = true`).
-3. **Structured Logging:**
-   - Định dạng chuẩn: `[%(asctime)s] [%(levelname)s] [%(name)s:%(lineno)d] %(message)s`
-   - Mọi gói tin truyền nhận đều phải log kèm `seq_id`, `opcode`, `len`, `crc` để phục vụ đối chiếu nhị phân với firmware STM32 của đội IoT.
+### 6.1. Protocol
+
+- `pack_packet(sequence, data)`, `pack_header_payload(name, total)`,
+  `unpack_header_payload(data)`, `parse_stream(buffer)`.
+- `WinFormPacket` là dataclass frozen với `sequence`, `length`, `data` và các
+  property `is_header`, `is_end`, `is_data`.
+- Không có `Opcode`, `AckStatus`, CRC-32 hay `FramerStats`.
+
+### 6.2. FileTransferService
+
+- `start_transfer(path)` gửi HEADER, stream DATA, gửi END.
+- `paced_delay_ms(frame_length, baudrate)` là nguồn duy nhất của công thức nhịp.
+- RX chấp nhận chunk trùng, chunk sai thứ tự và chunk ngoài phạm vi bị bỏ.
+- `cancel_transfer()` dừng ngay phiên hiện tại.
+- AutoSave chỉ quyết định giữ file `.partial` khi phiên không hoàn tất. Phiên
+  nhận đủ packet luôn được chốt thành file thật.
+- Mọi phiên ghi một record vào `file_transfers.json` với trạng thái `SUCCESS`,
+  `PARTIAL`, `FAILED` hoặc `ABORTED`.
+
+### 6.3. Chat và telemetry
+
+- `ChatService` giữ signal cũ nhưng `send_message` luôn ném `RuntimeError`;
+  `handle_packet` bỏ qua mọi frame. UI chat chỉ còn giá trị lịch sử.
+- `TelemetryService` tính throughput cửa sổ 3 giây, đếm frame, sniffer 200 bản
+  ghi. Không còn RTT Ping/Pong, CRC Valid hay BER thực đo.
 
 ---
 
-## 6. CHIẾN LƯỢC TEST & GIẢ LẬP PHẦN CỨNG (TESTING & HARDWARE MOCKING)
+## 7. QUY CHUẨN CHẤT LƯỢNG
 
-Vì ứng dụng cần giao tiếp với STM32 nhưng team phần mềm làm việc độc lập bằng mock:
-1. **Mock Serial (`MockSerialPort`):** giả lập loss/latency/LOS để test ARQ `250ms/5 retry→FAILED`. Auto-resume là Post-MVP, chưa test ở đây.
-2. **Integration Test (2-node mock + dual-link + Virtual COM loopback + dual-COM TX/RX):** chạy 2 instance đối xứng kiểm thử chat/file thực tế, gồm truyền file lớn streaming và hủy giữa phiên. Sau nâng cấp dual COM ngày 2026-10-25: `273 passed`.
+1. **Strict typing:** không `Any`, không `type: ignore` tùy tiện; mọi tham số
+   và giá trị trả về có type hint. Dùng `@dataclass(frozen=True)` cho DTO.
+2. **Ruff:** line length 100; `uv run ruff check .` phải sạch.
+3. **Mypy:** `uv run mypy src/ tests/` phải sạch.
+4. **Pytest:** `uv run pytest tests/ -v` phải 100% pass.
+5. **Logging:** format
+   `[%(asctime)s] [%(levelname)s] [%(name)s:%(lineno)d] %(message)s`.
+   Log frame kèm `seq`, `length`, `type`, không log `opcode`/`crc`.
+6. **Không LaTeX:** không dùng công thức LaTeX trong tài liệu, docstring hay
+   log; dùng ký hiệu văn bản thuần.
 
 ---
 
-## 7. CẤU HÌNH CÔNG CỤ QUẢN LÝ `uv` (TOOLCHAIN COMMANDS)
+## 8. KIỂM THỬ
 
-* **Đồng bộ môi trường:** `uv sync`
-* **Chạy ứng dụng:** `uv run python -m ir_terminal`
-* **Chạy kiểm thử:** `uv run pytest tests/ -v` (headless/CI; `tests/conftest.py` tự đặt `QT_QPA_PLATFORM=offscreen`)
-* **Kiểm tra Lint & Format:** `uv run ruff check . && uv run ruff format .`
-* **Kiểm tra Type:** `uv run mypy src/ tests/`
-* **Đóng gói file thực thi `.exe`:**
-  ```bash
-  uv run pyinstaller --noconfirm --onedir --windowed --name "IR_OWC_Lab_Terminal" src/ir_terminal/__main__.py
-  ```
+- `tests/unit/test_winform_framer.py`: đóng/mở khung, nhiễu, khung dở.
+- `tests/unit/test_winform_wire_compatibility.py`: byte-exact với WinForm C#.
+- `tests/unit/test_file_transfer_service.py`: pacing, HEADER/END, RX offset,
+  PARTIAL, AutoSave, watchdog.
+- `tests/integration/test_paced_streaming_e2e.py`: loopback streamer.
+- `tests/integration/test_dual_com1_com2_lifecycle.py`: COM1/COM2, baud command,
+  reconfigure.
+- `tests/integration/test_serial_manager.py`: worker lifecycle, parsing.
+- Mock transport hỗ trợ loss, latency và LOS; dùng cho test mất gói open-loop.
+
+---
+
+## 9. LỆNH PHÁT TRIỂN
+
+```bash
+uv sync --extra dev
+uv run python -m ir_terminal
+uv run pytest tests/ -v
+uv run ruff check .
+uv run mypy src/ tests/
+uv run python scripts/build_modular_web.py
+uv run python scripts/build_standalone.py
+```
+
+`tests/conftest.py` đặt `QT_QPA_PLATFORM=offscreen` cho CI.

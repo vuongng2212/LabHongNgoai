@@ -1,12 +1,4 @@
-<!-- Reusable UI Feedback System: Toasts (stacked, bottom-right) + Modal (centered).
-     Source of truth for markup. Mirror block is injected into index.html.
-     Theme: Apple Modern Precision Light — surface-container-lowest, rounded-2xl,
-     border-black/[0.06], material-symbols-outlined, font-* tokens from tailwind config. -->
-
-<!-- Toast stack: fixed bottom-right, above all views -->
 <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none" aria-live="polite"></div>
-
-<!-- Modal overlay: centered dialog for success / error / confirm -->
 <div id="modal-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
   <div id="modal-backdrop" class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"></div>
   <div id="modal-card" role="dialog" aria-modal="true"

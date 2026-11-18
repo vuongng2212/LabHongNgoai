@@ -1,4 +1,4 @@
-"""Mock hardware serial port simulator for TDD and UI integration testing."""
+"""Virtual COM1/COM2 simulator used by TDD and UI integration tests."""
 
 from __future__ import annotations
 
@@ -9,94 +9,154 @@ import time
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.core.ring_buffer import ByteRingBuffer
-from ir_terminal.protocol.constants import DEFAULT_BAUDRATE, RING_BUFFER_CAPACITY, Opcode
-from ir_terminal.protocol.control_channel import (
-    CONTROL_LINE_MAX_BYTES,
-    ControlKind,
-    format_baud_ok,
-    format_notify_baud,
-    parse_control_line,
+from ir_terminal.protocol.constants import (
+    BAUD_COMMANDS,
+    CONTROL_BAUDRATE,
+    DEFAULT_BAUDRATE,
+    MOCK_POLL_MS,
+    RING_BUFFER_CAPACITY,
 )
-from ir_terminal.protocol.framer import pack_frame, parse_frames_from_buffer
-from ir_terminal.utils.logger import LogTag, format_frame_summary, format_hex_preview
+from ir_terminal.protocol.framer import pack_packet, parse_stream
+from ir_terminal.protocol.packet import WinFormPacket
+from ir_terminal.utils.logger import LogTag, format_hex_preview
 
 logger = logging.getLogger(__name__)
 
 
 class MockSerialPort(ITransport):
-    """Simulates a physical STM32 UART port with configurable physical channel anomalies.
+    """Simulates the COM1 data link and the COM2 control link in one object.
 
-    Supports:
-        - Echoing PONG in response to PING packets (with simulated RTT latency).
-        - Simulating optical packet loss / drop rate.
-        - Simulating Line-of-Sight (LOS) blockage.
+    The data channel can echo complete WinForm frames to emulate a remote peer
+    on a loopback bench setup. The control channel records the two-character
+    baud commands that would be sent to the STM32.
     """
 
     def __init__(
         self,
-        port_name: str = "MOCK_COM1",
+        data_port: str = "MOCK_COM1",
+        ctrl_port: str | None = "MOCK_COM2",
         baudrate: int = DEFAULT_BAUDRATE,
+        ctrl_baudrate: int = CONTROL_BAUDRATE,
         simulated_latency_ms: float = 30.0,
         simulated_loss_rate: float = 0.0,
         auto_respond: bool = True,
     ) -> None:
-        """Initializes mock serial transport.
+        """Initializes the virtual dual-port transport.
 
         Args:
-            port_name: Virtual COM identifier.
-            baudrate: Simulated baud rate.
-            simulated_latency_ms: Artificial round-trip delay in milliseconds.
-            simulated_loss_rate: Float 0.0 to 1.0 representing probability of packet drop.
-            auto_respond: True to auto-echo PONG/ACK internally; False for pure transport tube.
+            data_port: Virtual COM1 identifier.
+            ctrl_port: Virtual COM2 identifier, or None to disable control.
+            baudrate: Simulated optical baudrate for COM1.
+            ctrl_baudrate: Simulated MCU baudrate for COM2.
+            simulated_latency_ms: Echo latency in milliseconds.
+            simulated_loss_rate: Probability in the 0.0 to 1.0 range of dropping
+                one outgoing frame.
+            auto_respond: True to echo complete frames back on the data channel.
         """
-        self._port_name = port_name
-        self._baudrate = baudrate
+        self._data_port = data_port
+        self._ctrl_port = ctrl_port or ""
+        self._baudrate = int(baudrate)
+        self._ctrl_baudrate = int(ctrl_baudrate)
         self._latency_s = simulated_latency_ms / 1000.0
         self._loss_rate = simulated_loss_rate
         self._auto_respond = auto_respond
         self._is_open = False
         self._rx_buffer = ByteRingBuffer(capacity=RING_BUFFER_CAPACITY)
-        self._tx_buffer = bytearray()
-        self._control_tx_buffer = bytearray()
+        self._tx_accumulation = bytearray()
         self._simulated_optical_baud = int(baudrate)
         self._los_blocked = False
         self._pending: list[tuple[float, bytes]] = []
         self._dropped_by_loss: int = 0
         self._dropped_by_los: int = 0
+        self._baud_commands: list[tuple[int, str]] = []
         self._lock = threading.Lock()
 
+    @property
+    def data_port(self) -> str:
+        """Returns the virtual COM1 identifier."""
+        return self._data_port
+
+    @property
+    def ctrl_port(self) -> str:
+        """Returns the virtual COM2 identifier, or an empty string."""
+        return self._ctrl_port
+
+    @property
+    def tx_port(self) -> str:
+        """Returns the data port for compatibility with legacy callers."""
+        return self._data_port
+
+    @property
+    def rx_port(self) -> str:
+        """Returns the data port for compatibility with legacy callers."""
+        return self._data_port
+
+    @property
+    def baudrate(self) -> int:
+        """Returns the active optical data baudrate."""
+        return self._baudrate
+
+    @property
+    def control_baudrate(self) -> int:
+        """Returns the fixed MCU control baudrate."""
+        return self._ctrl_baudrate
+
+    @property
+    def has_control_port(self) -> bool:
+        """Returns True when a virtual COM2 control channel is configured."""
+        return bool(self._ctrl_port)
+
+    @property
+    def poll_interval_ms(self) -> int:
+        """Returns the fast RX polling cadence used by the in-memory simulator."""
+        return MOCK_POLL_MS
+
+    @property
+    def sent_baud_commands(self) -> list[tuple[int, str]]:
+        """Returns every recorded control command as (baud, code) pairs."""
+        with self._lock:
+            return list(self._baud_commands)
+
+    @property
+    def last_baud_command(self) -> tuple[int, str] | None:
+        """Returns the most recent recorded control command, if any."""
+        with self._lock:
+            return self._baud_commands[-1] if self._baud_commands else None
+
     def open(self) -> None:
-        """Opens virtual mock serial connection."""
+        """Opens the virtual transport and clears every buffer."""
         self._is_open = True
         self._rx_buffer.clear()
-        self._tx_buffer = bytearray()
-        self._control_tx_buffer = bytearray()
+        self._tx_accumulation = bytearray()
         with self._lock:
             self._pending = []
         logger.info(
-            "%s Mock open: port=%s baud=%d latency=%.1fms loss=%.3f auto_respond=%s",
+            "%s Mock open: data=%s ctrl=%s baud=%d ctrl_baud=%d latency=%.1fms "
+            "loss=%.3f auto_respond=%s",
             LogTag.HW_SERIAL,
-            self._port_name,
+            self._data_port,
+            self._ctrl_port or "<none>",
             self._baudrate,
+            self._ctrl_baudrate,
             self._latency_s * 1000.0,
             self._loss_rate,
             self._auto_respond,
         )
 
     def close(self) -> None:
-        """Closes virtual mock serial connection."""
+        """Closes the virtual transport and releases pending echoes."""
         was_open = self._is_open
         self._is_open = False
         self._rx_buffer.clear()
-        self._tx_buffer = bytearray()
-        self._control_tx_buffer = bytearray()
+        self._tx_accumulation = bytearray()
         with self._lock:
             pending = len(self._pending)
             self._pending = []
         logger.info(
-            "%s Mock closed: port=%s was_open=%s dropped_pending=%d loss_drops=%d los_drops=%d",
+            "%s Mock closed: data=%s was_open=%s dropped_pending=%d loss_drops=%d "
+            "los_drops=%d",
             LogTag.HW_SERIAL,
-            self._port_name,
+            self._data_port,
             was_open,
             pending,
             self._dropped_by_loss,
@@ -105,128 +165,73 @@ class MockSerialPort(ITransport):
 
     @property
     def is_open(self) -> bool:
-        """Returns True if virtual port is active."""
+        """Returns True while the virtual transport is active."""
         return self._is_open
 
     def set_los_blocked(self, blocked: bool) -> None:
-        """Simulates physical obstacle blocking the optical beam.
+        """Simulates a physical obstacle blocking the optical beam.
 
         Args:
-            blocked: True to block optical transmission; False to restore link.
+            blocked: True to discard outgoing frames, False to restore the link.
         """
         self._los_blocked = blocked
         logger.warning(
-            "%s Mock LOS %s: port=%s (beam %s)",
+            "%s Mock LOS %s: data=%s",
             LogTag.OPTICAL_PHY,
-            "BLOCKED — packets will vanish" if blocked else "CLEARED — link restored",
-            self._port_name,
-            "obstructed" if blocked else "clear",
+            "BLOCKED" if blocked else "CLEARED",
+            self._data_port,
         )
 
     def write(self, data: bytes) -> int:
-        """Simulates sending data to STM32 and automatically handles PING/PONG responses.
+        """Writes bytes to the simulated COM1 data channel.
 
         Args:
-            data: Raw frame bytes sent by PC application.
+            data: Raw frame bytes produced by the application.
 
         Returns:
-            Number of bytes written.
+            Number of bytes accepted.
+
+        Raises:
+            RuntimeError: If the transport is closed.
         """
         if not self._is_open:
-            logger.warning(
-                "%s Mock write rejected (closed): port=%s len=%dB",
-                LogTag.HW_SERIAL,
-                self._port_name,
-                len(data),
-            )
             raise RuntimeError("Cannot write to closed MockSerialPort")
-
         if self._los_blocked:
             with self._lock:
                 self._dropped_by_los += 1
-                los_total = self._dropped_by_los
-            logger.debug(
-                "%s Mock TX dropped by LOS: port=%s len=%dB hex=%s total_los_drops=%d",
-                LogTag.OPTICAL_PHY,
-                self._port_name,
-                len(data),
-                format_hex_preview(data),
-                los_total,
-            )
             return len(data)
-
         if self._loss_rate > 0 and random.random() < self._loss_rate:
             with self._lock:
                 self._dropped_by_loss += 1
-                loss_total = self._dropped_by_loss
-            logger.debug(
-                "%s Mock TX dropped by noise: port=%s loss_rate=%.3f len=%dB hex=%s "
-                "total_loss_drops=%d",
-                LogTag.OPTICAL_PHY,
-                self._port_name,
-                self._loss_rate,
-                len(data),
-                format_hex_preview(data),
-                loss_total,
-            )
             return len(data)
-
+        self._tx_accumulation.extend(data)
+        packets, remaining = parse_stream(self._tx_accumulation)
+        self._tx_accumulation = remaining
         if self._auto_respond:
-            self._handle_outgoing(data)
-
+            for packet in packets:
+                self._schedule_echo(pack_packet(packet.sequence, packet.data))
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "%s Mock TX: data=%s len=%dB frames=%d hex=%s",
+                LogTag.HW_SERIAL,
+                self._data_port,
+                len(data),
+                len(packets),
+                format_hex_preview(data),
+            )
         return len(data)
 
-    def _handle_outgoing(self, data: bytes) -> None:
-        if self._tx_buffer or data[:1] == b"\x55":
-            self._tx_buffer.extend(data)
-            packets, remaining = parse_frames_from_buffer(self._tx_buffer)
-            self._tx_buffer = bytearray(remaining)
-
-            for pkt in packets:
-                if pkt.opcode == Opcode.PING:
-                    self._handle_ping_packet(pkt.seq, pkt.payload)
-                elif pkt.opcode == Opcode.DATA_TEXT:
-                    self._handle_chat_packet(pkt.seq, pkt.payload)
-                elif pkt.opcode in (Opcode.TRANSFER_START, Opcode.DATA_CHUNK, Opcode.TRANSFER_END):
-                    self._handle_file_ack(pkt.seq)
-            return
-
-        self._control_tx_buffer.extend(data)
-        while b"\n" in self._control_tx_buffer:
-            raw, _, rest = bytes(self._control_tx_buffer).partition(b"\n")
-            self._control_tx_buffer = bytearray(rest)
-            message = parse_control_line(raw)
-            if message is None:
-                continue
-            if message.kind == ControlKind.SET_BAUD and message.baudrate is not None:
-                self._simulated_optical_baud = message.baudrate
-                ack = (format_baud_ok(message.baudrate) + "\n").encode("ascii")
-                logger.info(
-                    "%s Mock SET_BAUD accepted: port=%s optical=%d",
-                    LogTag.BAUD_CTRL,
-                    self._port_name,
-                    message.baudrate,
-                )
-                self._schedule_response(ack, self._latency_s)
-        if len(self._control_tx_buffer) > CONTROL_LINE_MAX_BYTES:
-            self._control_tx_buffer.clear()
-
-    def notify_baud(self, baudrate: int) -> None:
-        """Injects a hardware ``NOTIFY_BAUD`` event into the RX stream."""
-        self._simulated_optical_baud = int(baudrate)
-        self.inject_rx_data((format_notify_baud(baudrate) + "\n").encode("ascii"))
-
-    def _schedule_response(self, frame: bytes, delay_s: float) -> None:
-        """Enqueues a response frame for delivery after delay_s (non-blocking)."""
-        if delay_s <= 0:
+    def _schedule_echo(self, frame: bytes) -> None:
+        """Queues one loopback frame for delivery after the simulated latency."""
+        if self._latency_s <= 0:
             self._rx_buffer.write(frame)
             return
-        due = time.monotonic() + delay_s
+        due = time.monotonic() + self._latency_s
         with self._lock:
             self._pending.append((due, frame))
 
     def _deliver_due(self) -> None:
-        """Moves due responses into the RX buffer (called on worker thread)."""
+        """Moves due loopback frames into the RX buffer."""
         now = time.monotonic()
         due_frames: list[bytes] = []
         with self._lock:
@@ -242,50 +247,14 @@ class MockSerialPort(ITransport):
         for frame in due_frames:
             self._rx_buffer.write(frame)
 
-    def _handle_ping_packet(self, seq: int, payload: bytes) -> None:
-        """Generates a PONG response frame after simulated optical latency."""
-        pong_frame = pack_frame(seq=seq, opcode=Opcode.PONG, payload=payload)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s Mock auto-PONG %s latency=%.1fms",
-                LogTag.OPTICAL_PHY,
-                format_frame_summary(seq, Opcode.PONG, len(payload)),
-                self._latency_s * 1000.0,
-            )
-        self._schedule_response(pong_frame, self._latency_s)
-
-    def _handle_chat_packet(self, seq: int, payload: bytes) -> None:
-        """Echoes back chat response from Station Bravo node."""
-        ack_payload = bytes([seq, 0])
-        ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s Mock auto-ACK chat %s payload_hex=%s",
-                LogTag.ARQ_ENGINE,
-                format_frame_summary(seq, Opcode.ACK, len(ack_payload)),
-                format_hex_preview(payload, max_bytes=16),
-            )
-        self._schedule_response(ack_frame, self._latency_s)
-
-    def _handle_file_ack(self, seq: int) -> None:
-        """Sends ACK for file transfer chunk."""
-        delay = min(self._latency_s, 0.002)
-        ack_payload = bytes([seq, 0])
-        ack_frame = pack_frame(seq=seq, opcode=Opcode.ACK, payload=ack_payload)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "%s Mock auto-ACK file %s delay=%.1fms",
-                LogTag.ARQ_ENGINE,
-                format_frame_summary(seq, Opcode.ACK, len(ack_payload)),
-                delay * 1000.0,
-            )
-        self._schedule_response(ack_frame, delay)
-
     def read(self, size: int | None = None) -> bytes:
-        """Reads received bytes from mock RX buffer.
+        """Reads bytes from the simulated COM1 RX buffer.
 
         Args:
-            size: Number of bytes to read, or None to read all available bytes.
+            size: Number of bytes to read, or None for every available byte.
+
+        Returns:
+            Extracted byte sequence.
         """
         if not self._is_open:
             return b""
@@ -294,14 +263,66 @@ class MockSerialPort(ITransport):
 
     @property
     def in_waiting(self) -> int:
-        """Returns number of available bytes in mock RX buffer."""
+        """Returns the number of bytes buffered on the simulated COM1 RX path."""
         if not self._is_open:
             return 0
         self._deliver_due()
         return len(self._rx_buffer)
 
     def flush(self) -> None:
-        """Flushes the outgoing transmit buffer (no-op for mock serial)."""
+        """Flushes the simulated transmit path (no-op)."""
+
+    def send_baud_command(self, baud: int) -> str:
+        """Records one COM2 baud switch command and updates the simulated rate.
+
+        Args:
+            baud: Target optical baudrate.
+
+        Returns:
+            The two-character firmware command.
+
+        Raises:
+            ValueError: If the baudrate has no firmware command.
+            RuntimeError: If the transport is closed.
+        """
+        code = BAUD_COMMANDS.get(int(baud))
+        if code is None:
+            raise ValueError(f"Unsupported optical baudrate {baud}")
+        if not self._is_open or not self._ctrl_port:
+            raise RuntimeError("Control channel is not open for baud commands")
+        with self._lock:
+            self._baud_commands.append((int(baud), code))
+        logger.info(
+            "%s Mock COM2 baud command: baud=%d code=%r data=%s ctrl=%s",
+            LogTag.BAUD_CTRL,
+            baud,
+            code,
+            self._data_port,
+            self._ctrl_port or "<none>",
+        )
+        return code
+
+    def reconfigure_data_baud(self, baud: int) -> None:
+        """Updates the simulated COM1 baudrate.
+
+        Args:
+            baud: Target optical baudrate.
+
+        Raises:
+            ValueError: If the baudrate has no firmware command.
+        """
+        target = int(baud)
+        if target not in BAUD_COMMANDS:
+            raise ValueError(f"Unsupported optical baudrate {target}")
+        previous = self._baudrate
+        self._baudrate = target
+        self._simulated_optical_baud = target
+        logger.info(
+            "%s Mock COM1 baudrate: %d -> %d bps",
+            LogTag.BAUD_CTRL,
+            previous,
+            target,
+        )
 
     @property
     def simulated_optical_baud(self) -> int:
@@ -310,21 +331,21 @@ class MockSerialPort(ITransport):
 
     @property
     def dropped_by_loss(self) -> int:
-        """Returns cumulative frames dropped by simulated loss."""
+        """Returns cumulative frames dropped by simulated noise."""
         with self._lock:
             return self._dropped_by_loss
 
     @property
     def dropped_by_los(self) -> int:
-        """Returns cumulative frames dropped by LOS blockage."""
+        """Returns cumulative frames dropped by simulated LOS blockage."""
         with self._lock:
             return self._dropped_by_los
 
     def flush_due(self, force: bool = False) -> int:
-        """Delivers due (or all, if force) pending responses for deterministic tests.
+        """Delivers pending echo frames for deterministic tests.
 
         Args:
-            force: True to deliver all pending regardless of due time.
+            force: True to deliver every pending frame regardless of its due time.
 
         Returns:
             Number of frames delivered.
@@ -348,9 +369,17 @@ class MockSerialPort(ITransport):
         return len(due_frames)
 
     def inject_rx_data(self, data: bytes) -> None:
-        """Directly pushes raw bytes into RX buffer for unit testing.
+        """Injects raw bytes into the COM1 RX buffer.
 
         Args:
             data: Byte sequence to inject.
         """
         self._rx_buffer.write(data)
+
+    def inject_packet(self, packet: WinFormPacket) -> None:
+        """Injects one pre-built packet into the COM1 RX buffer.
+
+        Args:
+            packet: Packet to serialize and deliver.
+        """
+        self._rx_buffer.write(pack_packet(packet.sequence, packet.data))
