@@ -9,6 +9,11 @@ from collections.abc import Callable
 class ITransport(ABC):
     """Abstract interface for byte stream transport (Serial / Virtual COM / Mock)."""
 
+    @property
+    def poll_interval_ms(self) -> int:
+        """Returns the RX polling interval in milliseconds for this transport."""
+        return 10
+
     @abstractmethod
     def open(self) -> None:
         """Opens the transport medium."""

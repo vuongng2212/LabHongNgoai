@@ -20,6 +20,8 @@ from pathlib import Path
 
 DATA_DIR_ENV = "IR_DATA_DIR"
 
+DEV_MODE_ENV = "IR_DEV_MODE"
+
 INSTANCE_ID_PATTERN = r"^[A-Za-z0-9_-]{1,16}$"
 _INSTANCE_ID_RE = re.compile(INSTANCE_ID_PATTERN)
 
@@ -194,6 +196,11 @@ def get_webengine_dirs(instance: str | None = None) -> tuple[Path, Path]:
     cache_dir.mkdir(parents=True, exist_ok=True)
     storage_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir, storage_dir
+
+
+def is_dev_mode() -> bool:
+    """Returns True when the development flag enables virtual MOCK/LINK ports."""
+    return os.environ.get(DEV_MODE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def is_dual_mock_enabled() -> bool:

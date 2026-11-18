@@ -28,6 +28,7 @@ from ir_terminal.utils.path_helpers import (
     get_logs_dir,
     get_transfers_dir,
     get_webengine_dirs,
+    is_dev_mode,
     is_dual_mock_enabled,
     normalize_instance_id,
 )
@@ -67,6 +68,7 @@ class LaunchConfig:
     auto_connect: bool = False
     allow_multiple: bool = False
     broker_only: bool = False
+    dev_mode: bool = False
     window_pos: str = "normal"
     loss_rate: float = 0.0
     latency_ms: float = 5.0
@@ -307,6 +309,11 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         help="Run only the in-app link broker (headless), no UI.",
     )
     parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="Developer mode: expose MOCK_* and LINK_* virtual ports in the UI.",
+    )
+    parser.add_argument(
         "--window-pos",
         choices=WINDOW_POSITIONS,
         default="normal",
@@ -353,6 +360,7 @@ def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
         auto_connect=bool(args.auto_connect),
         allow_multiple=bool(args.allow_multiple),
         broker_only=bool(args.broker_only),
+        dev_mode=bool(args.dev) or is_dev_mode(),
         window_pos=str(args.window_pos),
         loss_rate=float(args.loss),
         latency_ms=float(args.latency_ms),

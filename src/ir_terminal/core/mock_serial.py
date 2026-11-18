@@ -13,6 +13,7 @@ from ir_terminal.protocol.constants import (
     BAUD_COMMANDS,
     CONTROL_BAUDRATE,
     DEFAULT_BAUDRATE,
+    MOCK_POLL_MS,
     RING_BUFFER_CAPACITY,
 )
 from ir_terminal.protocol.framer import pack_packet, parse_stream
@@ -104,6 +105,11 @@ class MockSerialPort(ITransport):
     def has_control_port(self) -> bool:
         """Returns True when a virtual COM2 control channel is configured."""
         return bool(self._ctrl_port)
+
+    @property
+    def poll_interval_ms(self) -> int:
+        """Returns the fast RX polling cadence used by the in-memory simulator."""
+        return MOCK_POLL_MS
 
     @property
     def sent_baud_commands(self) -> list[tuple[int, str]]:

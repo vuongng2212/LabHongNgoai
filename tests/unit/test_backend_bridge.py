@@ -32,7 +32,8 @@ def make_bridge(tmp_path: Path) -> tuple[BackendBridge, SerialManager, FileTrans
 class TestBridgeQueries:
     """Verifies JSON-returning slots used during UI bootstrap."""
 
-    def test_scan_ports_returns_virtual_ports(self, tmp_path: Path) -> None:
+    def test_scan_ports_returns_virtual_ports(self, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("IR_DEV_MODE", "1")
         bridge, manager, _ = make_bridge(tmp_path)
         ports = json.loads(bridge.scanPorts())
 

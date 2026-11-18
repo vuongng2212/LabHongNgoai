@@ -16,14 +16,12 @@ from ir_terminal.core.transport_factory import create_transport
 from ir_terminal.protocol.constants import (
     CONTROL_BAUDRATE,
     DEFAULT_BAUDRATE,
-    HW_POLL_MS,
-    MOCK_POLL_MS,
     RING_BUFFER_CAPACITY,
     SOCKET_CONNECT_TIMEOUT_SEC,
 )
 from ir_terminal.protocol.framer import parse_stream
 from ir_terminal.utils.logger import LogTag, format_hex_preview
-from ir_terminal.utils.path_helpers import is_dual_mock_enabled
+from ir_terminal.utils.path_helpers import is_dev_mode, is_dual_mock_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -289,9 +287,7 @@ class SerialWorker(QObject):
             self._current_baud = int(baudrate)
             self._current_ctrl_baud = int(ctrl_baudrate)
 
-            from ir_terminal.core.mock_serial import MockSerialPort
-
-            poll_ms = MOCK_POLL_MS if isinstance(self._transport, MockSerialPort) else HW_POLL_MS
+            poll_ms = self._transport.poll_interval_ms
             self._poll_timer = QTimer(self)
             self._poll_timer.setInterval(poll_ms)
             self._poll_timer.timeout.connect(self._poll_serial)
@@ -637,37 +633,18 @@ def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo
                 label=f"{extra} - Windows Registry Serial Port",
             )
         )
-    try:
-        from pathlib import Path
-
-        for pty_file in sorted(Path("/tmp").glob("LINK_*")):
-            pty_path = str(pty_file)
-            if pty_path not in seen and (pty_file.exists() or pty_file.is_symlink()):
-                seen.add(pty_path)
-                infos.append(
-                    PortInfo(
-                        device=pty_path,
-                        description="Virtual Dual COM (PTY)",
-                        manufacturer=None,
-                        vid=None,
-                        pid=None,
-                        hwid="",
-                        label=f"{pty_path} - Virtual Dual COM (PTY)",
-                    )
-                )
-    except OSError:
-        pass
-    infos.append(_virtual_port_info("MOCK_COM_LOOPBACK", "Virtual Loopback"))
-    infos.append(_virtual_port_info("MOCK_COM1", "Virtual COM1 Data"))
-    infos.append(_virtual_port_info("MOCK_COM2", "Virtual COM2 Control"))
-    link_enabled = is_dual_mock_enabled() if include_link is None else include_link
-    if link_enabled:
-        infos.append(_virtual_port_info("LINK_A", "Virtual Dual-Link"))
-        infos.append(_virtual_port_info("LINK_B", "Virtual Dual-Link"))
-        infos.append(_virtual_port_info("LINK_A_TX", "Virtual Dual-Link TX"))
-        infos.append(_virtual_port_info("LINK_A_RX", "Virtual Dual-Link RX"))
-        infos.append(_virtual_port_info("LINK_B_TX", "Virtual Dual-Link TX"))
-        infos.append(_virtual_port_info("LINK_B_RX", "Virtual Dual-Link RX"))
+    if is_dev_mode():
+        infos.append(_virtual_port_info("MOCK_COM_LOOPBACK", "Virtual Loopback"))
+        infos.append(_virtual_port_info("MOCK_COM1", "Virtual COM1 Data"))
+        infos.append(_virtual_port_info("MOCK_COM2", "Virtual COM2 Control"))
+        link_enabled = is_dual_mock_enabled() if include_link is None else include_link
+        if link_enabled:
+            infos.append(_virtual_port_info("LINK_A", "Virtual Dual-Link"))
+            infos.append(_virtual_port_info("LINK_B", "Virtual Dual-Link"))
+            infos.append(_virtual_port_info("LINK_A_TX", "Virtual Dual-Link TX"))
+            infos.append(_virtual_port_info("LINK_A_RX", "Virtual Dual-Link RX"))
+            infos.append(_virtual_port_info("LINK_B_TX", "Virtual Dual-Link TX"))
+            infos.append(_virtual_port_info("LINK_B_RX", "Virtual Dual-Link RX"))
     return sorted(infos, key=lambda info: _natural_port_key(info.device))
 
 
