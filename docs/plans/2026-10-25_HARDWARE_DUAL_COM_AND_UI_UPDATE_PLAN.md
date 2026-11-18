@@ -1,5 +1,9 @@
 # KẾ HOẠCH NÂNG CẤP KIẾN TRÚC DUAL COM PORT (TX/RX TÁCH BIỆT), DYNAMIC BAUDRATE VÀ TỐI GIẢN HÓA GIAO DIỆN KỸ THUẬT HIỆN ĐẠI
 
+> **Lịch sử:** mô hình "hai cổng TX/RX tách biệt" đã được thay bằng COM1 dữ
+> liệu quang + COM2 điều khiển MCU trong bản refactor WinForm C#. Xem
+> `docs/PROTOCOL.md` và `docs/ARCHITECTURE.md`.
+
 > **Mã kế hoạch:** PLAN-20261025-HARDWARE-DUAL-COM-UI  
 > **Ngày lập:** 25/10/2026  
 > **Dự án:** Trạm Thu Phát Quang Không Dây Hồng Ngoại (SpectraLink IR-OWC Workstation)  

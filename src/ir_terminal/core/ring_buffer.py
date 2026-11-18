@@ -19,10 +19,10 @@ class ByteRingBuffer:
         """
         self._capacity = capacity
         self._buffer = bytearray(capacity)
-        self._head = 0  # Write pointer
-        self._tail = 0  # Read pointer
-        self._size = 0  # Current valid bytes in buffer
-        self._dropped = 0  # Cumulative bytes dropped due to overflow
+        self._head = 0
+        self._tail = 0
+        self._size = 0
+        self._dropped = 0
         self._lock = threading.Lock()
 
     @property

@@ -1,5 +1,9 @@
 # Engineering Audit & Verification Specification: Dual-Port TX/RX Unidirectional Pipeline
 
+> **Historical:** the current architecture uses COM1 for optical data and COM2
+> for MCU control, not an asymmetric TX/RX pair. See `docs/PROTOCOL.md` and
+> `docs/ARCHITECTURE.md`.
+
 **Document Reference:** `docs/spec/DUAL_COM_TX_RX_PIPELINE_AUDIT.md`  
 **System Version:** `v0.5.0` (Architecture: Asymmetric Dual COM / OWC Optical Link)  
 **Status:** `VERIFIED & APPROVED`  

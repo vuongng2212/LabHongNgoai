@@ -215,10 +215,10 @@ function initTelemetryController() {
     }
 
     if (activeFilter === 'ALL') return true;
-    if (activeFilter === 'SYN/ACK') return rec.type_str.includes('ACK') || rec.type_str.includes('PING') || rec.type_str.includes('PONG');
-    if (activeFilter === 'BURST_DATA') return rec.type_str.includes('BURST') || rec.type_str.includes('CHAT') || rec.type_str.includes('XFER');
-    if (activeFilter === 'CRC_OK') return rec.is_valid !== false;
-    if (activeFilter.includes('ERROR')) return rec.is_valid === false;
+    if (activeFilter === 'HEADER') return rec.type_str.includes('HEADER');
+    if (activeFilter === 'DATA') return rec.type_str.includes('DATA');
+    if (activeFilter === 'END') return rec.type_str.includes('END');
+    if (activeFilter === 'INVALID') return rec.is_valid === false;
     return true;
   }
 
@@ -227,11 +227,9 @@ function initTelemetryController() {
     row.className = 'hover:bg-surface-container-low/50 transition-colors';
 
     let typeTone = 'text-on-surface';
-    if (rec.type_str.includes('ACK') || rec.type_str.includes('PONG')) {
+    if (rec.type_str.includes('HEADER') || rec.type_str.includes('END')) {
       typeTone = 'text-secondary';
-    } else if (rec.type_str.includes('ERR') || rec.type_str.includes('NACK')) {
-      typeTone = 'text-error';
-    } else if (rec.type_str.includes('PING')) {
+    } else if (rec.type_str.includes('DATA')) {
       typeTone = 'text-primary';
     }
     const checksumTone = rec.is_valid === false ? 'text-error' : 'text-secondary';
@@ -241,8 +239,8 @@ function initTelemetryController() {
       <td class="py-1.5 px-space-sm font-medium text-on-surface font-mono-data">${escapeHtml(rec.frame_id)}</td>
       <td class="py-1.5 px-space-sm text-on-surface-variant font-mono-data">${escapeHtml(rec.carrier || '880nm NIR')}</td>
       <td class="py-1.5 px-space-sm font-mono-data font-medium ${typeTone}">${escapeHtml(rec.type_str)}</td>
-      <td class="py-1.5 px-space-sm text-on-surface font-mono"><span class="text-outline">0x55_PRE</span> ${escapeHtml(rec.payload_preview)}</td>
-      <td class="py-1.5 px-space-sm font-mono-data ${checksumTone}">${escapeHtml(rec.checksum_status || 'CRC32 Valid')}</td>
+      <td class="py-1.5 px-space-sm text-on-surface font-mono">${escapeHtml(rec.payload_preview)}</td>
+      <td class="py-1.5 px-space-sm font-mono-data ${checksumTone}">${escapeHtml(rec.checksum_status || 'OPEN-LOOP')}</td>
       <td class="py-1.5 px-space-md text-right text-on-surface-variant font-mono-data">${(rec.latency_ms || 32.0).toFixed(1)} ms</td>
     `;
     return row;

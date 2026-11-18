@@ -17,14 +17,14 @@ from PySide6.QtCore import QObject, Signal
 class LogTag(StrEnum):
     """Subsystem categorization tags for IoT hardware troubleshooting."""
 
-    HW_SERIAL = "[HW_SERIAL]"  # Physical UART, COM discovery, port open/close, baudrates
-    OPTICAL_PHY = "[OPTICAL_PHY]"  # Optical transceiver, alignment, LOS beam blockage, RSSI
-    PROTO_FRAME = "[PROTO_FRAME]"  # Binary framing, SOF/EOF magic, length check, CRC-32 validation
-    ARQ_ENGINE = "[ARQ_ENGINE]"  # Stop-and-Wait ARQ state machine, ACK/NACK, retry, timeout
-    CHAT_SVC = "[CHAT_SVC]"  # Optical text messaging, encoding, chat inspector
-    FILE_SVC = "[FILE_SVC]"  # Binary file chunking, disk I/O, hash verification
-    STORAGE = "[STORAGE]"  # File-store persistence, CRUD, history load
-    IPC_BRIDGE = "[IPC_BRIDGE]"  # QWebChannel Chromium-Python IPC dispatch
+    HW_SERIAL = "[HW_SERIAL]"
+    OPTICAL_PHY = "[OPTICAL_PHY]"
+    PROTO_FRAME = "[PROTO_FRAME]"
+    ARQ_ENGINE = "[ARQ_ENGINE]"
+    CHAT_SVC = "[CHAT_SVC]"
+    FILE_SVC = "[FILE_SVC]"
+    STORAGE = "[STORAGE]"
+    IPC_BRIDGE = "[IPC_BRIDGE]"
     BAUD_CTRL = "[BAUD_CTRL]"
 
 
@@ -128,7 +128,7 @@ def format_frame_summary(seq: int, opcode: int, payload_len: int, crc32: int | N
 class QtLogEmitter(QObject):
     """Qt Object that emits a signal whenever a log record is formatted."""
 
-    record_logged: ClassVar[Signal] = Signal(str, str, str)  # (timestamp, level, message)
+    record_logged: ClassVar[Signal] = Signal(str, str, str)
 
 
 _qt_log_emitter = QtLogEmitter()
@@ -235,7 +235,7 @@ def setup_logger(
 
     file_handler = RotatingFileHandler(
         log_file,
-        maxBytes=10 * 1024 * 1024,  # 10 MB per log file
+        maxBytes=10 * 1024 * 1024,
         backupCount=5,
         encoding="utf-8",
     )

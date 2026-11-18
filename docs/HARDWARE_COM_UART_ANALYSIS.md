@@ -1,5 +1,10 @@
 # BÁO CÁO PHÂN TÍCH CHUYÊN SÂU PHẦN CỨNG COM/UART, LUỒNG TÍN HIỆU VÀ CẨM NANG DEBUG HỆ THỐNG LABHONGNGOAI
 
+> **Lịch sử:** báo cáo này được viết trước bản refactor WinForm C#. Các mục về
+> Stop-and-Wait ARQ, CRC-32 và opcode không còn đúng; wire format hiện hành
+> xem `docs/PROTOCOL.md`. Phần phân tích phần cứng và cô lập lỗi vẫn tham khảo
+> được.
+
 > **Tài liệu Kỹ thuật & Vận hành Lab**  
 > **Dự án:** Trạm Thu Phát Quang Không Dây Hồng Ngoại (SpectraLink IR-OWC Workstation)  
 > **Đối tượng sử dụng:** Đội ngũ Phát triển Phần mềm, Kỹ sư Phần cứng / Firmware IoT STM32, Kỹ thuật viên Triển khai Phòng Lab.  
@@ -353,7 +358,7 @@ Hệ thống đã cài đặt cơ chế bắt lỗi phần cứng đa tầng t�
 
 ## 4. CƠ CHẾ ĐIỀU KHIỂN LUỒNG STOP-AND-WAIT ARQ & BẢO TOÀN DỮ LIỆU
 
-Hệ thống truyền file quang hồng ngoại áp dụng cơ chế **Stop-and-Wait ARQ (Automatic Repeat reQuest)** kết hợp cửa sổ trượt kích thước $W = 1$. Đây là thiết kế tối ưu tuyệt đối cho kênh truyền vật lý quang bán song công (Half-Duplex) nhằm tránh việc phát và nhận đồng thời gây phản xạ quang (optical echo / self-reception) làm nhiễu đầu thu TFDU4101.
+Hệ thống truyền file quang hồng ngoại áp dụng cơ chế **Stop-and-Wait ARQ (Automatic Repeat reQuest)** kết hợp cửa sổ trượt kích thước W = 1. Đây là thiết kế tối ưu tuyệt đối cho kênh truyền vật lý quang bán song công (Half-Duplex) nhằm tránh việc phát và nhận đồng thời gây phản xạ quang (optical echo / self-reception) làm nhiễu đầu thu TFDU4101.
 
 ```
        TRANSMITTER (TX)                                   RECEIVER (RX)
@@ -426,7 +431,7 @@ Các trạng thái truyền file được quản lý tại `TransferState` (`src
 - Nếu RX nhận được `chunk_id > expected_chunk` (do bị rớt mất một chunk ở giữa), RX không bao giờ ghi đĩa mà gửi ngay `NACK` với trạng thái `AckStatus.OUT_OF_ORDER` (`rx_manager.py:444-454`), yêu cầu TX gửi lại đúng chunk còn thiếu.
 
 #### 4. Large-File Protocol Extension (`0x34 / 0x35 / 0x36`):
-- Chuẩn giao thức gốc (Legacy v1) sử dụng trường `total_chunks` kiểu `uint16`, dẫn đến giới hạn cứng $65.535 \text{ chunks} \times 240\text{B} \approx 15.7\text{ MB}$.
+- Chuẩn giao thức gốc (Legacy v1) sử dụng trường `total_chunks` kiểu `uint16`, dẫn đến giới hạn cứng 65,535 chunks × 240 B ≈ 15.7 MB.
 - Hệ thống đã tích hợp sẵn cơ chế tự động nâng cấp: Khi file cần nhiều hơn 65.535 chunk hoặc dung lượng vượt quá 4 GB, hệ thống tự động kích hoạt **Large-File Extension**:
   - `TRANSFER_START_LARGE (0x34)`: `file_size` mở rộng lên `uint64` (8 bytes), `total_chunks` lên `uint32` (4 bytes).
   - `DATA_CHUNK_LARGE (0x35)`: `chunk_id` mở rộng lên `uint32` (4 bytes, chunk data tối đa 508B).
@@ -485,7 +490,7 @@ Toàn bộ hệ thống áp dụng các thẻ phân loại subsystem chuẩn hó
    - **Đo RTT thời gian thực:** Định kỳ 5 giây một lần (`DEFAULT_HEALTH_CHECK_SEC = 5.0s`), `BackendBridge` phát một gói `PING` siêu nhẹ (`0x20`). Khi trạm đối diện phản hồi `PONG` (`0x21`), hệ thống tính toán chính xác độ trễ khứ hồi RTT tính bằng mili-giây.
    - **Đo Thông lượng (Throughput):** Tính toán tốc độ truyền nhận tức thời dựa trên số byte ghi nhận trong cửa sổ trượt 3.0 giây.
    - **Đo Tỷ lệ Mất gói (Packet Loss Rate %):** Công thức tính toán:
-     $$\text{Loss Rate} = \frac{\text{Total Packets Lost}}{\text{Total Packets Sent} + \text{Total Packets Lost}} \times 100\%$$
+     Loss Rate = Total Packets Lost / (Total Packets Sent + Total Packets Lost) × 100%
      Trong đó, `Total Packets Lost` bao gồm cả **lỗi hỏng khung ở tầng Framer** (`crc_errors`, `eof_errors`) và **lỗi timeout phải gửi lại ở tầng ARQ** (`record_packet_lost()`).
    - **Đánh giá về RSSI/SNR:** Phần cứng quang TFDU4101 + MCP2122 là mô-đun truyền nhận số (chỉ xuất tín hiệu mức logic 0 và 1 ra chân RXD của STM32), không có mạch đo điện áp tương tự (Analog RSSI) đưa vào chân ADC của vi điều khiển. Do đó, phần mềm **suy diễn chất lượng kênh truyền vật lý thông qua các chỉ số phần mềm** (Loss Rate, Tần suất lỗi CRC, Jitter của RTT, và số byte nhiễu `noise_bytes`).
 
@@ -544,10 +549,10 @@ Toàn bộ hệ thống áp dụng các thẻ phân loại subsystem chuẩn hó
   - `[PROTO_FRAME] RX skipped N noise byte(s) before SOF`
   - `[OPTICAL_PHY] Optical packet drop/retry #N (loss=...%)`
 * **Quy trình xử lý:**
-  1. **Căn chỉnh quang trục (Optical Alignment):** Đảm bảo mắt phát và mắt thu TFDU4101 của 2 node đối diện trực tiếp nhau trên một đường thẳng (Direct Line-of-Sight - LOS). Góc lệch quang của TFDU4101 là $\pm 15^\circ$; nếu góc lệch lớn hơn, cường độ quang sẽ suy hao theo hàm cosin và không kích hoạt được bộ khuếch đại quang.
+  1. **Căn chỉnh quang trục (Optical Alignment):** Đảm bảo mắt phát và mắt thu TFDU4101 của 2 node đối diện trực tiếp nhau trên một đường thẳng (Direct Line-of-Sight - LOS). Góc lệch quang của TFDU4101 là ±15°; nếu góc lệch lớn hơn, cường độ quang sẽ suy hao theo hàm cosin và không kích hoạt được bộ khuếch đại quang.
   2. **Kiểm tra vật cản (Beam Obstruction):** Đảm bảo không có vật cản che chắn giữa 2 mắt quang.
   3. **Kiểm tra nhiễu ánh sáng môi trường (Ambient Light Interference):** Đèn huỳnh quang chấn lưu cũ hoặc ánh sáng mặt trời chiếu trực tiếp chứa quang phổ hồng ngoại mạnh có thể làm bão hòa photodiode của TFDU4101. Thử che chắn tối xung quanh mô-đun để kiểm tra.
-  4. **Kiểm tra khoảng cách truyền:** Khoảng cách tối ưu cho TFDU4101 ở cấu hình chuẩn là $20\text{ cm} - 100\text{ cm}$. Nếu đặt quá xa (> 1.5m), công suất quang không đủ; nếu đặt quá gần (< 5cm), tín hiệu quang có thể bị bão hòa (optical saturation / blinding).
+  4. **Kiểm tra khoảng cách truyền:** Khoảng cách tối ưu cho TFDU4101 ở cấu hình chuẩn là 20 cm - 100 cm. Nếu đặt quá xa (> 1.5m), công suất quang không đủ; nếu đặt quá gần (< 5cm), tín hiệu quang có thể bị bão hòa (optical saturation / blinding).
 
 #### TẦNG 3: Lỗi Phần cứng & Firmware STM32F407 / MCP2122
 * **Hiện tượng:** TX báo gửi thành công nhưng RX hoàn toàn không có phản hồi nào, không có cả log `noise_bytes` hay `raw_rx`.
@@ -556,8 +561,8 @@ Toàn bộ hệ thống áp dụng các thẻ phân loại subsystem chuẩn hó
   - Phía RX không xuất hiện bất kỳ dòng log `[PROTO_FRAME] RX packet` nào.
 * **Quy trình xử lý đối với Kỹ sư Firmware STM32:**
   1. **Kiểm tra cấu hình xung IrDA của MCP2122:**
-     - MCP2122 yêu cầu xung nhịp chuẩn để tạo độ rộng xung quang bằng **$3/16$ chu kỳ bit**. Ở tốc độ `115200 bps`, một chu kỳ bit là $T = 8.68\ \mu\text{s}$, do đó độ rộng xung quang phát ra bắt buộc phải là $1.63\ \mu\text{s}$.
-     - Kiểm tra chân cấp xung `16XCLK` vào MCP2122 (phải có tần số $16 \times 115200 = 1.8432\text{ MHz}$). Nếu chân clock này bị sai tần số, toàn bộ dữ liệu quang phát ra sẽ bị méo dạng và đầu thu không thể giải mã thành byte UART chuẩn.
+     - MCP2122 yêu cầu xung nhịp chuẩn để tạo độ rộng xung quang bằng **3/16 chu kỳ bit**. Ở tốc độ `115200 bps`, một chu kỳ bit là T = 8.68 µs, do đó độ rộng xung quang phát ra bắt buộc phải là 1.63 µs.
+     - Kiểm tra chân cấp xung `16XCLK` vào MCP2122 (phải có tần số 16 × 115200 = 1.8432 MHz). Nếu chân clock này bị sai tần số, toàn bộ dữ liệu quang phát ra sẽ bị méo dạng và đầu thu không thể giải mã thành byte UART chuẩn.
   2. **Kiểm tra đảo chân USART TX/RX:**
      - Chân TX của STM32 nối vào chân `TXD` của MCP2122; chân `RXD` của MCP2122 nối vào chân RX của STM32.
   3. **Kiểm tra Buffer Overflow trên STM32:**
@@ -585,7 +590,7 @@ In bảng này dán tại bàn thí nghiệm để kiểm tra trước mỗi bu�
 - [ ] **Bước 2 (Cổng COM):** Mở Device Manager, ghi nhận đúng số hiệu cổng COM (ví dụ: `COM5`).
 - [ ] **Bước 3 (Khởi chạy App):** Mở SpectraLink Desktop, chọn đúng `COM5`, chọn Baudrate `115200`, bấm **Connect** -> Thanh trạng thái chuyển sang màu xanh lá (`Connected: COM5 @ 115200`).
 - [ ] **Bước 4 (Căn chỉnh quang):** Đặt 2 trạm đối diện thẳng hàng, khoảng cách từ 30 cm đến 50 cm.
-- [ ] **Bước 5 (Kiểm tra Ping/RTT):** Bấm nút **Ping Link** trên giao diện -> Quan sát giá trị RTT hiển thị (mức chuẩn: $10\text{ ms} - 30\text{ ms}$). Nếu Ping trả về thành công nghĩa là kênh quang 2 chiều đã thông suốt!
+- [ ] **Bước 5 (Kiểm tra Ping/RTT):** Bấm nút **Ping Link** trên giao diện -> Quan sát giá trị RTT hiển thị (mức chuẩn: 10 ms - 30 ms). Nếu Ping trả về thành công nghĩa là kênh quang 2 chiều đã thông suốt!
 - [ ] **Bước 6 (Test Chat Text):** Gửi một tin nhắn "Hello IR" -> Trạm bên kia nhận đúng văn bản, bảng Sniffer ghi nhận gói opcode `0x02 DATA_TEXT`.
 - [ ] **Bước 7 (Truyền File):** Chọn file mẫu dung lượng nhỏ (< 1 MB), bấm **Send File** -> Thanh tiến độ chạy từ 0% đến 100%, trạng thái chuyển sang `COMPLETED`, kiểm tra mã CRC-32 trùng khớp.
 

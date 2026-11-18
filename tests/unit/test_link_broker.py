@@ -144,7 +144,7 @@ def test_connect_retries_until_host_starts() -> None:
     def _open() -> None:
         try:
             transport.open()
-        except BaseException as exc:  # pragma: no cover - surfaced via assert
+        except BaseException as exc:
             errors.append(exc)
 
     opener = threading.Thread(target=_open, daemon=True)

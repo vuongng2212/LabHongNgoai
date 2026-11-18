@@ -1,5 +1,9 @@
 # Phân tích kỹ thuật: Chạy 2 instance LabHongNgoai trên 1 PC Windows
 
+> **Lịch sử:** một số mục về truyền file/ARQ đã lỗi thời sau bản refactor
+> WinForm C#. Kiến trúc hai instance và cách ly dữ liệu vẫn đúng; wire format
+> hiện hành xem `docs/PROTOCOL.md`.
+
 **Ngày khảo sát:** 2026-10-20  
 **Phạm vi:** đọc codebase `LabHongNgoai` tại commit `main` hiện tại; phân tích xung đột tài nguyên khi 2 app `.exe` chạy đồng thời; khảo sát các giải pháp Virtual COM Pair trên Windows; đề xuất kiến trúc và lộ trình.
 
@@ -306,7 +310,7 @@ setupc.exe list
 | Tiêu chí | Đánh giá |
 |---|---|
 | Bản chất | Kernel driver thương mại tạo cặp COM ảo null-modem |
-| Giá tham khảo (2026-10) | Standard từ **~$89.95**; bản Pro giá cao hơn (xem trang purchase); có **14 ngày trial** |
+| Giá tham khảo (2026-10) | Standard từ **USD 89.95**; bản Pro giá cao hơn (xem trang purchase); có **14 ngày trial** |
 | Driver signing | WHQL, ký số; release notes ghi driver đã WHQL và **hỗ trợ Secure Boot** |
 | Hệ điều hành | Windows 7/8/10/11 (32/64), Windows on ARM, Server |
 | Cài đặt | Installer + GUI; tạo cặp COM real-time, **không cần reboot** |
@@ -319,7 +323,7 @@ setupc.exe list
 | Tiêu chí | Đánh giá |
 |---|---|
 | Bản chất | Kernel driver + công cụ tạo cặp/redirect/bridge |
-| Giá tham khảo (2026-10) | Bản 64-bit cần license **~$49.95**; bản 32-bit miễn phí (không còn phổ biến) |
+| Giá tham khảo (2026-10) | Bản 64-bit cần license **USD 49.95**; bản 32-bit miễn phí (không còn phổ biến) |
 | Driver signing | Có ký số; hỗ trợ Windows 10/11 x64/ARM64; bản cũ x64 (Win7/8) cần test-signing |
 | Trial | Có bản trial giới hạn (tối đa 5 thiết bị, không load config) |
 | Điểm mạnh | Rẻ hơn VSPD; hỗ trợ pair, TCP/UDP bridge, named pipe client/server |
@@ -362,7 +366,7 @@ setupc.exe list
 | Là driver tạo COM ảo | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ (COM thật) | ❌ |
 | Không cần admin | ❌ | ❌ (cài 1 lần) | ❌ (cài 1 lần) | ✅ | ✅ | ✅ | ✅ |
 | Chạy với Secure Boot | ❌ thường fail | ✅ WHQL | ✅ (bản mới) | – | – | ✅ | ✅ |
-| Chi phí | Free (GPL) | ~$89.95 | ~$49.95 | Free | Free | ~$5–15 HW | Free |
+| Chi phí | Free (GPL) | USD 89.95 | USD 49.95 | Free | Free | USD 5–15 HW | Free |
 | Độ ổn định trên Win11 | Thấp | Cao | Cao | Trung bình | – | Cao | Cao |
 | Mô phỏng loss/LOS/latency | Hạn chế | Hạn chế | Hạn chế | Có (TCP layer) | – | Không (phải rút dây) | ✅ tốt |
 | Đúng đường pyserial | ✅ | ✅ | ✅ | ✅ nếu qua COM | ❌ | ✅ | ❌ |
@@ -861,7 +865,7 @@ start "IR-OWC Node B" "%APP%" --instance B --transport serial --port COM12 --aut
 
 1. Khách có **bắt buộc** app nhìn thấy `COM11`/`COM12` không, hay chỉ cần 2 node nói chuyện được?
 2. Máy demo có **Secure Boot bật** và chính sách cấm tắt không?
-3. Có ngân sách cho **VSPD (~$89.95)** hoặc **VSPE (~$49.95)** không? Bao nhiêu máy?
+3. Có ngân sách cho **VSPD (USD 89.95)** hoặc **VSPE (USD 49.95)** không? Bao nhiêu máy?
 4. Có cần mô phỏng **chắn tia/loss/latency** (Phương án B) hay chỉ cần byte link?
 5. Có cần mở rộng **2 PC qua mạng LAN** sau này không?
 6. Windows version/kiến trúc (10/11, x64/ARM64)? Có dùng bitlocker/policy chặn driver?

@@ -1,5 +1,9 @@
 # Review kiến trúc và kế hoạch refactor `FileTransferService`
 
+> **Lịch sử:** kế hoạch này mô tả engine ARQ cũ. Engine hiện tại là open-loop
+> paced streaming trong `services/file_transfer_service.py`; xem
+> `docs/PROTOCOL.md`.
+
 **Phạm vi:** review tĩnh codebase, tập trung vào `src/ir_terminal/services/file_transfer_service.py` (xấp xỉ 1.857 dòng theo phạm vi review). Đây là kế hoạch thay đổi, chưa thực hiện refactor.
 
 ## 1. Tóm tắt nhận định

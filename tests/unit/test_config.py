@@ -37,7 +37,7 @@ class TestParseLaunchArgs:
         assert config.link_role == "off"
         assert config.link_active is False
         assert config.preferred_port is None
-        assert config.baud == 9600
+        assert config.baud == 19200
         assert config.auto_connect is False
 
     def test_host_role_defaults_to_node_a(self) -> None:

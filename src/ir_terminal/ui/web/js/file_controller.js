@@ -12,41 +12,80 @@ function initFileController() {
   const speedLabel = document.getElementById('file-speed');
   const etaLabel = document.getElementById('file-eta');
   const packetsLabel = document.getElementById('file-packets');
+  const saveFolderInput = document.getElementById('file-save-folder');
+  const autoSaveToggle = document.getElementById('file-auto-save');
 
-  function arqLabel(state) {
-    const key = String(state || '').toUpperCase();
-    if (key.startsWith('ARQ ')) return key;
-    const map = {
-      IDLE: 'ARQ IDLE',
-      HANDSHAKING: 'ARQ SYNC',
-      SYNC: 'ARQ SYNC',
-      TRANSFERRING: 'ARQ TX',
-      STREAMING: 'ARQ TX',
-      TX: 'ARQ TX',
-      RECEIVING: 'ARQ RX',
-      RX: 'ARQ RX',
-      FINALIZING: 'ARQ FINALIZE',
-      COMPLETED: 'ARQ COMPLETE',
-      COMPLETE: 'ARQ COMPLETE',
-      FAILED: 'ARQ FAILED',
-      ABORTED: 'ARQ ABORTED',
-      READY: 'ARQ READY'
-    };
-    return map[key] || 'ARQ ' + key;
+  function applyTransferSettings(config) {
+    if (!config || config.ok === false) return;
+    if (saveFolderInput) saveFolderInput.value = config.transfers_dir || config.default_transfers_dir || '';
+    if (autoSaveToggle) autoSaveToggle.checked = Boolean(config.auto_save);
   }
 
-  function arqTone(state) {
+  function loadTransferSettings() {
+    if (!window.bridge || typeof window.bridge.getSettings !== 'function') return;
+    window.bridge.getSettings((raw) => {
+      let config = null;
+      try { config = JSON.parse(raw); } catch (e) { config = null; }
+      applyTransferSettings(config);
+    });
+  }
+
+  function chooseSaveFolder() {
+    if (!window.bridge || typeof window.bridge.chooseSaveFolder !== 'function') {
+      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'Receive folder needs the SpectraLink Desktop app.');
+      return;
+    }
+    window.bridge.chooseSaveFolder((chosen) => {
+      if (!chosen) return;
+      if (saveFolderInput) saveFolderInput.value = chosen;
+      if (window.UIFeedback) window.UIFeedback.showToast('info', 'Receive folder updated', chosen);
+      loadTransferSettings();
+    });
+  }
+
+  function toggleAutoSave(enabled) {
+    if (!window.bridge || typeof window.bridge.setAutoSaveOption !== 'function') return;
+    window.bridge.setAutoSaveOption(Boolean(enabled), (raw) => {
+      let config = null;
+      try { config = JSON.parse(raw); } catch (e) { config = null; }
+      applyTransferSettings(config);
+      if (window.UIFeedback) {
+        window.UIFeedback.showToast('info', 'AutoSave updated', enabled ? 'Partial receptions are kept.' : 'Only complete receptions are kept.');
+      }
+    });
+  }
+
+  function streamLabel(state) {
+    const key = String(state || '').toUpperCase();
+    if (key.startsWith('STREAM ')) return key;
+    const map = {
+      IDLE: 'STREAM IDLE',
+      SENDING: 'PACED TX',
+      TRANSFERRING: 'PACED TX',
+      STREAMING: 'PACED TX',
+      TX: 'PACED TX',
+      RECEIVING: 'RECEIVING RX',
+      RX: 'RECEIVING RX',
+      COMPLETED: 'STREAM COMPLETE',
+      COMPLETE: 'STREAM COMPLETE',
+      FAILED: 'STREAM FAILED',
+      ABORTED: 'STREAM ABORTED',
+      READY: 'STREAM READY'
+    };
+    return map[key] || 'STREAM ' + key;
+  }
+
+  function streamTone(state) {
     const key = String(state || '').toUpperCase();
     if (key === 'COMPLETED' || key === 'COMPLETE') return 'success';
     if (key === 'FAILED') return 'error';
     if (key === 'ABORTED' || key === 'IDLE') return 'neutral';
-    if (key === 'FINALIZING') return 'warning';
     return 'info';
   }
 
   function setActiveStatus(label, tone) {
-    const resolvedTone = tone || arqTone(label);
-    const resolvedLabel = arqLabel(label);
+    const resolvedTone = tone || streamTone(label);
+    const resolvedLabel = streamLabel(label);
     if (window.UIBadge) {
       window.UIBadge.set('file-active-status', { tone: resolvedTone, label: resolvedLabel });
       return;
@@ -82,6 +121,11 @@ function initFileController() {
 
     if (btn.closest('#modal-overlay, #toast-container, #settings-overlay')) return;
 
+    if (btn.id === 'btn-choose-folder') {
+      chooseSaveFolder();
+      return;
+    }
+
     const actionBtn = btn.closest('[data-action]');
     if (actionBtn) {
       if (history) history.handleRowAction(actionBtn);
@@ -104,7 +148,7 @@ function initFileController() {
         return;
       }
       if (selectedFilePath) {
-        if (window.UIFeedback) window.UIFeedback.showToast('info', 'Transmission started', 'Streaming over 880nm beam (Stop-and-Wait ARQ).');
+        if (window.UIFeedback) window.UIFeedback.showToast('info', 'Transmission started', 'Streaming over 880nm beam (open-loop paced).');
         window.bridge.startFileTransfer(selectedFilePath);
       } else {
         if (window.UIFeedback) window.UIFeedback.showToast('warning', 'No file selected', 'Choose a file before starting transmission.');
@@ -136,6 +180,10 @@ function initFileController() {
     }
   });
 
+  if (autoSaveToggle) {
+    autoSaveToggle.addEventListener('change', () => toggleAutoSave(autoSaveToggle.checked));
+  }
+
   function handleFileSelected(path) {
     selectedFilePath = path;
     const fname = path.split('/').pop().split('\\').pop();
@@ -163,7 +211,7 @@ function initFileController() {
       if (speedLabel) speedLabel.innerHTML = `${speedKbps.toFixed(1)} <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span>`;
       if (etaLabel) etaLabel.innerText = `${Math.ceil(etaSec)}s`;
       if (packetsLabel) packetsLabel.innerHTML = `${curChunk}<span class="text-label-sm font-label-sm font-normal text-outline">/${totalChunks}</span>`;
-      setActiveStatus(pct >= 100 ? 'COMPLETED' : 'TRANSFERRING');
+      setActiveStatus(pct >= 100 ? 'COMPLETED' : 'SENDING');
     }
 
     window.bridge.transferProgress.connect((pct, speedKbps, etaSec, curChunk, totalChunks) => {
@@ -193,7 +241,7 @@ function initFileController() {
         window.UIFeedback.showToast(
           'success',
           'Transfer complete',
-          `${filename} verified over optical link in ${elapsedSec.toFixed(1)}s • CRC-32 ${crcHex}`,
+          `${filename} streamed over the optical link in ${elapsedSec.toFixed(1)}s (open-loop)`,
           { durationMs: 2800 }
         );
       }
@@ -222,6 +270,16 @@ function initFileController() {
     window.bridge.transferStateChanged.connect((state) => {
       setActiveStatus(state);
     });
+
+    if (window.bridge.settingsChanged && typeof window.bridge.settingsChanged.connect === 'function') {
+      window.bridge.settingsChanged.connect((raw) => {
+        let config = null;
+        try { config = JSON.parse(raw); } catch (e) { config = null; }
+        applyTransferSettings(config);
+      });
+    }
+
+    loadTransferSettings();
 
     if (history) history.reload();
   }

@@ -1,86 +1,130 @@
 # NGHIỆM THU & BÀN GIAO (ACCEPTANCE RUNBOOK)
-**Mục tiêu:** 3 bước tích hợp STM32 + 6 bước demo client + phạm vi MVP/Post-MVP khớp `LAB_BaoGia.xlsx`. Index: `docs/README.md`. Wire chốt: `docs/PROTOCOL.md`.
+
+**Mục tiêu:** kiểm tra phần cứng STM32 + MCP2122 + TFDU4101 với giao thức
+tương thích WinForm C#.
+**Nguồn chuẩn:** `docs/PROTOCOL.md`, `docs/WFF.txt`.
+**Index tài liệu:** `docs/README.md`.
 
 ---
 
-## 1. SƠ ĐỒ KẾT NỐI VẬT LÝ & TÍN HIỆU (HARDWARE INTERFACE)
+## 1. SƠ ĐỒ KẾT NỐI
 
 ```text
-[PC A (Desktop App)]
-       │
-       │ (Cáp Micro-USB / Type-C)
-       ▼
-[STM32F407G-DISC1 (Node A)] ──(USART2/3: TX, RX, GND)──> [Mạch MCP2122 + TFDU4101]
-                                                                    │
-                                                            (Tia Hồng Ngoại 880nm)
-                                                                    ▼
-[STM32F407G-DISC1 (Node B)] <──(USART2/3: TX, RX, GND)── [Mạch MCP2122 + TFDU4101]
-       ▲
-       │ (Cáp Micro-USB / Type-C)
-       │
-[PC B (Desktop App)]
+[PC A] --USB--> [STM32 Node A] --UART--> [MCP2122 + TFDU4101]
+                                                    |
+                                            tia hồng ngoại 880 nm
+                                                    |
+[PC B] <--USB-- [STM32 Node B] <--UART-- [MCP2122 + TFDU4101]
 ```
 
-### 1.1. Cấu hình Cổng giao tiếp UART chuẩn:
-* **Baudrate:** `115200` bps
-* **Data bits:** `8`
-* **Parity:** `None`
-* **Stop bits:** `1`
-* **Flow Control:** `None` (Software ARQ tự điều phối)
+### 1.1. Cấu hình cổng
+
+| Cổng | Vai trò | Baudrate | Khung |
+| :--- | :--- | :--- | :--- |
+| COM1 | Dữ liệu quang | `2400`, `4800`, `9600`, `19200` | 8-N-1 |
+| COM2 | Điều khiển MCU | `115200` cố định | 8-N-1 |
+
+- Flow control: không dùng.
+- Không có ARQ phần mềm; chất lượng kênh quyết định trực tiếp tỉ lệ mất chunk.
+- App không dùng PING/PONG và không có khung chat. Nghiệm thu dựa trên truyền
+  file và bộ đếm frame.
 
 ---
 
-## 2. YÊU CẦU ĐỐI VỚI FIRMWARE STM32
+## 2. YÊU CẦU FIRMWARE STM32
 
-1. **Chế độ Transparent Bridge:**
-   * Mọi byte nhận từ `USB-VCP (Virtual COM Port)` $\rightarrow$ Chuyển thẳng ra `UART_TX` nối với MCP2122.
-   * Mọi byte nhận từ `UART_RX` của MCP2122 $\rightarrow$ Chuyển thẳng lên `USB-VCP` gửi về PC.
-   * Không chèn thêm byte header/footer tùy biến của MCU vào luồng dữ liệu này.
-2. **Quản lý Bộ đệm (Buffer Size):**
-   * Sử dụng DMA hoặc Circular Ring Buffer tối thiểu **1024 Bytes** trên UART RX/TX để tránh mất byte khi PC truyền khối lượng lớn.
-3. **Chống Optical Echo (Nếu mạch phần cứng chưa cô lập):**
-   * Khi STM32 đang truyền dữ liệu ra MCP2122, nếu mắt thu TFDU4101 thu lại chính xung phát đó, STM32 nên tạm thời bỏ qua (ignore) các byte nhận được từ RX trong khoảng thời gian TX đang diễn ra.
+1. **Transparent bridge:**
+   - Byte nhận từ USB-VCP chuyển thẳng ra UART TX nối MCP2122.
+   - Byte nhận từ UART RX của MCP2122 chuyển thẳng lên USB-VCP.
+   - Không chèn header/footer riêng của MCU.
 
----
+2. **Bộ đệm:**
+   - DMA hoặc ring buffer tối thiểu 1024 byte mỗi chiều.
+   - Khuyến nghị 2048 byte cho luồng quang.
 
-## 3. QUY TRÌNH KIỂM THỬ TỪNG BƯỚC (STEP-BY-STEP TESTING WORKFLOW)
+3. **Nhận dạng khung:**
+   - Sync `AA 55`, `sequence uint32 LE`, `length uint16 LE`, payload.
+   - Chấp nhận `length` tới 256 cho DATA; không giả định khung đến liền nhau.
 
-### Bước 1: Loopback Test trên mạch STM32 (Không qua Quang)
-1. Nối tắt chân `TX` và `RX` trên cổng UART của STM32 (sau khi đã tháo MCP2122).
-2. Mở Desktop App, chọn cổng COM của STM32, gửi 1 tin nhắn test.
-3. **Kết quả đạt:** App nhận lại đúng tin nhắn đó và hiển thị RTT < 5ms.
+4. **Xử lý COM2:**
+   - Nhận đúng chuỗi `00\r`, `01\r`, `10\r`, `11\r`.
+   - Áp dụng Baudrate tương ứng cho UART nối MCP2122.
+   - Không gửi phản hồi `BAUD_OK` hay `NOTIFY_BAUD`; giao thức không có kênh
+     phản hồi.
 
-### Bước 2: Loopback Test qua Mạch Quang MCP2122 + TFDU4101
-1. Cắm module MCP2122 và TFDU4101 vào STM32.
-2. Đặt một tấm gương phản xạ trước đầu phát/thu TFDU4101 để tia hồng ngoại phản xạ ngược lại chính nó.
-3. Gửi chuỗi dữ liệu 256 bytes từ Desktop App.
-4. **Kết quả đạt:** Dữ liệu nhận lại khớp 100%, CRC-32 hợp lệ.
-
-### Bước 3: Liên thông 2 PC qua Không gian Quang (End-to-End Test)
-1. Đặt 2 board mạch đối diện nhau ở khoảng cách $0.5m - 1.0m$.
-2. Mở Desktop App trên PC A và PC B, kết nối đúng cổng COM tương ứng.
-3. Bấm nút **"Ping / Handshake"** trên PC A $\rightarrow$ Kiểm tra PC B có phản hồi PONG không.
-4. Thử nghiệm **Gửi Tin Nhắn Chat** và **Gửi File Ảnh (50KB - 200KB)**.
-5. Thử nghiệm **Vật cản (chuẩn MVP):** chắn tia 3s khi đang truyền → kỳ vọng `retry 5 lần → FAILED`, bỏ vật cản → gửi lại tay thành công 100%, verify `CRC-32` khớp. (`PAUSED→RESUME tự động + SHA-256` là Post-MVP, chưa nghiệm thu ở đây.)
+5. **Chống optical echo:**
+   - Nếu TFDU4101 thu lại tín hiệu của chính mạch, bỏ qua byte RX trong lúc TX.
 
 ---
 
-## 4. KỊCH BẢN DEMO 6 BƯỚC VỚI KHÁCH HÀNG
+## 3. QUY TRÌNH KIỂM THỬ
 
-| STT | Kịch bản | Thao tác | Kỳ vọng trên App |
-|-----|----------|----------|------------------|
-| 1 | Khởi tạo link quang | Chọn `COM` (hoặc `MOCK_COM_LOOPBACK`), bấm Initialize Link | Header `Connected (115200)`, gauge quang, badge `CARRIER LOCKED`, RTT Ping/Pong |
-| 2 | Chat quang realtime | Tab Chat, nhập text, gửi | Bong bóng chat 2 chiều + khung Inspector hex/metadata; lịch sử nạp lại từ file JSON |
-| 3 | Truyền file | Chọn file (kể cả file lớn hơn 15.7 MB), bấm Transmit | Tiến độ `0→100%`, `KB/s + ETA`, xong báo `SUCCESS + CRC-32`; file lớn tự dùng extension `0x34/0x35/0x36` |
-| 4 | Hủy hai chiều | Bấm Cancel ở một trong hai máy khi đang truyền | Cả hai về `ABORTED`, không còn file `.part`, lịch sử ghi failure; bên kia nhận `TRANSFER_PAUSE`+`ABORT` và ACK |
-| 5 | Chắn tia (MVP) | Chắn tia khi đang truyền | `retry → FAILED` rồi gửi lại tay thành công sau khi thông tia (auto-resume là Post-MVP) |
-| 6 | Xuất báo cáo | Tab Analytics, Export CSV | File `.csv` telemetry/transfers. Lưu ý: `BER` trên UI là text hiển thị, chưa phải phép đo; loss chỉ đếm khi transfer fail |
+### Bước 1: Loopback UART trên STM32
 
-Ảnh demo: `docs/screenshots/1_hardware_setup.png … 4_lab_telemetry.png`.
+1. Tháo MCP2122, nối tắt TX và RX của UART STM32.
+2. Mở app, kết nối COM1 ở `19200`, COM2 để trống nếu board không cần điều
+   khiển baud.
+3. Gửi một file nhỏ (ví dụ 1 KB) từ tab Files.
+4. **Đạt:** app nhận đủ packet, file nhận giống byte-for-byte với file gửi.
+   So sánh bằng `sha256sum` hoặc `cmp` bên ngoài app.
+
+### Bước 2: Loopback quang qua gương
+
+1. Cắm MCP2122 + TFDU4101, đặt gương phản xạ trước module.
+2. Gửi file 256 byte và file 100 KB.
+3. **Đạt:** file nhận khớp hoàn toàn, không có trạng thái `PARTIAL`; log không
+   có watchdog timeout.
+
+### Bước 3: Liên thông hai PC
+
+1. Đặt hai board đối diện, khoảng cách 0.5 m đến 1.0 m.
+2. Mở app trên PC A và PC B, kết nối COM1 dữ liệu và COM2 điều khiển.
+3. Đổi Baudrate quang từ PC A sang `9600`; kiểm tra PC B vẫn nhận đúng.
+4. Gửi file 50 KB đến 200 KB theo cả hai chiều.
+5. **Đạt:** hai file nhận khớp nguồn; trạng thái `SUCCESS`; lịch sử có record.
+
+### Bước 4: Mất tia và mất gói
+
+1. Chắn tia khoảng 1 đến 3 giây giữa phiên truyền.
+2. **Kỳ vọng:** phiên nhận kết thúc bằng watchdog 3 giây với `FAILED`, hoặc
+   nhận `END` với `PARTIAL` nếu chỉ mất một số chunk.
+3. Bỏ vật cản, gửi lại file bằng tay.
+4. **Đạt:** lần gửi lại `SUCCESS`; file `.partial` chỉ còn nếu AutoSave bật và
+   phiên không hoàn tất.
 
 ---
 
-## 5. PHẠM VI THANH TOÁN (TÓM TẮT TỪ `LAB_BaoGia.xlsx`)
+## 4. KỊCH BẢN DEMO
 
-* MVP `7.500.000 / 5 ngày`: STT 1–18 (code/tài liệu/test mock, đã có — test hiện tại `200 passed` 2026-10-19) + STT 19 (cắm 2 controller thật, gửi/nhận 2 chiều — **PENDING**).
-* Post-MVP báo riêng: resume sau chắn tia `2.4tr`, SHA-256 `1.2tr`, telemetry thực `2.4tr`, hotplug/reconnect + hàng đợi `≈1.35tr`. Không cộng vào MVP. *(Streaming file lớn `900k` đã implement trong code — cần chốt lại phạm vi với khách hàng.)*
+| STT | Kịch bản | Thao tác | Kỳ vọng |
+| :---: | :--- | :--- | :--- |
+| 1 | Kết nối | Chọn COM1, COM2, Baudrate, bấm Connect | Header hiển thị COM1/COM2, telemetry bắt đầu đếm frame |
+| 2 | Đổi Baudrate | Chọn `2400` đến `19200`, bấm áp dụng | COM2 nhận mã 2 ký tự, COM1 đổi tốc độ, không rớt kết nối |
+| 3 | Truyền file | Chọn file, bấm Transmit | Tiến độ 0 đến 100 phần trăm, KB/s và ETA, kết thúc `SUCCESS` |
+| 4 | Nhận file | Gửi từ máy còn lại | File xuất hiện trong thư mục nhận, tên và nội dung đúng |
+| 5 | Hủy | Bấm Cancel khi đang truyền | Trạng thái `ABORTED`, file tạm xử lý theo AutoSave |
+| 6 | Chắn tia | Chắn tia giữa phiên | `FAILED` hoặc `PARTIAL`, báo số packet thiếu trong lịch sử |
+| 7 | Xuất báo cáo | Tab Analytics, Export CSV | File CSV telemetry và transfer history |
+
+---
+
+## 5. KIỂM TRA TỰ ĐỘNG
+
+```bash
+uv run pytest tests/ -v
+uv run ruff check .
+uv run mypy src/ tests/
+```
+
+Bộ test bao gồm byte-exact frame với WinForm C#, loopback paced streaming, và
+vòng đời COM1/COM2 kèm lệnh baud.
+
+---
+
+## 6. PHẠM VI
+
+- MVP gồm UI bốn màn hình, quản lý COM1/COM2, đổi Baudrate quang, truyền/nhận
+  file open-loop, lịch sử, telemetry và CSV.
+- Không thuộc phạm vi hiện tại: chat quang, PING/PONG, CRC/SHA-256, retransmit,
+  auto-resume, BER thực đo, hotplug tự động.
+- Nghiệm thu phần cứng thật vẫn cần board, firmware và log kèm theo.

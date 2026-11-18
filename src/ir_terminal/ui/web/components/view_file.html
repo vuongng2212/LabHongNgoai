@@ -6,11 +6,11 @@
             </p>
 </div>
 <div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant min-w-0">
-<span>CHUNK: <strong class="text-on-surface font-semibold">240 B</strong></span>
+<span>CHUNK: <strong class="text-on-surface font-semibold">256 B</strong></span>
 <span class="text-outline-variant">•</span>
-<span>CRC-32: <strong class="text-on-surface font-semibold">IEEE 802.3</strong></span>
+<span>INTEGRITY: <strong class="text-on-surface font-semibold">Open-Loop</strong></span>
 <span class="text-outline-variant">•</span>
-<span>ARQ: <strong class="text-on-surface font-semibold">Stop-and-Wait</strong></span>
+<span>FLOW: <strong class="text-on-surface font-semibold">Paced Streaming</strong></span>
 </div>
 </div>
 <div class="split-grid">
@@ -19,7 +19,7 @@
 <span class="material-symbols-outlined text-[26px]" data-icon="upload_file">upload_file</span>
 </div>
 <h3 id="file-limit-hint" class="text-headline-md font-headline-md text-on-surface mb-1">
-              Drop file to transmit (unlimited size)
+              Drop file to transmit (256-byte paced frames)
             </h3>
 <p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
               Supports PDF, images, firmware binaries, and raw packet captures
@@ -33,7 +33,7 @@
 </div>
 <div class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="verified_user">verified_user</span>
-<span>Automatically framed into 240-byte chunks with CRC-32</span>
+<span>Automatically framed into 256-byte chunks with paced open-loop streaming</span>
 </div>
 </div>
 <div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between min-w-0">
@@ -46,7 +46,7 @@
 <span>CH-A</span>
 <span id="file-active-status" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
 <span class="ui-badge__dot"></span>
-<span class="ui-badge__label">ARQ IDLE</span>
+<span class="ui-badge__label">STREAM IDLE</span>
 </span>
 </div>
 </div>
@@ -100,6 +100,17 @@
 </button>
 </div>
 </div>
+<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-md flex flex-wrap items-center gap-space-md min-w-0">
+<div class="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="folder_open">folder_open</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium shrink-0">Receive folder</span>
+<input id="file-save-folder" class="h-[28px] px-2 flex-1 min-w-[160px] text-mono-data font-mono-data rounded-lg bg-surface border border-black/[0.1] focus:border-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Default transfers folder" readonly type="text"/>
+<button id="btn-choose-folder" class="h-[28px] px-space-md rounded-lg bg-white border border-black/[0.12] text-on-surface text-label-md font-label-md hover:bg-[#F8FAFC] active:scale-[0.98] cursor-pointer">Choose…</button>
+</div>
+<label class="flex items-center gap-2 font-label-sm text-label-sm text-on-surface-variant font-medium cursor-pointer">
+<input id="file-auto-save" class="h-4 w-4 rounded border-black/[0.2] text-primary focus:ring-primary/30" type="checkbox"/>
+<span>Tự động lưu (AutoSave)</span>
+</label>
 </div>
 <div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md min-w-0">
 <div class="flex flex-wrap items-center justify-between gap-space-md">
@@ -110,7 +121,7 @@
 </div>
 <span class="flex items-center gap-1 font-mono-caption text-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="check_circle">check_circle</span>
-<span>CRC-32 verified</span>
+<span>Open-loop paced</span>
 </span>
 </div>
 <div class="relative w-full sm:w-auto">
@@ -126,7 +137,7 @@
 <th class="px-space-md font-medium">Size</th>
 <th class="px-space-md font-medium">Direction</th>
 <th class="px-space-md font-medium">Timestamp</th>
-<th class="px-space-md font-medium">CRC-32</th>
+<th class="px-space-md font-medium">Mode</th>
 <th class="px-space-md font-medium">State</th>
 <th class="px-space-md text-right font-medium">Actions</th>
 </tr>
@@ -137,7 +148,7 @@
   <div class="flex flex-col items-center justify-center gap-1">
     <span class="material-symbols-outlined text-[22px] text-outline">folder_off</span>
     <span class="font-medium text-on-surface">No file transfers recorded yet</span>
-    <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
+    <span class="text-label-sm text-outline">Transferred files will be logged here as open-loop paced streams.</span>
   </div>
 </td>
 </tr>
@@ -146,11 +157,11 @@
 </div>
 <div class="flex flex-wrap items-center justify-between gap-2 text-mono-caption font-mono-caption text-outline px-1">
 <div class="flex flex-wrap items-center gap-space-md">
-<span>Stop-and-Wait ARQ</span>
+<span>Open-Loop Paced</span>
 <span>•</span>
-<span>CRC-32 IEEE 802.3</span>
+<span>No checksum</span>
 <span>•</span>
-<span>Chunk size: <strong class="text-on-surface font-medium">240 bytes</strong></span>
+<span>Chunk size: <strong class="text-on-surface font-medium">256 bytes</strong></span>
 </div>
 <span>Optical carrier 880 nm</span>
 </div>

@@ -38,16 +38,16 @@ class TestByteRingBuffer:
 
     def test_circular_wrap_around(self) -> None:
         rb = ByteRingBuffer(capacity=8)
-        rb.write(b"123456")  # 6 bytes
-        assert rb.read(4) == b"1234"  # 2 bytes left ("56"), tail advanced
+        rb.write(b"123456")
+        assert rb.read(4) == b"1234"
 
-        rb.write(b"7890")  # Writes wrap around circular buffer
+        rb.write(b"7890")
         assert len(rb) == 6
         assert rb.read() == b"567890"
 
     def test_overflow_overwrites_oldest(self) -> None:
         rb = ByteRingBuffer(capacity=5)
-        rb.write(b"12345678")  # Exceeds capacity 5 -> keeps last 5: "45678"
+        rb.write(b"12345678")
         assert len(rb) == 5
         assert rb.read() == b"45678"
 

@@ -1,4 +1,10 @@
-"""Dual-port serial transport separating the TX and RX physical COM ports."""
+"""Dual hardware COM transport with separate data and control channels.
+
+COM1 (``data_port``) is wired to the IR transceiver and runs at the optical
+baudrate. COM2 (``ctrl_port``) is wired to the STM32 MCU and always runs at
+115200 bps, carrying the two-character baud switch commands defined by the
+firmware contract.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +18,13 @@ from typing import Protocol, cast
 import serial as serial
 
 from ir_terminal.core.interfaces import ITransport
-from ir_terminal.protocol.constants import DEFAULT_BAUDRATE
+from ir_terminal.protocol.constants import (
+    BAUD_COMMAND_TERMINATOR,
+    BAUD_COMMANDS,
+    BAUD_SWITCH_GUARD_MS,
+    CONTROL_BAUDRATE,
+    DEFAULT_BAUDRATE,
+)
 from ir_terminal.utils.logger import LogTag, format_hex_preview
 
 logger = logging.getLogger(__name__)
@@ -21,6 +33,7 @@ __all__ = ["DualSerialTransport", "ResilientWin32Serial", "serial"]
 
 MAX_OPEN_RETRIES: int = 3
 INITIAL_RETRY_DELAY_SEC: float = 0.05
+PORT_RELEASE_DELAY_SEC: float = 0.1
 
 _WIN32_CE_ERROR_FLAGS: tuple[tuple[int, str], ...] = (
     (0x0001, "CE_RXOVER"),
@@ -152,8 +165,7 @@ def _win32_clear_and_purge_port(port_handle: int | None) -> None:
         output_queue = _read_ctypes_ulong(comstat, "cbOutQue")
         if errors_value:
             logger.warning(
-                "%s ClearCommError handle=%d errors=0x%04X flags=[%s] "
-                "cbInQue=%d cbOutQue=%d",
+                "%s ClearCommError handle=%d errors=0x%04X flags=[%s] cbInQue=%d cbOutQue=%d",
                 LogTag.HW_SERIAL,
                 int(port_handle),
                 errors_value,
@@ -163,8 +175,7 @@ def _win32_clear_and_purge_port(port_handle: int | None) -> None:
             )
         else:
             logger.debug(
-                "%s ClearCommError handle=%d errors=0x0000 flags=[none] "
-                "cbInQue=%d cbOutQue=%d",
+                "%s ClearCommError handle=%d errors=0x0000 flags=[none] cbInQue=%d cbOutQue=%d",
                 LogTag.HW_SERIAL,
                 int(port_handle),
                 input_queue,
@@ -231,8 +242,7 @@ class ResilientWin32Serial(serial.Serial):
             return
 
         logger.debug(
-            "%s DCB reconfigure: clearing driver error state on handle=%d "
-            "before SetCommState",
+            "%s DCB reconfigure: clearing driver error state on handle=%d before SetCommState",
             LogTag.HW_SERIAL,
             port_handle,
         )
@@ -261,7 +271,8 @@ class ResilientWin32Serial(serial.Serial):
         except Exception as exc:
             if _is_win32_error_31(exc):
                 logger.warning(
-                    "%s DCB load failed with WinError 31 (tolerated for USB-CDC adapter compatibility): %s",
+                    "%s DCB load failed with WinError 31 (tolerated for USB-CDC "
+                    "adapter compatibility): %s",
                     LogTag.HW_SERIAL,
                     exc,
                 )
@@ -281,54 +292,72 @@ class ResilientWin32Serial(serial.Serial):
 
 
 class DualSerialTransport(ITransport):
-    """ITransport writing to a TX port and reading from a separate RX port."""
+    """ITransport bound to COM1 data and COM2 control hardware channels."""
 
     def __init__(
         self,
-        tx_port: str,
-        rx_port: str | None = None,
+        data_port: str,
+        ctrl_port: str | None = None,
         baudrate: int = DEFAULT_BAUDRATE,
+        ctrl_baudrate: int = CONTROL_BAUDRATE,
     ) -> None:
         """Initializes the dual-port transport without opening any handle.
 
         Args:
-            tx_port: Serial device used for outgoing bytes.
-            rx_port: Serial device used for incoming bytes. ``None`` or an empty
-                value reuses ``tx_port`` (unified single-port mode).
-            baudrate: Baud rate applied to both physical UART links.
+            data_port: COM1 device wired to the infrared transceiver.
+            ctrl_port: COM2 device wired to the STM32 controller. ``None`` or an
+                empty value disables control commands.
+            baudrate: Optical baudrate applied to the COM1 data channel.
+            ctrl_baudrate: Fixed MCU baudrate applied to the COM2 channel.
         """
-        self._tx_port = (tx_port or "").strip()
-        requested_rx = (rx_port or "").strip()
-        self._rx_port = requested_rx or self._tx_port
+        self._data_port = (data_port or "").strip()
+        self._ctrl_port = (ctrl_port or "").strip()
         self._baudrate = int(baudrate)
-        self._tx_serial: serial.Serial | None = None
-        self._rx_serial: serial.Serial | None = None
+        self._ctrl_baudrate = int(ctrl_baudrate)
+        self._data_serial: serial.Serial | None = None
+        self._ctrl_serial: serial.Serial | None = None
+
+    @property
+    def data_port(self) -> str:
+        """Returns the COM1 data port name."""
+        return self._data_port
+
+    @property
+    def ctrl_port(self) -> str:
+        """Returns the COM2 control port name, or an empty string."""
+        return self._ctrl_port
 
     @property
     def tx_port(self) -> str:
-        """Returns the physical TX port name."""
-        return self._tx_port
+        """Returns the data port name for legacy TX-oriented callers."""
+        return self._data_port
 
     @property
     def rx_port(self) -> str:
-        """Returns the physical RX port name."""
-        return self._rx_port
+        """Returns the data port name for legacy RX-oriented callers."""
+        return self._data_port
 
     @property
     def baudrate(self) -> int:
-        """Returns the configured baud rate."""
+        """Returns the active COM1 optical baudrate."""
         return self._baudrate
 
     @property
-    def is_single_port(self) -> bool:
-        """Returns True when TX and RX share one serial handle."""
-        return self._tx_port.strip().upper() == self._rx_port.strip().upper()
+    def control_baudrate(self) -> int:
+        """Returns the fixed COM2 MCU baudrate."""
+        return self._ctrl_baudrate
 
-    def _create_serial(self, port_name: str, *, writable: bool) -> serial.Serial:
-        """Builds one resilient 8-N-1 serial handle for the requested direction.
+    @property
+    def has_control_port(self) -> bool:
+        """Returns True when a dedicated COM2 control port is configured."""
+        return bool(self._ctrl_port)
+
+    def _create_serial(self, port_name: str, baudrate: int, *, writable: bool) -> serial.Serial:
+        """Builds one resilient 8-N-1 serial handle.
 
         Args:
             port_name: Physical port to open.
+            baudrate: Baudrate applied to the handle.
             writable: True when the handle needs a finite write timeout.
 
         Returns:
@@ -336,7 +365,7 @@ class DualSerialTransport(ITransport):
         """
         serial_instance = ResilientWin32Serial(
             port=None,
-            baudrate=self._baudrate,
+            baudrate=baudrate,
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
@@ -347,10 +376,10 @@ class DualSerialTransport(ITransport):
         )
         logger.debug(
             "%s Serial handle config: port=%s baud=%d framing=8N1 read_timeout=0.0s "
-            "write_timeout=%ss rtscts=False dsrdtr=False xonxoff=False force_update=False",
+            "write_timeout=%ss rtscts=False dsrdtr=False xonxoff=False",
             LogTag.HW_SERIAL,
             port_name,
-            self._baudrate,
+            baudrate,
             cast(float | None, getattr(serial_instance, "write_timeout", None)),
         )
         serial_instance.port = port_name
@@ -367,128 +396,95 @@ class DualSerialTransport(ITransport):
             self._close_handle(serial_instance)
             raise
         logger.debug(
-            "%s Serial handle open OK: port=%s baud=%d (handles busy, 8N1 active)",
+            "%s Serial handle open OK: port=%s baud=%d (8N1 active)",
             LogTag.HW_SERIAL,
             port_name,
-            self._baudrate,
+            baudrate,
         )
         return serial_instance
 
-    def _open_handles_once(self) -> tuple[serial.Serial, serial.Serial]:
-        """Attempts a single-pass opening of TX and RX serial handles.
+    def _open_handles_once(self) -> tuple[serial.Serial, serial.Serial | None]:
+        """Attempts a single-pass opening of the data and control handles.
 
         Returns:
-            Pair of open serial handles, identical in unified mode.
+            Pair of opened handles; the control handle is None when disabled.
         """
-        tx_handle: serial.Serial | None = None
-        rx_handle: serial.Serial | None = None
+        data_handle: serial.Serial | None = None
+        ctrl_handle: serial.Serial | None = None
         try:
-            tx_handle = self._create_serial(self._tx_port, writable=True)
-            if self.is_single_port:
-                rx_handle = tx_handle
-            else:
-                rx_handle = self._create_serial(self._rx_port, writable=False)
-            return tx_handle, rx_handle
+            data_handle = self._create_serial(self._data_port, self._baudrate, writable=True)
+            if self.has_control_port:
+                ctrl_handle = self._create_serial(
+                    self._ctrl_port, self._ctrl_baudrate, writable=True
+                )
+            return data_handle, ctrl_handle
         except Exception:
-            self._close_handle(tx_handle)
-            if rx_handle is not None and rx_handle is not tx_handle:
-                self._close_handle(rx_handle)
+            self._close_handle(data_handle)
+            self._close_handle(ctrl_handle)
             raise
 
-    def _purge_after_open(
-        self,
-        tx_handle: serial.Serial,
-        rx_handle: serial.Serial,
-    ) -> None:
-        """Drains residual bytes from both handles after a successful open.
+    def _purge_handle(self, handle: serial.Serial, port_name: str) -> None:
+        """Drains residual bytes from one handle after a successful open.
 
         Args:
-            tx_handle: Opened TX handle.
-            rx_handle: Opened RX handle, possibly the same object.
+            handle: Opened serial handle.
+            port_name: Human-readable port name used in logs.
         """
         try:
-            tx_drained = _input_buffer_bytes(tx_handle)
-            tx_handle.reset_input_buffer()
-            tx_handle.reset_output_buffer()
+            drained = _input_buffer_bytes(handle)
+            handle.reset_input_buffer()
+            handle.reset_output_buffer()
             logger.debug(
-                "%s Post-open purge tx: port=%s drained=%dB (in+out buffers cleared)",
+                "%s Post-open purge: port=%s drained=%dB (in+out buffers cleared)",
                 LogTag.HW_SERIAL,
-                self._tx_port,
-                tx_drained,
-            )
-            if rx_handle is tx_handle:
-                logger.debug(
-                    "%s Post-open purge rx: port=%s shared tx handle, nothing extra drained",
-                    LogTag.HW_SERIAL,
-                    self._rx_port,
-                )
-                return
-            rx_drained = _input_buffer_bytes(rx_handle)
-            rx_handle.reset_input_buffer()
-            rx_handle.reset_output_buffer()
-            logger.debug(
-                "%s Post-open purge rx: port=%s drained=%dB (in+out buffers cleared)",
-                LogTag.HW_SERIAL,
-                self._rx_port,
-                rx_drained,
+                port_name,
+                drained,
             )
         except Exception as exc:
-            logger.warning(
-                "%s Post-open buffer purge warning: %s",
-                LogTag.HW_SERIAL,
-                exc,
-            )
+            logger.warning("%s Post-open buffer purge warning: %s", LogTag.HW_SERIAL, exc)
 
     def open(self) -> None:
-        """Opens serial handles with bounded retry and hardware error recovery."""
+        """Opens COM1 and COM2 with bounded retry and hardware error recovery."""
         if self.is_open:
             self.close()
 
         logger.info(
-            "%s DualSerial open: tx=%s rx=%s baud=%d single=%s (8N1)",
+            "%s Dual serial open: data=%s @%d rx=%s @%d (8N1)",
             LogTag.HW_SERIAL,
-            self._tx_port,
-            self._rx_port,
+            self._data_port,
             self._baudrate,
-            self.is_single_port,
+            self._ctrl_port or "<none>",
+            self._ctrl_baudrate,
         )
 
         last_error: Exception | None = None
         for attempt in range(MAX_OPEN_RETRIES):
-            logger.debug(
-                "%s DualSerial open attempt %d/%d starting: tx=%s rx=%s",
-                LogTag.HW_SERIAL,
-                attempt + 1,
-                MAX_OPEN_RETRIES,
-                self._tx_port,
-                self._rx_port,
-            )
             try:
-                tx_handle, rx_handle = self._open_handles_once()
-                self._tx_serial = tx_handle
-                self._rx_serial = rx_handle
-                self._purge_after_open(tx_handle, rx_handle)
+                data_handle, ctrl_handle = self._open_handles_once()
+                self._data_serial = data_handle
+                self._ctrl_serial = ctrl_handle
+                self._purge_handle(data_handle, self._data_port)
+                if ctrl_handle is not None:
+                    self._purge_handle(ctrl_handle, self._ctrl_port)
                 logger.info(
-                    "%s DualSerial opened: tx=%s rx=%s baud=%d is_open=%s",
+                    "%s Dual serial opened: data=%s ctrl=%s baud=%d ctrl_baud=%d",
                     LogTag.HW_SERIAL,
-                    self._tx_port,
-                    self._rx_port,
+                    self._data_port,
+                    self._ctrl_port or "<none>",
                     self._baudrate,
-                    self.is_open,
+                    self._ctrl_baudrate,
                 )
                 return
             except Exception as exc:
                 last_error = exc
-                self._close_handle(self._tx_serial)
-                if self._rx_serial is not self._tx_serial:
-                    self._close_handle(self._rx_serial)
-                self._tx_serial = None
-                self._rx_serial = None
+                self._close_handle(self._data_serial)
+                self._close_handle(self._ctrl_serial)
+                self._data_serial = None
+                self._ctrl_serial = None
                 if attempt < MAX_OPEN_RETRIES - 1 and _is_retryable_serial_error(exc):
                     delay = INITIAL_RETRY_DELAY_SEC * (2**attempt)
                     logger.warning(
-                        "%s DualSerial open attempt %d/%d FAILED (%s: %s), "
-                        "retrying in %.0fms",
+                        "%s Dual serial open attempt %d/%d FAILED (%s: %s), retrying in %.0fms",
                         LogTag.HW_SERIAL,
                         attempt + 1,
                         MAX_OPEN_RETRIES,
@@ -499,8 +495,7 @@ class DualSerialTransport(ITransport):
                     _sleep(delay)
                     continue
                 logger.exception(
-                    "%s DualSerial open attempt %d/%d FAILED permanently "
-                    "(%s: %s), no retry",
+                    "%s Dual serial open attempt %d/%d FAILED permanently (%s: %s)",
                     LogTag.HW_SERIAL,
                     attempt + 1,
                     MAX_OPEN_RETRIES,
@@ -520,33 +515,34 @@ class DualSerialTransport(ITransport):
             if handle.is_open:
                 handle.close()
         except Exception:
-            logger.exception("%s DualSerial handle close error", LogTag.HW_SERIAL)
+            logger.exception("%s Dual serial handle close error", LogTag.HW_SERIAL)
 
     def close(self) -> None:
-        """Closes both handles safely, including the unified single-handle case."""
-        tx_handle = self._tx_serial
-        rx_handle = self._rx_serial
-        self._tx_serial = None
-        self._rx_serial = None
-        self._close_handle(tx_handle)
-        if rx_handle is not tx_handle:
-            self._close_handle(rx_handle)
+        """Closes both handles safely and idempotently."""
+        data_handle = self._data_serial
+        ctrl_handle = self._ctrl_serial
+        self._data_serial = None
+        self._ctrl_serial = None
+        self._close_handle(data_handle)
+        self._close_handle(ctrl_handle)
         logger.info(
-            "%s DualSerial closed: tx=%s rx=%s",
+            "%s Dual serial closed: data=%s ctrl=%s",
             LogTag.HW_SERIAL,
-            self._tx_port,
-            self._rx_port,
+            self._data_port,
+            self._ctrl_port or "<none>",
         )
 
     @property
     def is_open(self) -> bool:
-        """Returns True only when both TX and RX handles are open."""
-        tx_ready = bool(self._tx_serial and self._tx_serial.is_open)
-        rx_ready = bool(self._rx_serial and self._rx_serial.is_open)
-        return tx_ready and rx_ready
+        """Returns True when the data channel and any configured control channel are open."""
+        data_ready = bool(self._data_serial and self._data_serial.is_open)
+        if not self.has_control_port:
+            return data_ready
+        ctrl_ready = bool(self._ctrl_serial and self._ctrl_serial.is_open)
+        return data_ready and ctrl_ready
 
     def write(self, data: bytes) -> int:
-        """Writes binary data to the TX serial handle.
+        """Writes binary data to the COM1 data channel.
 
         Args:
             data: Raw bytes to transmit.
@@ -554,22 +550,22 @@ class DualSerialTransport(ITransport):
         Returns:
             Number of bytes written.
         """
-        if not self._tx_serial or not self._tx_serial.is_open:
+        if not self._data_serial or not self._data_serial.is_open:
             logger.warning(
-                "%s DualSerial write rejected (tx closed): tx=%s len=%dB hex=%s",
+                "%s Data write rejected (closed): port=%s len=%dB hex=%s",
                 LogTag.HW_SERIAL,
-                self._tx_port,
+                self._data_port,
                 len(data),
                 format_hex_preview(data),
             )
             raise RuntimeError("Serial port not open for write")
         try:
-            written = self._tx_serial.write(data)
+            written = self._data_serial.write(data)
         except Exception:
             logger.exception(
-                "%s DualSerial write FAILED: tx=%s len=%dB hex=%s",
+                "%s Data write FAILED: port=%s len=%dB hex=%s",
                 LogTag.HW_SERIAL,
-                self._tx_port,
+                self._data_port,
                 len(data),
                 format_hex_preview(data),
             )
@@ -577,9 +573,9 @@ class DualSerialTransport(ITransport):
         count = int(written) if written is not None else 0
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "%s DualSerial TX: tx=%s wrote=%d/%dB hex=%s",
+                "%s Data TX: port=%s wrote=%d/%dB hex=%s",
                 LogTag.HW_SERIAL,
-                self._tx_port,
+                self._data_port,
                 count,
                 len(data),
                 format_hex_preview(data),
@@ -587,35 +583,35 @@ class DualSerialTransport(ITransport):
         return count
 
     def read(self, size: int | None = None) -> bytes:
-        """Reads incoming bytes from the RX serial handle.
+        """Reads incoming bytes from the COM1 data channel.
 
         Args:
             size: Number of bytes to read, or None to read all available.
 
         Returns:
-            Extracted bytes sequence.
+            Extracted byte sequence.
         """
-        if not self._rx_serial or not self._rx_serial.is_open:
+        if not self._data_serial or not self._data_serial.is_open:
             return b""
-        read_size = self._rx_serial.in_waiting if size is None else size
+        read_size = self._data_serial.in_waiting if size is None else size
         if read_size <= 0:
             return b""
         try:
-            data = self._rx_serial.read(read_size)
+            data = self._data_serial.read(read_size)
         except Exception:
             logger.exception(
-                "%s DualSerial read FAILED: rx=%s requested=%dB",
+                "%s Data read FAILED: port=%s requested=%dB",
                 LogTag.HW_SERIAL,
-                self._rx_port,
+                self._data_port,
                 read_size,
             )
             raise
         result = bytes(data) if data is not None else b""
         if result and logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "%s DualSerial RX: rx=%s req=%dB got=%dB hex=%s",
+                "%s Data RX: port=%s req=%dB got=%dB hex=%s",
                 LogTag.HW_SERIAL,
-                self._rx_port,
+                self._data_port,
                 read_size,
                 len(result),
                 format_hex_preview(result),
@@ -624,22 +620,130 @@ class DualSerialTransport(ITransport):
 
     @property
     def in_waiting(self) -> int:
-        """Returns number of bytes buffered on the RX serial handle."""
-        if not self._rx_serial or not self._rx_serial.is_open:
+        """Returns the number of bytes buffered on the COM1 data channel."""
+        if not self._data_serial or not self._data_serial.is_open:
             return 0
-        waiting = self._rx_serial.in_waiting
+        waiting = self._data_serial.in_waiting
         return int(waiting) if waiting is not None else 0
 
     def flush(self) -> None:
-        """Flushes the outgoing transmit buffer on the TX serial handle."""
-        if not self._tx_serial or not self._tx_serial.is_open:
+        """Flushes the outgoing transmit buffer on the data channel."""
+        if not self._data_serial or not self._data_serial.is_open:
             return
         try:
-            self._tx_serial.flush()
+            self._data_serial.flush()
         except Exception:
-            logger.exception(
-                "%s DualSerial flush FAILED: tx=%s",
-                LogTag.HW_SERIAL,
-                self._tx_port,
-            )
+            logger.exception("%s Data flush FAILED: port=%s", LogTag.HW_SERIAL, self._data_port)
             raise
+
+    def send_baud_command(self, baud: int) -> str:
+        """Sends the STM32 baud switch command over COM2.
+
+        Args:
+            baud: Target optical baudrate. Must be one of 2400, 4800, 9600 or
+                19200.
+
+        Returns:
+            The two-character command code that was transmitted.
+
+        Raises:
+            ValueError: If the requested baudrate has no firmware command.
+            RuntimeError: If the control port is not open.
+        """
+        code = BAUD_COMMANDS.get(int(baud))
+        if code is None:
+            raise ValueError(f"Unsupported optical baudrate {baud}; expected one of {sorted(BAUD_COMMANDS)}")
+        if not self._ctrl_serial or not self._ctrl_serial.is_open:
+            raise RuntimeError("Control port is not open for baud commands")
+        payload = code.encode("ascii") + BAUD_COMMAND_TERMINATOR
+        written = self._ctrl_serial.write(payload)
+        self._ctrl_serial.flush()
+        logger.info(
+            "%s COM2 baud command: code=%r target=%d written=%s guard=%dms",
+            LogTag.BAUD_CTRL,
+            code,
+            baud,
+            written,
+            BAUD_SWITCH_GUARD_MS,
+        )
+        _sleep(BAUD_SWITCH_GUARD_MS / 1000.0)
+        return code
+
+    def reconfigure_data_baud(self, new_baud: int) -> None:
+        """Updates the COM1 baudrate in place with bounded reopen fallback.
+
+        Args:
+            new_baud: Target optical baudrate.
+
+        Raises:
+            ValueError: If the requested baudrate has no firmware command.
+        """
+        target = int(new_baud)
+        if target not in BAUD_COMMANDS:
+            raise ValueError(f"Unsupported optical baudrate {target}")
+        if not self._data_serial or not self._data_serial.is_open:
+            self._baudrate = target
+            logger.info(
+                "%s COM1 baudrate stored while closed: %d",
+                LogTag.BAUD_CTRL,
+                target,
+            )
+            return
+        previous = self._baudrate
+        try:
+            self._data_serial.baudrate = target
+            self._data_serial.reset_input_buffer()
+            self._data_serial.reset_output_buffer()
+            self._baudrate = target
+            logger.info(
+                "%s COM1 in-place reconfigure: %d -> %d bps (queues purged)",
+                LogTag.BAUD_CTRL,
+                previous,
+                target,
+            )
+            return
+        except Exception as exc:
+            if not _is_retryable_serial_error(exc):
+                raise
+            logger.warning(
+                "%s COM1 in-place reconfigure FAILED (%s: %s); rebuilding handle",
+                LogTag.BAUD_CTRL,
+                type(exc).__name__,
+                exc,
+            )
+        self._reopen_data_port(target)
+        logger.info(
+            "%s COM1 reopen reconfigure: %d -> %d bps",
+            LogTag.BAUD_CTRL,
+            previous,
+            target,
+        )
+
+    def _reopen_data_port(self, target_baud: int) -> None:
+        """Closes and reopens COM1 at the target rate using bounded backoff.
+
+        Args:
+            target_baud: Baudrate applied to the reopened data handle.
+
+        Raises:
+            Exception: The last reopen failure when every attempt fails.
+        """
+        self._close_handle(self._data_serial)
+        self._data_serial = None
+        self._baudrate = target_baud
+        _sleep(PORT_RELEASE_DELAY_SEC)
+        last_error: Exception | None = None
+        for attempt in range(MAX_OPEN_RETRIES):
+            try:
+                handle = self._create_serial(self._data_port, target_baud, writable=True)
+                self._data_serial = handle
+                self._purge_handle(handle, self._data_port)
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt < MAX_OPEN_RETRIES - 1 and _is_retryable_serial_error(exc):
+                    _sleep(INITIAL_RETRY_DELAY_SEC * (2**attempt))
+                    continue
+                break
+        if last_error is not None:
+            raise last_error

@@ -160,13 +160,19 @@ class DualSocketTransport(ITransport):
         """Writes binary data exclusively to the TX socket transport."""
         if not self._tx_transport or not self._tx_transport.is_open:
             raise RuntimeError("TX socket transport is not open for write")
-        if data.startswith(b"SET_BAUD:") and b"\n" in data and self._rx_transport:
-            written = self._tx_transport.write(data)
-            if self._tx_transport._rx_buffer:
-                self._rx_transport.inject_rx_data(bytes(self._tx_transport._rx_buffer))
-                self._tx_transport._rx_buffer.clear()
-            return written
         return self._tx_transport.write(data)
+
+    def send_baud_command(self, baud: int) -> str:
+        """Records a baud switch command on the TX socket transport."""
+        if not self._tx_transport:
+            raise RuntimeError("TX socket transport is not open for baud commands")
+        return self._tx_transport.send_baud_command(baud)
+
+    def reconfigure_data_baud(self, baud: int) -> None:
+        """Updates the simulated data baudrate on the TX socket transport."""
+        if not self._tx_transport:
+            raise RuntimeError("TX socket transport is not open for baud changes")
+        self._tx_transport.reconfigure_data_baud(baud)
 
     def read(self, size: int | None = None) -> bytes:
         """Reads incoming bytes exclusively from the RX socket transport."""

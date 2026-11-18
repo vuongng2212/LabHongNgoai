@@ -8,7 +8,7 @@
 </span>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
-              Configure the dual UART bridge, select independent TX/RX COM ports, and verify the optical physical layer.
+              Configure COM1 (optical data) and COM2 (STM32 control), apply the optical baudrate, and verify the physical layer.
             </p>
 </div>
 <div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
@@ -28,12 +28,12 @@
 </div>
 <div>
 <h2 class="font-headline-md text-headline-md text-on-surface">Serial Connection</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL UART PHYSICAL BRIDGE</span>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL HARDWARE COM PORTS</span>
 </div>
 </div>
 <div class="port-grid">
 <div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM TX (Transmitter - Gửi)</label>
+<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM1 (Hồng ngoại - Dữ liệu)</label>
 <div class="relative">
 <select id="select-port-tx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
 <option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
@@ -44,7 +44,7 @@
 </div>
 </div>
 <div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM RX (Receiver - Nhận)</label>
+<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM2 (STM32 - Điều khiển)</label>
 <div class="relative">
 <select id="select-port-rx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
 <option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
@@ -117,17 +117,17 @@
 <div class="split-grid items-stretch py-1">
 <div class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full">
 <div class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant">
-<span>MEASURED RTT LATENCY</span>
+<span>MEASURED COM2 CONTROL</span>
 <span id="hw-rtt-state" class="ui-badge shrink-0" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
 <span class="ui-badge__dot"></span>
 <span class="ui-badge__label">IDLE</span>
 </span>
 </div>
 <div class="flex items-baseline gap-2 mt-2">
-<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">-- ms</span>
-<span class="font-mono-caption text-mono-caption text-outline">Ping Echo</span>
+<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">--</span>
+<span class="font-mono-caption text-mono-caption text-outline">Command</span>
 </div>
-<div class="text-[11px] text-outline font-mono-caption mt-2">Optical transmission round-trip delay</div>
+<div class="text-[11px] text-outline font-mono-caption mt-2">Latest baud command sent over COM2</div>
 </div>
 <div class="grid grid-cols-1 gap-2">
 <div class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]">
@@ -154,9 +154,9 @@
 </div>
 </div>
 <div class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm">
-<button id="btn-ping" class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px] text-primary" data-icon="wifi_tethering">wifi_tethering</span>
-                Ping Test
+<button id="btn-send-baud" class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
+<span class="material-symbols-outlined text-[16px] text-primary" data-icon="settings_input_component">settings_input_component</span>
+                Apply Baud via COM2
               </button>
 </div>
 </section>
@@ -189,23 +189,23 @@
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">DUPLEX MODE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Dual COM TX / RX</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Dual COM1 Data / COM2 Control</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">FRAME DELIMITERS</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">SOF 0xAA55 / EOF 0x55AA</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">SOF 0xAA55 / 8-byte header</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">INTEGRITY</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">CRC-32 IEEE 802.3</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">None (Open-Loop)</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">FLOW CONTROL</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Stop-and-Wait ARQ</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Paced Streaming</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">CHUNK SIZE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">240 bytes</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">256 bytes</span>
 </div>
 </div>
 </section>

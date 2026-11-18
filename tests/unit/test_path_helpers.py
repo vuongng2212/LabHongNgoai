@@ -51,7 +51,7 @@ class TestPathHelpers:
 
         data_dir = get_data_dir()
         assert data_dir.exists()
-        assert data_dir.name == "app_data"  # IR_DATA_DIR override in conftest
+        assert data_dir.name == "app_data"
 
         transfers = get_transfers_dir()
         assert transfers.exists()

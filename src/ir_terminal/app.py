@@ -211,18 +211,18 @@ def create_app(
 
     preferred_port = config.preferred_port
     if config.auto_connect and preferred_port is not None:
-        auto_tx = config.effective_tx_port or preferred_port
-        auto_rx = config.effective_rx_port or auto_tx
+        auto_data = config.effective_tx_port or preferred_port
+        auto_ctrl = config.effective_rx_port or ""
 
         def _auto_connect() -> None:
             logger.info(
-                "Auto-connect: tx=%s rx=%s baud=%d node=%s",
-                auto_tx,
-                auto_rx,
+                "Auto-connect: COM1=%s COM2=%s baud=%d node=%s",
+                auto_data,
+                auto_ctrl or "<none>",
                 config.baud,
                 ctx.display_name,
             )
-            bridge.connectDualPorts(auto_tx, auto_rx, config.baud)
+            bridge.connectDualPorts(auto_data, auto_ctrl, config.baud)
 
         QTimer.singleShot(700, _auto_connect)
 

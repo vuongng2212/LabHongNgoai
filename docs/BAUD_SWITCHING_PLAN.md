@@ -1,8 +1,12 @@
 # Baudrate Switching & Serial Stability Plan
 
+> **Historical:** this plan predates the WinForm C# protocol refactor. The
+> current wire contract and baud commands are in `docs/PROTOCOL.md` §5.
+> References below to ARQ/CRC/control-message lines are obsolete.
+
 **Project:** LabHongNgoai / SpectraLink IR-OWC Workstation  
 **Scope:** PC application ↔ STM32 optical baudrate switching, control-message handling, and serial link stability  
-**Status:** Implemented — see `docs/PROTOCOL.md` §8 for the wire contract  
+**Status:** Superseded by the two-character COM2 command implemented in `dual_serial_transport.py`
 **Date:** 2026-11-05
 
 ---

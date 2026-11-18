@@ -184,39 +184,26 @@
       return { label: 'EMPTY', tone: 'neutral' };
     }
     const bytes = parts.map((p) => parseInt(p, 16));
-    if (bytes.length >= 2 && bytes[0] === 0x55 && bytes[1] === 0xAA) {
-      if (bytes.length >= 6) {
-        const seq = bytes[2];
-        const cmd = bytes[3];
-        const len = bytes[4] | (bytes[5] << 8);
-        const opcodeMap = {
-          0x01: 'DATA_CHUNK',
-          0x02: 'DATA_TEXT',
-          0x10: 'ACK',
-          0x11: 'NACK',
-          0x20: 'PING',
-          0x21: 'PONG',
-          0x30: 'TRANSFER_START',
-          0x31: 'TRANSFER_END',
-          0x32: 'TRANSFER_PAUSE',
-          0x34: 'START_LARGE',
-          0x35: 'CHUNK_LARGE',
-          0x36: 'END_LARGE',
-        };
-        const opName = opcodeMap[cmd] || ('CMD 0x' + cmd.toString(16).toUpperCase());
-        const hasEof = bytes.length >= 12 && bytes[bytes.length - 2] === 0xAA && bytes[bytes.length - 1] === 0x55;
-        if (hasEof) {
+    if (bytes.length >= 2 && bytes[0] === 0xAA && bytes[1] === 0x55) {
+      if (bytes.length >= 8) {
+        const seq = (bytes[2] | (bytes[3] << 8) | (bytes[4] << 16) | (bytes[5] << 24)) >>> 0;
+        const len = bytes[6] | (bytes[7] << 8);
+        let frameType = 'DATA_CHUNK';
+        if (seq === 0xFFFFFFFF) frameType = 'FILE_HEADER';
+        else if (seq === 0xFFFFFFFE) frameType = 'FILE_END';
+        const complete = bytes.length >= 8 + len;
+        if (complete) {
           return {
-            label: 'FRAME: ' + opName + ' [seq #' + seq + ', ' + len + 'B]',
+            label: 'FRAME: ' + frameType + ' [seq #' + seq + ', ' + len + 'B]',
             tone: 'success',
           };
         }
         return {
-          label: 'PARTIAL: ' + opName + ' [seq #' + seq + ', ' + len + 'B]',
+          label: 'PARTIAL: ' + frameType + ' [seq #' + seq + ', ' + len + 'B]',
           tone: 'warning',
         };
       }
-      return { label: 'SOF DETECTED', tone: 'warning' };
+      return { label: 'SYNC 0xAA55', tone: 'warning' };
     }
 
     let ascii = '';

@@ -1,4 +1,9 @@
 # BÁO CÁO AUDIT & ĐÁNH GIÁ KỸ THUẬT FIRMWARE STM32 (docs/stm32_new_main.c)
+
+> **Lịch sử:** báo cáo này đối soát firmware với giao thức ARQ/CRC cũ. Kết luận
+> kỹ thuật về bridge UART vẫn hữu ích, nhưng wire format hiện hành là WinForm
+> C# trong `docs/PROTOCOL.md`.
+
 **Dự án:** LabHongNgoai / IR-OWC Lab Terminal Workstation  
 **Đối tượng đánh giá:** File mã nguồn firmware `docs/stm32_new_main.c` (Team IoT gửi)  
 **Tài liệu & Codebase đối soát:** `docs/PROTOCOL.md`, `docs/BAUD_SWITCHING_PLAN.md`, và mã nguồn PC App trên nhánh `main` (`src/ir_terminal/`)  
@@ -97,16 +102,16 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
 #### Phân tích cơ chế gây lỗi và hậu quả thực tế:
 1. **Trùng khớp Opcode giao thức với ký tự điều khiển:**
    - Theo `docs/PROTOCOL.md` §3:
-     - Opcode `TRANSFER_START` = `0x30` $\to$ Mã ASCII chính là ký tự `'0'`.
-     - Opcode `TRANSFER_END` = `0x31` $\to$ Mã ASCII chính là ký tự `'1'`.
+     - Opcode `TRANSFER_START` = `0x30` → Mã ASCII chính là ký tự `'0'`.
+     - Opcode `TRANSFER_END` = `0x31` → Mã ASCII chính là ký tự `'1'`.
    - Khi PC gửi gói `TRANSFER_START`: Chuỗi byte truyền trên UART là:
      `0x55, 0xAA` (SOF), `0x00` (SEQ), `0x30` (CMD = TRANSFER_START), `LEN_L`, `LEN_H`, `PAYLOAD...`, `CRC32...`, `0xAA, 0x55` (EOF).
    - Ngay khi byte thứ 4 (`0x30`) tới ngắt:
-     Điều kiện `b == '0'` thỏa mãn $\to$ `ctrl_active = 1`! Byte `0x30` này **KHÔNG được đẩy vào RingBuffer**, mà bị nhét vào `ctrl_line[0]`.
+     Điều kiện `b == '0'` thỏa mãn → `ctrl_active = 1`! Byte `0x30` này **KHÔNG được đẩy vào RingBuffer**, mà bị nhét vào `ctrl_line[0]`.
    - Các byte tiếp theo (`LEN_L`, `LEN_H`, `file_size`, `chunk_size`, tên file...) đều bị tích lũy vào `ctrl_line`.
    - Trong dữ liệu nhị phân (kích thước file, checksum CRC32, hoặc tên file), xác suất xuất hiện byte `0x0A` (`\n`) hoặc `0x0D` (`\r`) là cực kỳ cao (~39% đối với chuỗi 63 byte ngẫu nhiên).
    - Ngay khi gặp byte `0x0A` hoặc `0x0D`, firmware gọi `Process_Control_Line(ctrl_line)`. Vì chuỗi này không khớp với `"SET_BAUD:"` hay `"00"`, hàm thoát ra và **TOÀN BỘ CÁC BYTE TỪ `0x30` ĐẾN `0x0A` BỊ XÓA BỎ HOÀN TOÀN KHỎI DÒNG DỮ LIỆU!**
-   - Phía bên thu IR chỉ nhận được: `0x55 0xAA 0x00` rồi nhảy cóc sang phần sau của frame $\to$ Frame bị cắt cụt, sai định dạng, máy thu vứt bỏ gói tin hoặc báo lỗi CRC.
+   - Phía bên thu IR chỉ nhận được: `0x55 0xAA 0x00` rồi nhảy cóc sang phần sau của frame → Frame bị cắt cụt, sai định dạng, máy thu vứt bỏ gói tin hoặc báo lỗi CRC.
 2. **Áp dụng cho mọi gói tin nhị phân khác:**
    - Trong một khối `DATA_CHUNK` (240 byte) hoặc chat UTF-8 tiếng Việt, bất kỳ byte nào mang giá trị `'S'` (`0x53`), `'B'` (`0x42`), `'N'` (`0x4E`), `'0'` (`0x30`), `'1'` (`0x31`) đều sẽ kích hoạt `ctrl_active = 1`.
    - Dẫn đến việc dòng dữ liệu nhị phân liên tục bị xé nhỏ, nuốt byte, làm hỏng toàn bộ tính toàn vẹn gói tin.
@@ -121,7 +126,7 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
   - Dòng 468: `huart2.Init.BaudRate = 19200;` (USART2 khởi tạo mặc định 19200).
 - Trong PC App (`src/ir_terminal/protocol/constants.py:78`):
   - `DEFAULT_OPTICAL_BAUDRATE: int = 9600`.
-- **Hệ quả:** Khi vừa mở phần mềm và cắm kit STM32, nếu người dùng chưa bấm chọn nút baudrate trên UI (chưa gửi `SET_BAUD`), PC mặc định truyền nhận với giả định 9600 bps, trong khi STM32 chạy ở 19200 bps $\to$ Hai bên lệch xung nhịp ngay từ đầu, mất kết nối liên kết quang.
+- **Hệ quả:** Khi vừa mở phần mềm và cắm kit STM32, nếu người dùng chưa bấm chọn nút baudrate trên UI (chưa gửi `SET_BAUD`), PC mặc định truyền nhận với giả định 9600 bps, trong khi STM32 chạy ở 19200 bps → Hai bên lệch xung nhịp ngay từ đầu, mất kết nối liên kết quang.
 
 #### 2. Khởi động ở chế độ MANUAL bị câm (`NOTIFY_BAUD` không gửi):
 - Xem xét đoạn mã dòng 641-658:
@@ -144,7 +149,7 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
 - Khi người dùng gạt switch sang MANUAL (`mode == 0`):
   - Phần cứng switch DIP SW2 trực tiếp điều khiển clock của MCP2122 thông qua đường multiplexer ngoài (`PC14 = 0`), và STM32 reset các chân `CLK_S0/S1` về 0 (dòng 614-615).
   - Tuy nhiên, trong hàm `Process_Control_Line()` (dòng 186), firmware **không kiểm tra** `current_mode` hay `dbg_sw_state`. Khi nhận `SET_BAUD:9600`, nó vẫn gọi `IR_SetBaudrate(9600)` và trả về `BAUD_OK:9600\n`!
-  - **Hậu quả:** USART2 của STM32 đổi sang 9600, nhưng phần cứng MCP2122 vẫn đang nhận clock từ switch thủ công (ví dụ 2400) $\to$ Bộ giải mã MCP2122 và bộ UART STM32 chạy ở hai tốc độ khác nhau, dẫn đến tín hiệu thu phát bị méo bit hoàn toàn.
+  - **Hậu quả:** USART2 của STM32 đổi sang 9600, nhưng phần cứng MCP2122 vẫn đang nhận clock từ switch thủ công (ví dụ 2400) → Bộ giải mã MCP2122 và bộ UART STM32 chạy ở hai tốc độ khác nhau, dẫn đến tín hiệu thu phát bị méo bit hoàn toàn.
   - **Quy chuẩn đúng:** Khi đang ở MANUAL mode, STM32 bắt buộc phải từ chối lệnh từ PC bằng: `BAUD_ERR:manual_mode_active\n`.
 
 #### 4. Lệch pha thời gian (Timing Gap) giữa UART và Clock MCP2122:
@@ -174,10 +179,10 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
   }
 ```
 - **Thời gian chiếm dụng CPU khủng khiếp:**
-  - Ở tốc độ quang 2400 bps, thời gian truyền 1 byte là: $\frac{10 \text{ bits}}{2400} \approx 4.17\text{ ms}$.
+  - Ở tốc độ quang 2400 bps, thời gian truyền 1 byte là: 10 bits / 2400 ≈ 4.17 ms.
   - Một gói tin dữ liệu chuẩn (254 bytes) sẽ khiến vòng lặp `while` giam cứng CPU trong:
-    $$254 \times 4.17\text{ ms} \approx 1059\text{ ms} \ (> 1 \text{ giây!})$$
-  - Ở 9600 bps, thời gian giam CPU là: $254 \times 1.04\text{ ms} \approx 264\text{ ms}$.
+    254 × 4.17 ms ≈ 1059 ms (> 1 giây!)
+  - Ở 9600 bps, thời gian giam CPU là: 254 × 1.04 ms ≈ 264 ms.
 - **Tác động tiêu cực:**
   - Trong suốt hơn 1 giây này, nhánh truyền ngược lại (`IR → PC`) bị **đóng băng hoàn toàn**, không thể chuyển tiếp bất kỳ byte nào lên PC. Nếu có gói tin ACK từ phía bên kia trả về, nó sẽ nằm chết trong `ring_ir_to_pc`.
   - Hàm `HAL_UART_Transmit(size=1)` trong STM32 HAL bắt buộc phải chờ cờ `TC` (Transmission Complete - cờ báo thanh ghi dịch đã đẩy xong bit Stop ra dây vật lý). Việc này triệt tiêu hoàn toàn tính năng đệm phần cứng (TDR/TSR double buffering), tạo ra khoảng hở (idle dead-time) lớn giữa các byte, làm suy giảm tốc độ truyền thực tế xuống 30-50%.
@@ -233,7 +238,7 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
 - Mỗi khi có 1 byte được chuyển tiếp qua cầu nối, cả 3 cờ `flag_new_tx`, `flag_new_rx`, `flag_lcd_update` đều được bật lên.
 - Màn hình ILI9341 giao tiếp qua SPI2 ở chế độ Polling (không dùng DMA).
 - Tổng số điểm ảnh phải vẽ cho 3 hộp trạng thái là:
-  $$(306 \times 46) + (306 \times 25) + 3 \times (308 \times 15) \approx 35.586 \text{ pixels} = 71.172 \text{ bytes SPI}.$$
+  (306 × 46) + (306 × 25) + 3 × (308 × 15) ≈ 35,586 pixels = 71,172 bytes SPI.
 - Với tần số SPI 21 MHz và overhead của thư viện, việc xóa và vẽ lại chữ ngốn từ **20ms đến 35ms** thời gian CPU.
 - Nếu dữ liệu đổ về liên tục từ PC (115200 bps = 11.5 bytes/ms), trong 30ms vẽ màn hình sẽ có ~345 bytes mới tràn vào. Vì CPU bị chiếm dụng vẽ màn hình, `Bridge_Process` không được chạy, dẫn đến tràn bộ đệm RingBuffer (chỉ 2048 bytes) rất nhanh chóng.
 - **Quy chuẩn:** LCD chỉ được phép cập nhật định kỳ (Rate Limiting), ví dụ tối đa 5 - 10 Hz (mỗi 100ms - 200ms cập nhật 1 lần).
@@ -252,15 +257,15 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
 
 | Tiêu chí kỹ thuật | Yêu cầu đặc tả (`PROTOCOL.md`) | Thực trạng `docs/stm32_new_main.c` | Kết luận |
 | :--- | :--- | :--- | :---: |
-| **Định dạng Frame nhị phân** | `0x55 0xAA` (SOF), SEQ, CMD, LEN (LE), DATA ($\le 512$B), CRC32, `0xAA 0x55` (EOF) | Bị ngắt và nuốt byte nếu dữ liệu chứa `'S', 'B', 'N', '0', '1'` kết thúc bằng `\n, \r`. | **FAIL** |
-| **Opcode START/END** | `TRANSFER_START` (`0x30`), `TRANSFER_END` (`0x31`) | Trùng với `'0'` và `'1'` $\to$ bị gom vào chuỗi điều khiển rồi vứt bỏ. | **FAIL** |
+| **Định dạng Frame nhị phân** | `0x55 0xAA` (SOF), SEQ, CMD, LEN (LE), DATA (≤ 512 B), CRC32, `0xAA 0x55` (EOF) | Bị ngắt và nuốt byte nếu dữ liệu chứa `'S', 'B', 'N', '0', '1'` kết thúc bằng `\n, \r`. | **FAIL** |
+| **Opcode START/END** | `TRANSFER_START` (`0x30`), `TRANSFER_END` (`0x31`) | Trùng với `'0'` và `'1'` → bị gom vào chuỗi điều khiển rồi vứt bỏ. | **FAIL** |
 | **Kênh điều khiển ASCII** | Chỉ bóc tách ngoài ranh giới frame nhị phân; không làm mất byte dữ liệu. | Bóc tách tuỳ tiện ngay trong ngắt byte USART3, không phân biệt ranh giới frame. | **FAIL** |
 | **Tốc độ vật lý PC** | Cố định 115200 bps 8-N-1 | Cấu hình đúng `huart3` ở 115200 bps. | **PASS** |
 | **Tốc độ quang (IR)** | 2400, 4800, 9600, 19200 bps | Đủ 4 tốc độ, nhưng mặc định lệch (19200 vs 9600 của PC App). | **WARN** |
 | **Phản hồi `SET_BAUD`** | Trả về `BAUD_OK:<baud>\n` hoặc `BAUD_ERR:<reason>\n` | Đúng cú pháp, nhưng gọi blocking trong ngắt và không từ chối khi ở MANUAL mode. | **WARN** |
 | **Báo trạng thái `NOTIFY_BAUD`** | Báo tức thời khi đổi DIP switch; PC luôn lấy giá trị này làm chuẩn | Không gửi khi vừa khởi động ở chế độ MANUAL. | **FAIL** |
 | **RingBuffer Thread Safety** | Chống tràn, an toàn đồng thời giữa ISR và luồng chính | Thiếu memory barrier `__DMB()`, bỏ qua lỗi tràn buffer `(void)Ring_Push`. | **WARN** |
-| **Độ trễ truyền nhận** | Đáp ứng luồng Stop-and-Wait ARQ timeout 250ms | `HAL_UART_Transmit` blocking 1 byte giữ CPU > 1 giây ở 2400 baud $\to$ Chắc chắn timeout ARQ. | **FAIL** |
+| **Độ trễ truyền nhận** | Đáp ứng luồng Stop-and-Wait ARQ timeout 250ms | `HAL_UART_Transmit` blocking 1 byte giữ CPU > 1 giây ở 2400 baud → Chắc chắn timeout ARQ. | **FAIL** |
 
 ---
 
@@ -293,7 +298,7 @@ Bản firmware `docs/stm32_new_main.c` được Team IoT xây dựng với mục
 
 ### Nguyên tắc 2: Tách kênh nhị phân và lệnh điều khiển bằng Máy trạng thái (FSM Demux) trong luồng chính
 - Phân tích luồng từ PC sang IR (`ring_pc_to_ir`) trong hàm `Bridge_Process()`:
-  - Nếu gặp cặp byte `0x55, 0xAA` $\to$ Xác định đây là **Frame nhị phân**. Đọc tiếp trường `LEN` (byte 4 và 5) để tính tổng chiều dài gói tin: $\text{Total} = \text{LEN} + 12$ bytes. Chuyển sang chế độ **Forwarding thuần túy**, đẩy thẳng toàn bộ số byte này sang IR mà không kiểm tra bất kỳ ký tự nào.
+  - Nếu gặp cặp byte `0x55, 0xAA` → Xác định đây là **Frame nhị phân**. Đọc tiếp trường `LEN` (byte 4 và 5) để tính tổng chiều dài gói tin: Total = LEN + 12 bytes. Chuyển sang chế độ **Forwarding thuần túy**, đẩy thẳng toàn bộ số byte này sang IR mà không kiểm tra bất kỳ ký tự nào.
   - Chỉ khi đang ở trạng thái nghỉ (`IDLE`, bên ngoài frame nhị phân) và phát hiện chuỗi ký tự `"SET_BAUD:"`, mới gom dòng ASCII cho tới khi gặp `\n` để xử lý đổi tốc độ.
 
 ### Nguyên tắc 3: Truyền UART theo khối (Block / Chunk Transmit)

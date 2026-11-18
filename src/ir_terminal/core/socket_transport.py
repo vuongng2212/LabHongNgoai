@@ -15,14 +15,12 @@ from collections.abc import Callable
 
 from ir_terminal.core.interfaces import ITransport
 from ir_terminal.protocol.constants import (
+    BAUD_COMMANDS,
+    CONTROL_BAUDRATE,
+    DEFAULT_BAUDRATE,
     SOCKET_CONNECT_TIMEOUT_SEC,
     SOCKET_READ_TIMEOUT_SEC,
     SOCKET_RECV_CHUNK,
-)
-from ir_terminal.protocol.control_channel import (
-    ControlKind,
-    format_baud_ok,
-    parse_control_line,
 )
 from ir_terminal.utils.logger import LogTag, format_hex_preview
 
@@ -68,6 +66,8 @@ class SocketTransport(ITransport):
         retry_interval_sec: float = 0.25,
         connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
         token: str | None = None,
+        baudrate: int = DEFAULT_BAUDRATE,
+        ctrl_baudrate: int = CONTROL_BAUDRATE,
     ) -> None:
         """Initializes TCP transport.
 
@@ -80,8 +80,13 @@ class SocketTransport(ITransport):
             retry_interval_sec: Delay between connect attempts.
             connect_timeout_sec: Per-attempt TCP connect timeout.
             token: Optional shared secret sent as a handshake line.
+            baudrate: Simulated optical data baudrate.
+            ctrl_baudrate: Fixed simulated control baudrate.
         """
         self._port_name = port_name
+        self._baudrate = int(baudrate)
+        self._ctrl_baudrate = int(ctrl_baudrate)
+        self._sent_baud_commands: list[tuple[int, str]] = []
         self._host = host
         self._port = port
         self._connect_retries = max(0, int(connect_retries))
@@ -235,13 +240,6 @@ class SocketTransport(ITransport):
                 len(data),
             )
             raise RuntimeError("SocketTransport not open for write")
-        if data.startswith(b"SET_BAUD:") and b"\n" in data:
-            raw_line = data.split(b"\n")[0]
-            msg = parse_control_line(raw_line)
-            if msg and msg.kind == ControlKind.SET_BAUD and msg.baudrate is not None:
-                ack = (format_baud_ok(msg.baudrate) + "\n").encode("ascii")
-                self._rx_buffer.extend(ack)
-                return len(data)
         try:
             self._sock.sendall(data)
         except Exception:
@@ -349,3 +347,65 @@ class SocketTransport(ITransport):
 
     def flush(self) -> None:
         """Flushes the outgoing transmit buffer (no-op for TCP stream)."""
+
+    @property
+    def baudrate(self) -> int:
+        """Returns the simulated optical data baudrate."""
+        return self._baudrate
+
+    @property
+    def control_baudrate(self) -> int:
+        """Returns the fixed simulated control baudrate."""
+        return self._ctrl_baudrate
+
+    @property
+    def sent_baud_commands(self) -> list[tuple[int, str]]:
+        """Returns the control commands recorded for this virtual link."""
+        return list(self._sent_baud_commands)
+
+    def send_baud_command(self, baud: int) -> str:
+        """Records a baud switch command for a link-only transport.
+
+        Args:
+            baud: Target optical baudrate.
+
+        Returns:
+            The two-character firmware command.
+
+        Raises:
+            ValueError: If the baudrate has no firmware command.
+        """
+        code = BAUD_COMMANDS.get(int(baud))
+        if code is None:
+            raise ValueError(f"Unsupported optical baudrate {baud}")
+        self._sent_baud_commands.append((int(baud), code))
+        logger.info(
+            "%s Socket control command recorded: %s baud=%d code=%r",
+            LogTag.BAUD_CTRL,
+            self._port_name,
+            baud,
+            code,
+        )
+        return code
+
+    def reconfigure_data_baud(self, baud: int) -> None:
+        """Updates the simulated optical data baudrate.
+
+        Args:
+            baud: Target optical baudrate.
+
+        Raises:
+            ValueError: If the baudrate has no firmware command.
+        """
+        target = int(baud)
+        if target not in BAUD_COMMANDS:
+            raise ValueError(f"Unsupported optical baudrate {target}")
+        previous = self._baudrate
+        self._baudrate = target
+        logger.info(
+            "%s Socket baudrate: %s %d -> %d bps",
+            LogTag.BAUD_CTRL,
+            self._port_name,
+            previous,
+            target,
+        )

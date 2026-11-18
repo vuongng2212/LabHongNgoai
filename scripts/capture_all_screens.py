@@ -47,7 +47,7 @@ def capture_all() -> None:
     with tempfile.NamedTemporaryFile(
         suffix=".pdf", prefix="telemetry_report_", delete=False
     ) as tmp:
-        tmp.write(b"INFRARED_OPTICAL_WIRELESS_COMMUNICATION_FRAME_DATA_" * 160)  # ~8 KB
+        tmp.write(b"INFRARED_OPTICAL_WIRELESS_COMMUNICATION_FRAME_DATA_" * 160)
         tmp_path = tmp.name
 
     try:

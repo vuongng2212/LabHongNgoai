@@ -1,0 +1,803 @@
+
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.IO.Ports;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace TEST_HONG_NGOAI
+{
+    public partial class Form1 : Form
+    {
+        // ==================== CẤU HÌNH ====================
+
+        private const int PACKET_SIZE = 256;
+
+        private const uint HEADER = 0xFFFFFFFF;
+        private const uint END = 0xFFFFFFFE;
+
+        // ==================== BIẾN TRUYỀN NHẬN ====================
+
+        private readonly List<byte> rxBuffer = new List<byte>();
+        private readonly MemoryStream receivedFile = new MemoryStream();
+
+        private string receivedFileName = "Received_File.dat";
+
+        private int totalPackets = 0;
+        private int receivedPackets = 0;
+
+        private bool isReceiving = false;
+        private bool isSending = false;
+        private bool isCancelled = false;
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        // =====================================================
+        // KHỞI TẠO
+        // =====================================================
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            txt_DataRecei.ReadOnly = true;
+
+            // Quét COM
+            string[] ports = SerialPort.GetPortNames();
+
+            cbb_ComPort1.Items.Clear();
+            cbb_ComPort2.Items.Clear();
+
+            cbb_ComPort1.Items.AddRange(ports);
+            cbb_ComPort2.Items.AddRange(ports);
+
+            if (cbb_ComPort1.Items.Count > 0)
+                cbb_ComPort1.SelectedIndex = 0;
+
+            if (cbb_ComPort2.Items.Count > 1)
+                cbb_ComPort2.SelectedIndex = 1;
+            else if (cbb_ComPort2.Items.Count > 0)
+                cbb_ComPort2.SelectedIndex = 0;
+
+            // Baudrate hồng ngoại COM1
+            string[] irBaudRates = {
+                "2400", "4800", "9600", "19200"
+            };
+
+            cbb_BaudRate1.Items.Clear();
+            cbb_BaudRate1.Items.AddRange(irBaudRates);
+            cbb_BaudRate1.SelectedItem = "19200";
+
+            // Baudrate MCU COM2
+            string[] mcuBaudRates = {
+                "1200", "2400", "4800", "9600",
+                "19200", "38400", "57600", "115200"
+            };
+
+            cbb_BaudRate2.Items.Clear();
+            cbb_BaudRate2.Items.AddRange(mcuBaudRates);
+            cbb_BaudRate2.SelectedItem = "115200";
+
+            txt_pathchoosefolder.Text = @"D:\";
+
+            cb_AutoSave.Checked = true;
+
+            progressBar1.Minimum = 0;
+            progressBar1.Value = 0;
+        }
+
+        // =====================================================
+        // GHI LOG
+        // =====================================================
+
+        private void Log(string message, Color color)
+        {
+            if (txt_DataRecei.InvokeRequired)
+            {
+                txt_DataRecei.BeginInvoke(
+                    new Action(() => Log(message, color))
+                );
+                return;
+            }
+
+            txt_DataRecei.SelectionStart = txt_DataRecei.TextLength;
+            txt_DataRecei.SelectionLength = 0;
+            txt_DataRecei.SelectionColor = color;
+
+            txt_DataRecei.AppendText(message);
+
+            txt_DataRecei.SelectionColor = txt_DataRecei.ForeColor;
+            txt_DataRecei.ScrollToCaret();
+        }
+
+        // =====================================================
+        // KẾT NỐI COM1 - HỒNG NGOẠI
+        // =====================================================
+
+        private void Btn_Connect1_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                if (!serialPort1.IsOpen)
+                {
+                    if (cbb_ComPort1.SelectedItem == null ||
+                        cbb_BaudRate1.SelectedItem == null)
+                    {
+                        MessageBox.Show("Vui lòng chọn COM1 và Baudrate!");
+                        return;
+                    }
+
+                    serialPort1.PortName =
+                        cbb_ComPort1.SelectedItem.ToString();
+
+                    serialPort1.BaudRate =
+                        int.Parse(cbb_BaudRate1.SelectedItem.ToString());
+
+                    serialPort1.DataBits = 8;
+                    serialPort1.Parity = Parity.None;
+                    serialPort1.StopBits = StopBits.One;
+                    serialPort1.Handshake = Handshake.None;
+
+                    serialPort1.ReadTimeout = 1000;
+                    serialPort1.WriteTimeout = 3000;
+
+                    serialPort1.DataReceived -= serialPort1_DataReceived;
+                    serialPort1.DataReceived += serialPort1_DataReceived;
+
+                    serialPort1.Open();
+
+                    Btn_Connect1.Text = "Disconnect";
+                    cbb_ComPort1.Enabled = false;
+                    cbb_BaudRate1.Enabled = false;
+
+                    lbl_Status_Com1.Text =
+                        $"Connected: {serialPort1.PortName} - {serialPort1.BaudRate}";
+
+                    lbl_Status_Com1.ForeColor = Color.Green;
+
+                    Log("[SYSTEM] COM1 đã kết nối.\r\n", Color.Green);
+                }
+                else
+                {
+                    isCancelled = true;
+                    serialPort1.Close();
+
+                    Btn_Connect1.Text = "Connect";
+                    cbb_ComPort1.Enabled = true;
+                    cbb_BaudRate1.Enabled = true;
+
+                    lbl_Status_Com1.Text = "Disconnected";
+                    lbl_Status_Com1.ForeColor = Color.Red;
+
+                    Log("[SYSTEM] COM1 đã ngắt kết nối.\r\n", Color.Red);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi COM1: " + ex.Message);
+            }
+        }
+
+        // =====================================================
+        // KẾT NỐI COM2 - STM32
+        // =====================================================
+
+        private void Btn_Connect2_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                if (!serialPort2.IsOpen)
+                {
+                    if (cbb_ComPort2.SelectedItem == null ||
+                        cbb_BaudRate2.SelectedItem == null)
+                    {
+                        MessageBox.Show("Vui lòng chọn COM2 và Baudrate!");
+                        return;
+                    }
+
+                    serialPort2.PortName =
+                        cbb_ComPort2.SelectedItem.ToString();
+
+                    serialPort2.BaudRate =
+                        int.Parse(cbb_BaudRate2.SelectedItem.ToString());
+
+                    serialPort2.DataBits = 8;
+                    serialPort2.Parity = Parity.None;
+                    serialPort2.StopBits = StopBits.One;
+                    serialPort2.Handshake = Handshake.None;
+
+                    serialPort2.ReadTimeout = 1000;
+                    serialPort2.WriteTimeout = 1000;
+
+                    serialPort2.Open();
+
+                    Btn_Connect2.Text = "Disconnect";
+                    cbb_ComPort2.Enabled = false;
+                    cbb_BaudRate2.Enabled = false;
+
+                    lbl_Status_Com2.Text =
+                        $"Connected: {serialPort2.PortName}";
+
+                    lbl_Status_Com2.ForeColor = Color.Green;
+
+                    Log("[SYSTEM] COM2 đã kết nối.\r\n", Color.Green);
+                }
+                else
+                {
+                    serialPort2.Close();
+
+                    Btn_Connect2.Text = "Connect";
+                    cbb_ComPort2.Enabled = true;
+                    cbb_BaudRate2.Enabled = true;
+
+                    lbl_Status_Com2.Text = "Disconnected";
+                    lbl_Status_Com2.ForeColor = Color.Red;
+
+                    Log("[SYSTEM] COM2 đã ngắt kết nối.\r\n", Color.Red);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi COM2: " + ex.Message);
+            }
+        }
+
+        // =====================================================
+        // ĐỔI BAUDRATE BẰNG COM2
+        // =====================================================
+
+        private async void btn_SendBaud_Click(object sender, EventArgs e)
+        {
+            if (isSending)
+            {
+                MessageBox.Show("Không thể đổi Baudrate khi đang truyền file!");
+                return;
+            }
+
+            if (!serialPort2.IsOpen)
+            {
+                MessageBox.Show("Vui lòng kết nối COM2 trước!");
+                return;
+            }
+
+            string command = "";
+            string targetBaud = "";
+
+            if (rdo_19200.Checked)
+            {
+                command = "00";
+                targetBaud = "19200";
+            }
+            else if (rdo_9600.Checked)
+            {
+                command = "01";
+                targetBaud = "9600";
+            }
+            else if (rdo_4800.Checked)
+            {
+                command = "10";
+                targetBaud = "4800";
+            }
+            else if (rdo_2400.Checked)
+            {
+                command = "11";
+                targetBaud = "2400";
+            }
+
+            if (command == "")
+            {
+                MessageBox.Show("Vui lòng chọn Baudrate!");
+                return;
+            }
+
+            try
+            {
+                // Gửi lệnh cho STM32 qua COM2
+                serialPort2.Write(command + "\r");
+
+                Log(
+                    $"[TX COM2] Command: {command} - Baudrate: {targetBaud}\r\n",
+                    Color.DarkOrange
+                );
+
+                // Cập nhật Baudrate COM1
+                cbb_BaudRate1.SelectedItem = targetBaud;
+
+                if (serialPort1.IsOpen)
+                {
+                    string portName = serialPort1.PortName;
+
+                    serialPort1.Close();
+
+                    serialPort1.PortName = portName;
+                    serialPort1.BaudRate = int.Parse(targetBaud);
+
+                    serialPort1.Open();
+
+                    serialPort1.DiscardInBuffer();
+                    serialPort1.DiscardOutBuffer();
+
+                    Log(
+                        $"[SYSTEM] COM1 đã chuyển sang {targetBaud} bps.\r\n",
+                        Color.Green
+                    );
+                }
+
+                lbl_Status_Com1.Text =
+                    $"COM1: {targetBaud} bps";
+
+                lbl_Status_Com1.ForeColor = Color.Green;
+
+                await Task.Delay(100);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi đổi Baudrate: " + ex.Message);
+            }
+        }
+
+        // =====================================================
+        // TẠO GÓI DỮ LIỆU
+        // CẤU TRÚC: HEADER(2) + SEQ(4) + LENGTH(2) + DATA
+        // =====================================================
+
+        private byte[] CreatePacket(uint sequence, byte[] data)
+        {
+            byte[] packet = new byte[8 + data.Length];
+
+            packet[0] = 0xAA;
+            packet[1] = 0x55;
+
+            Buffer.BlockCopy(
+                BitConverter.GetBytes(sequence),
+                0, packet, 2, 4
+            );
+
+            Buffer.BlockCopy(
+                BitConverter.GetBytes((ushort)data.Length),
+                0, packet, 6, 2
+            );
+
+            if (data.Length > 0)
+            {
+                Buffer.BlockCopy(
+                    data, 0, packet, 8, data.Length
+                );
+            }
+
+            return packet;
+        }
+
+        // =====================================================
+        // CHỌN FILE
+        // =====================================================
+
+        private void btn_Browse_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Chọn file cần truyền";
+                dialog.Filter = "All files (*.*)|*.*";
+
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    txt_Path.Text = dialog.FileName;
+                }
+            }
+        }
+
+        // =====================================================
+        // GỬI FILE
+        // HEADER -> DATA -> END
+        // =====================================================
+
+        private async void btn_SendFile_Click(object sender, EventArgs e)
+        {
+            if (isSending)
+                return;
+
+            if (!serialPort1.IsOpen)
+            {
+                MessageBox.Show("Vui lòng kết nối COM1!");
+                return;
+            }
+
+            if (!File.Exists(txt_Path.Text))
+            {
+                MessageBox.Show("Vui lòng chọn file hợp lệ!");
+                return;
+            }
+
+            try
+            {
+                isSending = true;
+                isCancelled = false;
+
+                btn_SendFile.Enabled = false;
+                btn_SendBaud.Enabled = false;
+
+                byte[] fileData = File.ReadAllBytes(txt_Path.Text);
+
+                string fileName = Path.GetFileName(txt_Path.Text);
+                byte[] nameBytes = Encoding.UTF8.GetBytes(fileName);
+
+                if (nameBytes.Length > ushort.MaxValue)
+                    throw new Exception("Tên file quá dài!");
+
+                int total = (fileData.Length + PACKET_SIZE - 1)
+                            / PACKET_SIZE;
+
+                int baudRate = serialPort1.BaudRate;
+
+                progressBar1.Minimum = 0;
+                progressBar1.Maximum = Math.Max(1, total);
+                progressBar1.Value = 0;
+
+                Log(
+                    $"\r\n[TX] Bắt đầu gửi: {fileName}\r\n",
+                    Color.Blue
+                );
+
+                // 1. HEADER
+                List<byte> headerData = new List<byte>();
+
+                headerData.AddRange(
+                    BitConverter.GetBytes((ushort)nameBytes.Length)
+                );
+
+                headerData.AddRange(nameBytes);
+
+                headerData.AddRange(
+                    BitConverter.GetBytes(total)
+                );
+
+                byte[] header = CreatePacket(
+                    HEADER,
+                    headerData.ToArray()
+                );
+
+                serialPort1.Write(header, 0, header.Length);
+
+                await Task.Delay(
+                    (int)Math.Ceiling(header.Length * 10.0 * 1000 / baudRate) + 10
+                );
+
+                Log("[TX] HEADER\r\n", Color.Blue);
+
+                // 2. DATA
+                for (int i = 0; i < total; i++)
+                {
+                    if (isCancelled || !serialPort1.IsOpen)
+                        return;
+
+                    int offset = i * PACKET_SIZE;
+
+                    int length = Math.Min(
+                        PACKET_SIZE,
+                        fileData.Length - offset
+                    );
+
+                    byte[] data = new byte[length];
+
+                    Array.Copy(fileData, offset, data, 0, length);
+
+                    byte[] packet = CreatePacket((uint)i, data);
+
+                    serialPort1.Write(packet, 0, packet.Length);
+
+                    progressBar1.Value = i + 1;
+
+                    Log(
+                        $"[TX] DATA {i + 1}/{total}\r\n",
+                        Color.DarkOrange
+                    );
+
+                    int delay = (int)Math.Ceiling(
+                        packet.Length * 10.0 * 1000 / baudRate
+                    ) + 10;
+
+                    await Task.Delay(delay);
+                }
+
+                if (isCancelled || !serialPort1.IsOpen)
+                    return;
+
+                // 3. END
+                byte[] end = CreatePacket(END, new byte[0]);
+
+                serialPort1.Write(end, 0, end.Length);
+
+                Log("[TX] END - Hoàn tất gửi file.\r\n", Color.Green);
+
+                MessageBox.Show(
+                    $"Đã gửi xong file: {fileName}",
+                    "Thông báo",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi gửi file: " + ex.Message);
+            }
+            finally
+            {
+                isSending = false;
+
+                btn_SendFile.Enabled = true;
+                btn_SendBaud.Enabled = true;
+            }
+        }
+
+        // =====================================================
+        // NHẬN DỮ LIỆU COM1
+        // =====================================================
+
+        private void serialPort1_DataReceived(
+            object sender,
+            SerialDataReceivedEventArgs e)
+        {
+            try
+            {
+                int count = serialPort1.BytesToRead;
+
+                if (count <= 0)
+                    return;
+
+                byte[] data = new byte[count];
+
+                serialPort1.Read(data, 0, count);
+
+                lock (rxBuffer)
+                {
+                    rxBuffer.AddRange(data);
+                    ProcessRxBuffer();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex.Message);
+            }
+        }
+
+        // =====================================================
+        // PHÂN TÍCH HEADER / DATA / END
+        // =====================================================
+
+        private void ProcessRxBuffer()
+        {
+            while (rxBuffer.Count >= 8)
+            {
+                // Tìm HEADER 0xAA 0x55
+                if (rxBuffer[0] != 0xAA ||
+                    rxBuffer[1] != 0x55)
+                {
+                    rxBuffer.RemoveAt(0);
+                    continue;
+                }
+
+                uint sequence = BitConverter.ToUInt32(
+                    rxBuffer.ToArray(), 2
+                );
+
+                ushort length = BitConverter.ToUInt16(
+                    rxBuffer.ToArray(), 6
+                );
+
+                if (rxBuffer.Count < 8 + length)
+                    return;
+
+                byte[] data = rxBuffer.GetRange(8, length).ToArray();
+
+                rxBuffer.RemoveRange(0, 8 + length);
+
+                // HEADER
+                if (sequence == HEADER)
+                {
+                    if (data.Length < 6)
+                        continue;
+
+                    ushort nameLength = BitConverter.ToUInt16(data, 0);
+
+                    if (data.Length < 2 + nameLength + 4)
+                        continue;
+
+                    receivedFileName = Path.GetFileName(
+                        Encoding.UTF8.GetString(
+                            data, 2, nameLength
+                        )
+                    );
+
+                    totalPackets = BitConverter.ToInt32(
+                        data, 2 + nameLength
+                    );
+
+                    if (totalPackets < 0)
+                        continue;
+
+                    receivedPackets = 0;
+
+                    receivedFile.SetLength(0);
+                    receivedFile.Position = 0;
+
+                    isReceiving = true;
+
+                    Log(
+                        $"[RX] HEADER: {receivedFileName}\r\n",
+                        Color.Purple
+                    );
+                }
+
+                // DATA
+                else if (isReceiving && sequence != END)
+                {
+                    receivedFile.Write(data, 0, data.Length);
+
+                    receivedPackets++;
+
+                    Log(
+                        $"[RX] DATA {receivedPackets}/{totalPackets}\r\n",
+                        Color.Purple
+                    );
+                }
+
+                // END
+                else if (sequence == END)
+                {
+                    if (isReceiving)
+                    {
+                        isReceiving = false;
+
+                        BeginInvoke(
+                            new Action(SaveReceivedFile)
+                        );
+                    }
+                }
+            }
+        }
+
+        // =====================================================
+        // LƯU FILE NHẬN
+        // =====================================================
+
+        private void SaveReceivedFile()
+        {
+            try
+            {
+                string folder = @"D:\";
+
+                if (cb_AutoSave.Checked &&
+                    Directory.Exists(txt_pathchoosefolder.Text))
+                {
+                    folder = txt_pathchoosefolder.Text;
+                }
+
+                Directory.CreateDirectory(folder);
+
+                string path = Path.Combine(
+                    folder,
+                    Path.GetFileName(receivedFileName)
+                );
+
+                File.WriteAllBytes(
+                    path,
+                    receivedFile.ToArray()
+                );
+
+                Log(
+                    $"[RX] Đã lưu file: {path}\r\n",
+                    Color.Green
+                );
+
+                MessageBox.Show(
+                    $"Đã nhận file!\n" +
+                    $"Tên: {receivedFileName}\n" +
+                    $"Số gói: {receivedPackets}/{totalPackets}\n" +
+                    $"Đường dẫn: {path}",
+                    "Thông báo"
+                );
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Lỗi lưu file: " + ex.Message);
+            }
+            finally
+            {
+                receivedFile.SetLength(0);
+                receivedFile.Position = 0;
+
+                receivedPackets = 0;
+                totalPackets = 0;
+                isReceiving = false;
+            }
+        }
+
+        // =====================================================
+        // CHỌN THƯ MỤC LƯU
+        // =====================================================
+
+        private void btn_ChooseFolder_Click(object sender, EventArgs e)
+        {
+            using (FolderBrowserDialog dialog = new FolderBrowserDialog())
+            {
+                dialog.Description = "Chọn thư mục lưu file nhận";
+
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    txt_pathchoosefolder.Text = dialog.SelectedPath;
+                }
+            }
+        }
+
+        // =====================================================
+        // BẬT / TẮT TỰ ĐỘNG LƯU
+        // =====================================================
+
+        private void cb_AutoSave_CheckedChanged(object sender, EventArgs e)
+        {
+            if (cb_AutoSave.Checked &&
+                string.IsNullOrWhiteSpace(txt_pathchoosefolder.Text))
+            {
+                MessageBox.Show("Vui lòng chọn thư mục lưu file!");
+
+                cb_AutoSave.Checked = false;
+            }
+        }
+
+        // =====================================================
+        // DỪNG TRUYỀN / NHẬN
+        // =====================================================
+
+        private void btn_StopFile_Click(object sender, EventArgs e)
+        {
+            isCancelled = true;
+            isReceiving = false;
+
+            lock (rxBuffer)
+            {
+                rxBuffer.Clear();
+            }
+
+            receivedFile.SetLength(0);
+            receivedFile.Position = 0;
+
+            receivedPackets = 0;
+            totalPackets = 0;
+
+            Log(
+                "[SYSTEM] Đã dừng truyền / nhận file.\r\n",
+                Color.Red
+            );
+        }
+
+        // =====================================================
+        // XÓA LOG
+        // =====================================================
+
+        private void btn_Clear_Click(object sender, EventArgs e)
+        {
+            txt_DataRecei.Clear();
+        }
+
+        // =====================================================
+        // ĐÓNG FORM
+        // =====================================================
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            isCancelled = true;
+
+            if (serialPort1.IsOpen)
+                serialPort1.Close();
+
+            if (serialPort2.IsOpen)
+                serialPort2.Close();
+
+            receivedFile.Dispose();
+        }
+    }
+}

@@ -155,7 +155,7 @@ function initChatController() {
         <div class="flex items-center gap-2 mt-1.5 px-1 text-mono-caption font-mono-caption text-outline">
           <span class="px-1.5 py-0.5 rounded bg-surface-container border border-outline-variant/40 font-mono">880nm NIR</span>
           <span>•</span>
-          <span class="text-secondary font-medium">CRC32 Valid</span>
+          <span class="text-secondary font-medium">OPEN-LOOP</span>
           <span>•</span>
           <span>0 Dropped</span>
         </div>

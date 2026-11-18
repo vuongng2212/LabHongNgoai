@@ -116,7 +116,8 @@ function fillPortSelect(select, entries, preferred) {
 }
 
 function pickRxPort(names, txPort) {
-  return txPort;
+  const alternative = names.find((name) => name !== txPort);
+  return alternative || txPort;
 }
 
 function parsePortEntries(ports) {
@@ -150,10 +151,10 @@ function setRibbonText(text) {
   if (el.title !== text) el.title = text;
 }
 
-function setConnectedUi(txPort, rxPort, baud) {
+function setConnectedUi(com1Port, com2Port, baud) {
   clearConnectLoading();
-  const summary = 'TX: ' + txPort + ' • RX: ' + rxPort;
-  setRibbonText('STM32 Optical Bridge • ' + summary + ' • UART ' + FIXED_PHYSICAL_BAUD + ' fixed • Optical ' + baud + ' bps');
+  const summary = 'COM1: ' + com1Port + ' • COM2: ' + (com2Port || 'none');
+  setRibbonText('IR-OWC Link • ' + summary + ' • COM1 ' + baud + ' bps • COM2 ' + FIXED_PHYSICAL_BAUD + ' bps');
   setTone('ribbon-badge', 'success');
 
   const footerHealthDot = document.getElementById('footer-health-dot');
@@ -167,8 +168,8 @@ function setConnectedUi(txPort, rxPort, baud) {
   try {
     if (window.UIBadge && typeof window.UIBadge.set === 'function') {
       window.UIBadge.set('hw-header-link-badge', { tone: 'success', label: 'LINK CONNECTED' });
-      window.UIBadge.set('hw-tx-status', { tone: 'success', label: 'TX OPEN' });
-      window.UIBadge.set('hw-rx-status', { tone: 'success', label: 'RX OPEN' });
+      window.UIBadge.set('hw-tx-status', { tone: 'success', label: 'COM1 OPEN' });
+      window.UIBadge.set('hw-rx-status', { tone: 'success', label: 'COM2 OPEN' });
       window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'READY' });
       window.UIBadge.set('chat-link-state', { tone: 'success', label: 'LINK CONNECTED' });
     }
@@ -183,8 +184,8 @@ function setConnectedUi(txPort, rxPort, baud) {
   }
 }
 
-function setConnectingUi(txPort, rxPort) {
-  setRibbonText('STM32 Optical Bridge • Opening ' + txPort + ' / ' + rxPort);
+function setConnectingUi(com1Port, com2Port) {
+  setRibbonText('IR-OWC Link • Opening COM1 ' + com1Port + ' / COM2 ' + (com2Port || 'none'));
   setTone('ribbon-badge', 'info');
   try {
     if (window.UIBadge && typeof window.UIBadge.set === 'function') {
@@ -199,7 +200,7 @@ function setConnectingUi(txPort, rxPort) {
 function setDisconnectedUi() {
   pendingBaud = null;
   renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
-  setRibbonText('STM32 Optical Bridge • Disconnected');
+  setRibbonText('IR-OWC Link • Disconnected');
   setTone('ribbon-badge', 'neutral');
 
   const footerHealthDot = document.getElementById('footer-health-dot');
@@ -213,8 +214,8 @@ function setDisconnectedUi() {
   try {
     if (window.UIBadge && typeof window.UIBadge.set === 'function') {
       window.UIBadge.set('hw-header-link-badge', { tone: 'neutral', label: 'DISCONNECTED' });
-      window.UIBadge.set('hw-tx-status', { tone: 'neutral', label: 'TX IDLE' });
-      window.UIBadge.set('hw-rx-status', { tone: 'neutral', label: 'RX IDLE' });
+      window.UIBadge.set('hw-tx-status', { tone: 'neutral', label: 'COM1 IDLE' });
+      window.UIBadge.set('hw-rx-status', { tone: 'neutral', label: 'COM2 IDLE' });
       window.UIBadge.set('hw-rtt-state', { tone: 'neutral', label: 'IDLE' });
       window.UIBadge.set('chat-link-state', { tone: 'neutral', label: 'LINK STANDBY' });
     }
@@ -232,12 +233,12 @@ function setDisconnectedUi() {
 function initBridgeListeners() {
   if (!bridge) return;
 
-  bridge.portConnected.connect((txPort, rxPort, baud) => {
-    setConnectedUi(txPort, rxPort, baud);
+  bridge.portConnected.connect((com1Port, com2Port, baud) => {
+    setConnectedUi(com1Port, com2Port, baud);
     toast(
       'success',
       'Link connected',
-      'TX: ' + txPort + ' • RX: ' + rxPort + ' @ ' + baud + ' bps • 8-N-1',
+      'COM1: ' + com1Port + ' • COM2: ' + (com2Port || 'none') + ' @ ' + baud + ' bps • 8-N-1',
       { durationMs: 2800 }
     );
   });
@@ -480,10 +481,10 @@ document.addEventListener('click', (e) => {
     if (!isNaN(baudVal)) {
       const connBtn = document.getElementById('btn-connect');
       const isConnected = connBtn && connBtn.dataset.state === 'connected';
-      if (isConnected && bridge && typeof bridge.setOpticalBaud === 'function') {
+      if (isConnected && bridge && typeof bridge.sendBaudCommand === 'function') {
         pendingBaud = baudVal;
         renderBaudrateSelector(currentBaudOptions, selectedBaud, pendingBaud);
-        bridge.setOpticalBaud(baudVal, (resultJson) => {
+        bridge.sendBaudCommand(baudVal, (resultJson) => {
           let result = {};
           try { result = JSON.parse(resultJson); } catch (e) { result = {}; }
           if (result && result.ok === false) {
@@ -491,6 +492,7 @@ document.addEventListener('click', (e) => {
             renderBaudrateSelector(currentBaudOptions, selectedBaud, null);
             toast('error', 'Optical baudrate change rejected', result.error || 'Unsupported optical baudrate');
           } else {
+            setText('hw-rtt-value', String(baudVal));
             console.log('Requested optical baudrate:', baudVal);
           }
         });
@@ -521,9 +523,9 @@ document.addEventListener('click', (e) => {
     }
     const txSelect = document.getElementById('select-port-tx');
     const rxSelect = document.getElementById('select-port-rx');
-    const txPort = txSelect ? txSelect.value : 'MOCK_COM_LOOPBACK';
-    const rxPort = (rxSelect && rxSelect.value) || txPort;
-    const summary = 'TX: ' + txPort + ' • RX: ' + rxPort;
+    const com1Port = txSelect ? txSelect.value : 'MOCK_COM1';
+    const com2Port = rxSelect ? rxSelect.value : '';
+    const summary = 'COM1: ' + com1Port + ' • COM2: ' + (com2Port || 'none');
     pendingConnectBtn = btn;
     pendingConnectPort = summary;
     if (window.UIFeedback) {
@@ -538,36 +540,47 @@ document.addEventListener('click', (e) => {
           window.UIFeedback.showModal({
             variant: 'error',
             title: 'Connection timeout',
-            message: 'No response from the ports within 6s. Check cable or try Rescan. If Ping fails, swap TX and RX.',
+            message: 'No response from the ports within 6s. Check the COM1 data cable and COM2 STM32 control cable, then Rescan.',
             details: ports + ' @ ' + selectedBaud + ' bps',
           });
         }
       }, 6000);
     }
     clearPingLoading();
-    setConnectingUi(txPort, rxPort);
-    bridge.connectDualPorts(txPort, rxPort, selectedBaud);
+    setConnectingUi(com1Port, com2Port);
+    if (typeof bridge.connectHardwarePorts === 'function') {
+      bridge.connectHardwarePorts(com1Port, com2Port, selectedBaud);
+    } else {
+      bridge.connectDualPorts(com1Port, com2Port, selectedBaud);
+    }
     return;
   }
 
-  if (btn.id === 'btn-ping' || btn.innerText.includes('Ping Test') || btn.innerText.includes('Ping Link Test') || btn.innerText.includes('Calibrate Optics') || btn.innerText.includes('Ping')) {
+  if (btn.id === 'btn-send-baud') {
     if (!bridge) {
-      toast('warning', 'Backend not connected', 'Ping needs the Desktop app link. Open via SpectraLink to test RTT.');
+      toast('warning', 'Backend not connected', 'Baud control needs the Desktop app link.');
       return;
     }
-    if (window.UIFeedback) {
-      window.UIFeedback.setButtonLoading(btn, true, 'Pinging...');
-      pendingPingBtns.push(btn);
+    if (typeof bridge.sendBaudCommand !== 'function') {
+      toast('warning', 'Baud control unavailable', 'Restart the app to load the WinForm bridge.');
+      return;
     }
-    if (pingFailTimer) clearTimeout(pingFailTimer);
-    pingFailTimer = setTimeout(() => {
-      if (pendingPingBtns.length) {
-        clearPingLoading();
-        toast('error', 'Ping timeout', 'No echo received within 1.5s. Check the link or swap TX and RX.');
+    if (window.UIFeedback) window.UIFeedback.setButtonLoading(btn, true, 'Sending...');
+    bridge.sendBaudCommand(selectedBaud, (resultJson) => {
+      if (window.UIFeedback) window.UIFeedback.setButtonLoading(btn, false);
+      let result = {};
+      try { result = JSON.parse(resultJson); } catch (e) { result = {}; }
+      if (result && result.ok === false) {
+        toast('error', 'Baud command rejected', result.error || 'Unsupported optical baudrate');
+        return;
       }
-    }, 1500);
-    bridge.sendPing();
-  } else if (btn.id === 'btn-rescan' || btn.id === 'btn-top-refresh' || btn.innerText.includes('Rescan')) {
+      setText('hw-rtt-value', String(selectedBaud));
+      toast('success', 'Baud command sent', 'COM2 sent the code for ' + selectedBaud + ' bps. COM1 reconfigured.', { durationMs: 2600 });
+    });
+    return;
+  }
+
+  if (btn.id === 'btn-rescan' || btn.id === 'btn-top-refresh' || btn.innerText.includes('Rescan')) {
     if (!bridge) {
       toast('warning', 'Backend not connected', 'Port scan needs the Desktop app. Open via SpectraLink.');
       return;

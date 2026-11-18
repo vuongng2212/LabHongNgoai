@@ -275,7 +275,7 @@
 </span>
 </div>
 <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
-              Configure the dual UART bridge, select independent TX/RX COM ports, and verify the optical physical layer.
+              Configure COM1 (optical data) and COM2 (STM32 control), apply the optical baudrate, and verify the physical layer.
             </p>
 </div>
 <div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
@@ -295,12 +295,12 @@
 </div>
 <div>
 <h2 class="font-headline-md text-headline-md text-on-surface">Serial Connection</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL UART PHYSICAL BRIDGE</span>
+<span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL HARDWARE COM PORTS</span>
 </div>
 </div>
 <div class="port-grid">
 <div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM TX (Transmitter - Gửi)</label>
+<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM1 (Hồng ngoại - Dữ liệu)</label>
 <div class="relative">
 <select id="select-port-tx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
 <option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
@@ -311,7 +311,7 @@
 </div>
 </div>
 <div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM RX (Receiver - Nhận)</label>
+<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM2 (STM32 - Điều khiển)</label>
 <div class="relative">
 <select id="select-port-rx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
 <option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
@@ -384,17 +384,17 @@
 <div class="split-grid items-stretch py-1">
 <div class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full">
 <div class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant">
-<span>MEASURED RTT LATENCY</span>
+<span>MEASURED COM2 CONTROL</span>
 <span id="hw-rtt-state" class="ui-badge shrink-0" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
 <span class="ui-badge__dot"></span>
 <span class="ui-badge__label">IDLE</span>
 </span>
 </div>
 <div class="flex items-baseline gap-2 mt-2">
-<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">-- ms</span>
-<span class="font-mono-caption text-mono-caption text-outline">Ping Echo</span>
+<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">--</span>
+<span class="font-mono-caption text-mono-caption text-outline">Command</span>
 </div>
-<div class="text-[11px] text-outline font-mono-caption mt-2">Optical transmission round-trip delay</div>
+<div class="text-[11px] text-outline font-mono-caption mt-2">Latest baud command sent over COM2</div>
 </div>
 <div class="grid grid-cols-1 gap-2">
 <div class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]">
@@ -421,9 +421,9 @@
 </div>
 </div>
 <div class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm">
-<button id="btn-ping" class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px] text-primary" data-icon="wifi_tethering">wifi_tethering</span>
-                Ping Test
+<button id="btn-send-baud" class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
+<span class="material-symbols-outlined text-[16px] text-primary" data-icon="settings_input_component">settings_input_component</span>
+                Apply Baud via COM2
               </button>
 </div>
 </section>
@@ -456,23 +456,23 @@
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">DUPLEX MODE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Dual COM TX / RX</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Dual COM1 Data / COM2 Control</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">FRAME DELIMITERS</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">SOF 0xAA55 / EOF 0x55AA</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">SOF 0xAA55 / 8-byte header</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">INTEGRITY</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">CRC-32 IEEE 802.3</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">None (Open-Loop)</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">FLOW CONTROL</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Stop-and-Wait ARQ</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Paced Streaming</span>
 </div>
 <div class="bg-surface-container-lowest p-space-sm">
 <span class="block font-mono-caption text-mono-caption text-outline">CHUNK SIZE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">240 bytes</span>
+<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">256 bytes</span>
 </div>
 </div>
 </section>
@@ -489,11 +489,11 @@
             </p>
 </div>
 <div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant min-w-0">
-<span>CHUNK: <strong class="text-on-surface font-semibold">240 B</strong></span>
+<span>CHUNK: <strong class="text-on-surface font-semibold">256 B</strong></span>
 <span class="text-outline-variant">•</span>
-<span>CRC-32: <strong class="text-on-surface font-semibold">IEEE 802.3</strong></span>
+<span>INTEGRITY: <strong class="text-on-surface font-semibold">Open-Loop</strong></span>
 <span class="text-outline-variant">•</span>
-<span>ARQ: <strong class="text-on-surface font-semibold">Stop-and-Wait</strong></span>
+<span>FLOW: <strong class="text-on-surface font-semibold">Paced Streaming</strong></span>
 </div>
 </div>
 <div class="split-grid">
@@ -502,7 +502,7 @@
 <span class="material-symbols-outlined text-[26px]" data-icon="upload_file">upload_file</span>
 </div>
 <h3 id="file-limit-hint" class="text-headline-md font-headline-md text-on-surface mb-1">
-              Drop file to transmit (unlimited size)
+              Drop file to transmit (256-byte paced frames)
             </h3>
 <p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
               Supports PDF, images, firmware binaries, and raw packet captures
@@ -516,7 +516,7 @@
 </div>
 <div class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="verified_user">verified_user</span>
-<span>Automatically framed into 240-byte chunks with CRC-32</span>
+<span>Automatically framed into 256-byte chunks with paced open-loop streaming</span>
 </div>
 </div>
 <div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between min-w-0">
@@ -529,7 +529,7 @@
 <span>CH-A</span>
 <span id="file-active-status" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
 <span class="ui-badge__dot"></span>
-<span class="ui-badge__label">ARQ IDLE</span>
+<span class="ui-badge__label">STREAM IDLE</span>
 </span>
 </div>
 </div>
@@ -583,6 +583,17 @@
 </button>
 </div>
 </div>
+<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-md flex flex-wrap items-center gap-space-md min-w-0">
+<div class="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="folder_open">folder_open</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium shrink-0">Receive folder</span>
+<input id="file-save-folder" class="h-[28px] px-2 flex-1 min-w-[160px] text-mono-data font-mono-data rounded-lg bg-surface border border-black/[0.1] focus:border-primary focus:ring-1 focus:ring-primary outline-none" placeholder="Default transfers folder" readonly type="text"/>
+<button id="btn-choose-folder" class="h-[28px] px-space-md rounded-lg bg-white border border-black/[0.12] text-on-surface text-label-md font-label-md hover:bg-[#F8FAFC] active:scale-[0.98] cursor-pointer">Choose…</button>
+</div>
+<label class="flex items-center gap-2 font-label-sm text-label-sm text-on-surface-variant font-medium cursor-pointer">
+<input id="file-auto-save" class="h-4 w-4 rounded border-black/[0.2] text-primary focus:ring-primary/30" type="checkbox"/>
+<span>Tự động lưu (AutoSave)</span>
+</label>
 </div>
 <div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md min-w-0">
 <div class="flex flex-wrap items-center justify-between gap-space-md">
@@ -593,7 +604,7 @@
 </div>
 <span class="flex items-center gap-1 font-mono-caption text-mono-caption text-outline">
 <span class="material-symbols-outlined text-[13px]" data-icon="check_circle">check_circle</span>
-<span>CRC-32 verified</span>
+<span>Open-loop paced</span>
 </span>
 </div>
 <div class="relative w-full sm:w-auto">
@@ -609,7 +620,7 @@
 <th class="px-space-md font-medium">Size</th>
 <th class="px-space-md font-medium">Direction</th>
 <th class="px-space-md font-medium">Timestamp</th>
-<th class="px-space-md font-medium">CRC-32</th>
+<th class="px-space-md font-medium">Mode</th>
 <th class="px-space-md font-medium">State</th>
 <th class="px-space-md text-right font-medium">Actions</th>
 </tr>
@@ -620,7 +631,7 @@
   <div class="flex flex-col items-center justify-center gap-1">
     <span class="material-symbols-outlined text-[22px] text-outline">folder_off</span>
     <span class="font-medium text-on-surface">No file transfers recorded yet</span>
-    <span class="text-label-sm text-outline">Transferred files will be logged here with verified CRC-32 checksums.</span>
+    <span class="text-label-sm text-outline">Transferred files will be logged here as open-loop paced streams.</span>
   </div>
 </td>
 </tr>
@@ -629,11 +640,11 @@
 </div>
 <div class="flex flex-wrap items-center justify-between gap-2 text-mono-caption font-mono-caption text-outline px-1">
 <div class="flex flex-wrap items-center gap-space-md">
-<span>Stop-and-Wait ARQ</span>
+<span>Open-Loop Paced</span>
 <span>•</span>
-<span>CRC-32 IEEE 802.3</span>
+<span>No checksum</span>
 <span>•</span>
-<span>Chunk size: <strong class="text-on-surface font-medium">240 bytes</strong></span>
+<span>Chunk size: <strong class="text-on-surface font-medium">256 bytes</strong></span>
 </div>
 <span>Optical carrier 880 nm</span>
 </div>
@@ -785,7 +796,7 @@
 <span id="kpi-chunks-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0</span>
 <span class="font-mono-caption text-on-surface-variant font-medium">blks</span>
 </div>
-<span class="font-mono-caption text-[11px] text-outline">Stop-and-Wait ARQ verified</span>
+<span class="font-mono-caption text-[11px] text-outline">Open-loop paced streaming</span>
 </div>
 <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
 <div class="h-full bg-secondary-container rounded-full" style="width: 100%;"></div>
@@ -848,14 +859,14 @@
 <div class="flex items-center gap-space-sm">
 <div id="sniffer-filter-bar" class="flex flex-wrap items-center bg-surface-container-low p-0.5 rounded-md border border-black/[0.08] font-mono-caption text-[10px]">
 <button class="px-2 py-1 rounded bg-surface-container-lowest text-on-surface font-semibold shadow-xs cursor-pointer">ALL</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">SYN/ACK</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">BURST_DATA</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">CRC_OK</button>
-<button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">ERROR_FRAMES (0)</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">HEADER</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">DATA</button>
+<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">END</button>
+<button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">INVALID (0)</button>
 </div>
 <div class="relative">
 <span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
-<input id="sniffer-search" class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-full sm:w-44" placeholder="Hex opcode or frame ID..." type="text"/>
+<input id="sniffer-search" class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-full sm:w-44" placeholder="Frame ID or type..." type="text"/>
 </div>
 <button class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer" title="Collapse / Expand Drawer">
 <span class="material-symbols-outlined text-[18px]">expand_more</span>
@@ -871,7 +882,7 @@
 <th class="py-2 px-space-sm font-medium">Carrier</th>
 <th class="py-2 px-space-sm font-medium">Type</th>
 <th class="py-2 px-space-sm font-medium">Payload hex preview</th>
-<th class="py-2 px-space-sm font-medium">Checksum</th>
+<th class="py-2 px-space-sm font-medium">Integrity</th>
 <th class="py-2 px-space-md font-medium text-right">Latency</th>
 </tr>
 </thead>
@@ -891,10 +902,10 @@
 <div class="px-space-md py-1.5 bg-surface-container-low border-t border-black/[0.08] flex flex-wrap items-center justify-between gap-2 font-mono-caption text-[10px] text-on-surface-variant">
 <div class="flex flex-wrap items-center gap-3">
 <span>Auto-scroll active</span>
-<span>Ring buffer: 1024 bytes</span>
-<span>UART 9600 bps 8-N-1</span>
+<span>Ring buffer: 65536 bytes</span>
+<span>COM1 optical 8-N-1</span>
 </div>
-<span>CRC-32 IEEE 802.3</span>
+<span>OPEN-LOOP / no checksum</span>
 </div>
 </div>
 

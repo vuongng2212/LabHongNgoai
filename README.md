@@ -1,11 +1,11 @@
 # IR-OWC Lab Terminal (Infrared Optical Wireless Communication)
 
-[![Tests](https://img.shields.io/badge/tests-200%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-265%20passed-brightgreen.svg)]()
 [![Type Checked](https://img.shields.io/badge/mypy-strict%20passing-blue.svg)]()
 [![Linting](https://img.shields.io/badge/ruff-clean-green.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
-Ứng dụng Desktop chuyên dụng điều khiển, giám sát và truyền thông quang không dây hồng ngoại (IR-OWC Lab Terminal) kết nối mạch nhúng **STM32F407 + MCP2122 + TFDU4101** qua giao diện UART @ 115,200 bps.
+Ứng dụng Desktop chuyên dụng điều khiển, giám sát và truyền thông quang không dây hồng ngoại (IR-OWC Lab Terminal) kết nối mạch nhúng **STM32F407 + MCP2122 + TFDU4101** qua hai cổng UART: COM1 dữ liệu quang (`2400`–`19200` bps) và COM2 điều khiển MCU (`115200` bps).
 
 Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision Light Theme** với kiến trúc **PySide6 (Qt6) + QWebEngineView + QWebChannel**, xử lý đa luồng non-blocking (Worker-Object Pattern) và lưu trữ dữ liệu bền vững bằng **file JSON trên ổ cứng**.
 
@@ -25,25 +25,25 @@ Giao diện đồ họa thiết kế theo phong cách **Apple Modern Precision L
 
 1. **Hardware Link Alignment & COM Management (Screen 1):**
    - Tự động nhận diện cổng Serial UART (Windows COM / Linux ttyUSB).
-   - Đo đạc độ trễ khứ hồi quang học (RTT Ping/Pong roundtrip).
+   - Quản lý hai cổng độc lập: **COM1** dữ liệu quang (`2400`–`19200` bps) và **COM2** điều khiển MCU (`115200` bps cố định).
+   - Đổi Baudrate quang bằng lệnh hai ký tự `00/01/10/11` gửi qua COM2, sau đó cấu hình lại COM1 mà không đóng ứng dụng.
    - Gauge Dial căn chỉnh góc quang học Azimuth / Elevation và trạng thái khóa sóng quang (CARRIER LOCKED).
 
 2. **Dedicated File Transfer Station (Screen 2):**
    - Hỗ trợ chọn file qua Native Dialog hoặc Kéo thả (Drag & Drop).
-   - Động cơ **Stop-and-Wait ARQ**: Cắt nhỏ file 240B/chunk, tự động retry khi timeout (250ms), bảo toàn Sequence number.
-   - **Truyền file không giới hạn kích thước**: TX/RX streaming từng chunk xuống đĩa (RAM không tăng theo dung lượng file); file lớn tự động dùng phần mở rộng giao thức `u64/u32`.
-   - **Hủy hai chiều**: người gửi hoặc người nhận đều có thể dừng phiên; bên còn lại nhận `TRANSFER_PAUSE/ABORT`, ACK, xóa file tạm và reset trạng thái.
-   - Giám sát tiến độ %, tốc độ truyền thực tế (KB/s), ETA và đối soát băm **CRC-32** toàn vẹn khi kết thúc.
-   - Lưu trữ bền vững lịch sử truyền file vào file JSON trên ổ cứng.
+   - Động cơ **open-loop paced streaming** tương thích WinForm C#: HEADER, các DATA 256 byte và END; mỗi khung cách nhau `ceil(frameLength * 10 * 1000 / baud) + 10` ms.
+   - Không ACK, không CRC, không retransmit. Chunk mất để lại lỗ hổng byte 0 đúng offset; phiên thiếu dữ liệu được báo `PARTIAL`.
+   - **Truyền file không giới hạn kích thước**: TX/RX streaming từng chunk xuống đĩa, RAM không tăng theo dung lượng file.
+   - **Hủy phiên**: dừng ngay lập tức, watchdog 3 giây kết thúc phiên nhận khi END không đến; AutoSave quyết định giữ file `.partial`.
+   - Giám sát tiến độ %, tốc độ thực tế (KB/s), ETA và lưu lịch sử truyền file vào JSON.
 
-3. **Realtime Optical Chat Stream (Screen 3):**
-   - Soạn và truyền nhận tin nhắn văn bản UTF-8 hai chiều qua chùm tia hồng ngoại.
-   - Khung **Raw Frame Inspector** hiển thị Hex Dump và Metadata của gói tin quang nhị phân.
-   - Tự động lưu và nạp lại lịch sử chat từ file JSON khi mở ứng dụng.
+3. **Optical Chat Surface (Screen 3):**
+   - Giao diện lịch sử được giữ để tương thích, nhưng giao thức WinForm C# không có khung chat nên gửi tin nhắn bị vô hiệu hóa.
+   - Khung **Raw Frame Inspector** hiển thị metadata frame quang nhị phân.
 
 4. **Lab Analytics, Diagnostics & CSV Export (Screen 4):**
-   - 4 thẻ KPI động: Tốc độ tức thời, Tỷ lệ lỗi bit (BER) & mất gói, Độ trễ (Latency RTT), Số khối đã truyền.
-   - Bảng Live Packet Sniffer bắt gói tin thời gian thực kèm bộ lọc chip trạng thái.
+   - 4 thẻ KPI động: Tốc độ tức thời, Tỷ lệ mất gói, Số frame, Số chunk đã truyền.
+   - Bảng Live Packet Sniffer bắt frame thời gian thực với nhãn `FILE_HEADER`, `DATA_CHUNK`, `FILE_END` và trạng thái `OPEN-LOOP`.
    - Xuất dữ liệu chuỗi thời gian ra file `.csv` phục vụ báo cáo thí nghiệm.
 
 ---
@@ -61,7 +61,7 @@ uv sync --extra dev
 # 2. Khởi chạy ứng dụng
 uv run python -m ir_terminal
 
-# 3. Chạy bộ kiểm thử tự động (273/273 tests passed)
+# 3. Chạy bộ kiểm thử tự động (265/265 tests passed)
 uv run pytest tests/ -v
 
 # 4. Kiểm tra chất lượng mã nguồn
@@ -89,9 +89,10 @@ Trên Windows bản `.exe`, double-click **`Start_Dual_Demo.cmd`** (được cop
 `IR_OWC_Lab_Terminal.exe`): cửa sổ Node A `[Node A - Host]` và Node B
 `[Node B - Client]` tự kết nối, chia trái/phải màn hình.
 
-Đường COM ảo (VSPD/VSPE) chỉ dùng cho nghiệm thu HW. Mỗi board dùng 2 cổng TX/RX:
-`Start_Com_Pair.cmd COM11 COM12 COM13 COM14` (TX A, RX A, TX B, RX B).
-Khi chạy tay: `--tx-port COM11 --rx-port COM12`.
+Đường COM ảo (VSPD/VSPE) chỉ dùng cho nghiệm thu HW. Mỗi board dùng 2 cổng:
+COM1 dữ liệu quang và COM2 điều khiển MCU.
+`Start_Com_Pair.cmd COM11 COM12 COM13 COM14` (COM1 A, COM2 A, COM1 B, COM2 B).
+Khi chạy tay: `--tx-port COM11 --rx-port COM12` (COM1 data, COM2 control).
 
 Các cờ chính: `--instance A|B`, `--link-role off|host|join|auto`, `--link-base-port`,
 `--port`, `--tx-port`, `--rx-port`, `--baud`, `--auto-connect`, `--window-pos left|right|normal`,
@@ -146,14 +147,14 @@ bắt đầu nên đổi setting giữa chừng không gây lỗi `EXDEV`.
 
 ## 📚 Tài liệu Kỹ thuật Tích hợp Phần cứng & Kiến trúc
 
-1. **[Đặc tả giao thức — bản chốt](docs/PROTOCOL.md):**
-   - Định dạng Frame nhị phân Little-Endian (`0xAA55` SOF, `0x55AA` EOF).
-   - Thuật toán CRC-32 chuẩn IEEE 802.3 (`0xEDB88320`).
-   - Bảng Opcode, sơ đồ timing, và mã nguồn C mẫu cho vi điều khiển STM32F407.
+1. **[Đặc tả giao thức hiện hành](docs/PROTOCOL.md):**
+   - Khung `AA 55` + `sequence uint32`, `length uint16`, payload.
+   - HEADER/DATA/END, kích thước chunk 256 byte, công thức pacing open-loop.
+   - Lệnh đổi Baudrate quang qua COM2 và mã nguồn C mẫu cho STM32F407.
 
 2. **[Kiến trúc & Quy tắc lập trình](docs/ARCHITECTURE.md):**
    - Clean Layered Architecture & Worker-Object Pattern.
-   - Bộ quy tắc Strict Typing (Zero `Any`), Google Docstrings (PEP 257) và Subsystem Tagged Logging.
+   - Strict Typing (Zero `Any`), Google Docstrings (PEP 257), zero inline comment và Subsystem Tagged Logging.
 
 3. **[Index thống nhất + nghiệm thu](docs/README.md) / [Runbook nghiệm thu](docs/ACCEPTANCE.md):**
-   - Đối chiếu `LAB_BaoGia.xlsx` ↔ codebase, 3 bước test controller thật + demo 5 bước.
+   - Đối chiếu phạm vi ↔ codebase, quy trình test controller thật và demo từng bước.
