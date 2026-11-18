@@ -165,8 +165,8 @@ function initChatController() {
           ${escapeHtml(text)}
         </div>
         <div class="flex items-center gap-1.5 mt-1.5 px-1 text-mono-caption font-mono-caption text-primary">
-          <span class="material-symbols-outlined text-[13px]">done_all</span>
-          <span class="font-medium">ACK Confirmed</span>
+          <span class="material-symbols-outlined text-[13px]">send</span>
+          <span class="font-medium">Streamed (Open-Loop)</span>
         </div>
       `;
     } else {
@@ -185,7 +185,7 @@ function initChatController() {
           <span>•</span>
           <span class="text-secondary font-medium">OPEN-LOOP</span>
           <span>•</span>
-          <span>0 Dropped</span>
+          <span>Envelope</span>
         </div>
       `;
     }

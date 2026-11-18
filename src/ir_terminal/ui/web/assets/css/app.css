@@ -168,7 +168,6 @@
   #app-sidebar .sidebar-section-title,
   #app-sidebar .sidebar-brand-text,
   #app-sidebar .sidebar-footer-detail,
-  #app-sidebar .sidebar-action-label,
   #app-sidebar #footer-health-text {
     display: none;
   }
@@ -186,14 +185,8 @@
   #app-sidebar .sidebar-footer {
     padding: 8px;
     gap: 4px;
-  }
-
-  #app-sidebar #btn-calibrate {
-    width: 32px;
-    height: 32px;
-    padding: 0;
-    margin-left: auto;
-    margin-right: auto;
+    align-items: center;
+    justify-content: center;
   }
 }
 
@@ -231,7 +224,8 @@
 }
 
 .port-grid,
-.spec-grid {
+.spec-grid,
+.hw-diag-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 12px;
@@ -247,6 +241,17 @@
   gap: 8px;
 }
 
+.file-stats > div + div {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: 6px;
+}
+
+@container (min-width: 440px) {
+  .hw-diag-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @container (min-width: 520px) {
   .port-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -254,6 +259,13 @@
 
   .file-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .file-stats > div + div {
+    border-top: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.06);
+    padding-top: 0;
+    padding-left: 12px;
   }
 }
 
