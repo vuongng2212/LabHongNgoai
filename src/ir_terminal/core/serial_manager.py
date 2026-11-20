@@ -1,4 +1,9 @@
-"""High-level coordinator for the dual-port serial worker thread."""
+"""Bộ điều phối trung tâm giữa UI thread và worker thread (Serial Manager).
+
+Quản lý luồng làm việc nền QThread của SerialWorker, duy trì trạng thái kết nối phần cứng,
+phân phối dữ liệu thô (raw TX/RX), gói tin nhị phân WinFormPacket và lệnh chuyển đổi
+tốc độ Baud (COM2 STM32). Cung cấp giao diện API thread-safe cho các service tầng trên.
+"""
 
 from __future__ import annotations
 
@@ -27,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class SerialManager(QObject):
-    """Coordinates the worker QThread and exposes the hardware API to services."""
+    """Bộ điều phối luồng giao tiếp nối tiếp, kết nối UI thread với worker thread."""
 
     connected: ClassVar[Signal] = Signal(str, int)
     ports_connected: ClassVar[Signal] = Signal(str, str, int)
@@ -57,15 +62,15 @@ class SerialManager(QObject):
         link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
         link_token: str | None = None,
     ) -> None:
-        """Initializes the manager and starts its worker thread.
+        """Khởi tạo SerialManager và khởi động luồng worker QThread nền.
 
         Args:
-            link_endpoints: Optional LINK_* to ``(host, port)`` map.
-            include_link: Whether LINK ports appear in the scan list.
-            link_connect_retries: Extra LINK connect attempts.
-            link_retry_interval_sec: Delay between LINK connect attempts.
-            link_connect_timeout_sec: Per-attempt LINK connect timeout.
-            link_token: Optional broker handshake token.
+            link_endpoints: Ánh xạ tùy chọn LINK_* tới tuple (host, port).
+            include_link: Cho phép cổng LINK xuất hiện trong danh sách quét hay không.
+            link_connect_retries: Số lần thử kết nối lại bổ sung cho cổng LINK.
+            link_retry_interval_sec: Khoảng thời gian chờ giữa các lần thử kết nối lại LINK (giây).
+            link_connect_timeout_sec: Thời gian timeout kết nối socket LINK cho mỗi lần thử (giây).
+            link_token: Token bắt tay xác thực tùy chọn với LinkBroker.
         """
         super().__init__()
         self._include_link = is_dual_mock_enabled() if include_link is None else include_link
@@ -114,7 +119,7 @@ class SerialManager(QObject):
         )
 
     def _on_ports_connected(self, data_port: str, ctrl_port: str, baud: int) -> None:
-        """Stores the active port and baudrate state after a successful open."""
+        """Cập nhật trạng thái cổng kết nối và baudrate sau khi mở cổng thành công."""
         self._is_connected = True
         self._current_data_port = data_port
         self._current_ctrl_port = ctrl_port
@@ -129,7 +134,7 @@ class SerialManager(QObject):
         )
 
     def _on_disconnected(self) -> None:
-        """Clears connection state after the worker closes the transport."""
+        """Xóa trạng thái kết nối sau khi worker đóng các cổng giao tiếp."""
         logger.info(
             "%s Manager link DOWN: was COM1=%s @%d",
             LogTag.HW_SERIAL,
@@ -141,52 +146,52 @@ class SerialManager(QObject):
         self._current_ctrl_port = ""
 
     def _on_baud_changed(self, baudrate: int) -> None:
-        """Stores the optical rate confirmed by the worker.
+        """Lưu trữ tốc độ Baud quang học đã được worker xác nhận thành công.
 
         Args:
-            baudrate: New COM1 optical baudrate.
+            baudrate: Tốc độ Baud mới của cổng dữ liệu quang COM1.
         """
         self._current_baud = int(baudrate)
         logger.info("%s Manager optical baudrate now %d bps", LogTag.BAUD_CTRL, baudrate)
 
     @property
     def is_connected(self) -> bool:
-        """Returns True while the hardware link is open."""
+        """Kiểm tra đường truyền phần cứng hiện có đang mở hay không."""
         return self._is_connected
 
     @property
     def current_port(self) -> str:
-        """Returns the active data port name."""
+        """Tên định danh của cổng dữ liệu quang COM1 đang hoạt động."""
         return self._current_data_port
 
     @property
     def current_data_port(self) -> str:
-        """Returns the active COM1 data port name."""
+        """Tên cổng nối tiếp dữ liệu COM1 đang mở."""
         return self._current_data_port
 
     @property
     def current_ctrl_port(self) -> str:
-        """Returns the active COM2 control port name."""
+        """Tên cổng nối tiếp điều khiển COM2 đang mở."""
         return self._current_ctrl_port
 
     @property
     def current_tx_port(self) -> str:
-        """Returns the data port for TX-oriented callers."""
+        """Tên cổng dùng cho kênh phát dữ liệu (tương đương COM1)."""
         return self._current_data_port
 
     @property
     def current_rx_port(self) -> str:
-        """Returns the data port for RX-oriented callers."""
+        """Tên cổng dùng cho kênh thu dữ liệu (tương đương COM1)."""
         return self._current_data_port
 
     @property
     def current_baud(self) -> int:
-        """Returns the active optical data baudrate."""
+        """Tốc độ Baud quang hiện hành của kênh dữ liệu COM1."""
         return self._current_baud
 
     @property
     def current_control_baud(self) -> int:
-        """Returns the fixed COM2 control baudrate."""
+        """Tốc độ Baud cố định của kênh điều khiển COM2 (115200 bps)."""
         return self._current_ctrl_baud
 
     def connect_ports(
@@ -196,13 +201,13 @@ class SerialManager(QObject):
         baudrate: int = DEFAULT_BAUDRATE,
         ctrl_baudrate: int = CONTROL_BAUDRATE,
     ) -> None:
-        """Requests opening COM1 and COM2 in the worker thread.
+        """Gửi tín hiệu yêu cầu mở cặp cổng COM1 và COM2 trong worker thread.
 
         Args:
-            data_port: COM1 optical data port.
-            ctrl_port: COM2 control port, or None when no control channel exists.
-            baudrate: Optical data baudrate.
-            ctrl_baudrate: Fixed MCU control baudrate.
+            data_port: Tên cổng dữ liệu quang COM1.
+            ctrl_port: Tên cổng điều khiển STM32 COM2 (hoặc None nếu không dùng kênh điều khiển).
+            baudrate: Tốc độ Baud quang áp dụng cho COM1.
+            ctrl_baudrate: Tốc độ Baud cố định cho COM2 (mặc định 115200 bps).
         """
         data_name = (data_port or "").strip()
         ctrl_name = (ctrl_port or "").strip()
@@ -218,16 +223,16 @@ class SerialManager(QObject):
         self._sig_open_hw.emit(data_name, ctrl_name, int(baudrate), int(ctrl_baudrate))
 
     def connect_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Requests opening one data port without a control channel.
+        """Gửi tín hiệu yêu cầu mở một cổng dữ liệu đơn lẻ không kèm kênh điều khiển.
 
         Args:
-            port_name: Port identifier used for COM1 data.
-            baudrate: Optical data baudrate.
+            port_name: Tên định danh cổng nối tiếp cho COM1.
+            baudrate: Tốc độ Baud quang học.
         """
         self.connect_ports(port_name, None, baudrate)
 
     def disconnect_port(self) -> None:
-        """Requests closing the hardware link in the worker thread."""
+        """Gửi tín hiệu yêu cầu đóng toàn bộ các cổng phần cứng trong worker thread."""
         logger.info(
             "%s Manager disconnect requested: COM1=%s",
             LogTag.HW_SERIAL,
@@ -236,18 +241,18 @@ class SerialManager(QObject):
         self._sig_close.emit()
 
     def inject_raw_rx(self, data: bytes) -> None:
-        """Injects raw bytes through the worker thread.
+        """Bơm trực tiếp dòng byte nhận vào worker thread để kiểm thử và mô phỏng.
 
         Args:
-            data: Raw bytes to parse as an incoming optical stream.
+            data: Chuỗi byte thô giả lập nhận được từ kênh truyền quang.
         """
         self._sig_inject.emit(data)
 
     def send_raw(self, data: bytes) -> None:
-        """Sends raw bytes through the worker thread.
+        """Phát chuỗi byte thô ra cổng nối tiếp COM1 thông qua worker thread.
 
         Args:
-            data: Raw bytes to transmit on COM1.
+            data: Dữ liệu nhị phân cần truyền tải.
         """
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -260,11 +265,11 @@ class SerialManager(QObject):
         self._sig_send.emit(data)
 
     def send_packet(self, sequence: int, data: bytes = b"") -> None:
-        """Packs and transmits one WinForm frame.
+        """Đóng gói khung truyền chuẩn WinForm C# và phát ra cổng COM1.
 
         Args:
-            sequence: Frame identifier.
-            data: Payload bytes.
+            sequence: Mã định danh khung truyền (uint32: SEQ_HEADER, SEQ_END hoặc chỉ số chunk DATA).
+            data: Dữ liệu payload đi kèm khung truyền.
         """
         try:
             frame = pack_packet(sequence, data)
@@ -287,24 +292,24 @@ class SerialManager(QObject):
         self.send_raw(frame)
 
     def send_baud_command(self, baudrate: int) -> None:
-        """Queues a COM2 baud switch and COM1 reconfigure.
+        """Đưa yêu cầu đổi tốc độ Baud qua COM2 và cấu hình lại COM1 vào hàng đợi worker.
 
         Args:
-            baudrate: Target optical baudrate.
+            baudrate: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
         """
         logger.info("%s Manager baud switch requested: %d", LogTag.BAUD_CTRL, baudrate)
         self._sig_set_baud.emit(int(baudrate))
 
     def get_port_list(self) -> list[str]:
-        """Scans and returns available port identifiers."""
+        """Quét và trả về danh sách tên định danh của các cổng nối tiếp khả dụng."""
         return scan_available_ports(self._include_link)
 
     def get_port_info_list(self) -> list[PortInfo]:
-        """Scans and returns available port metadata."""
+        """Quét và trả về danh sách đối tượng PortInfo chứa siêu dữ liệu chi tiết của các cổng."""
         return scan_available_port_infos(self._include_link)
 
     def shutdown(self) -> None:
-        """Stops the worker thread and releases hardware handles."""
+        """Dừng an toàn luồng worker thread và giải phóng các handle tài nguyên cổng nối tiếp."""
         logger.info(
             "%s Manager shutdown: requesting worker close (COM1=%s connected=%s)",
             LogTag.HW_SERIAL,

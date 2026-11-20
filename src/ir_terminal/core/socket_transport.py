@@ -1,9 +1,8 @@
-"""TCP socket transport for dual-app mock optical link (LINK_A / LINK_B).
+"""Tầng truyền tải TCP Socket phục vụ liên kết quang giả lập hai tiến trình (LINK_A / LINK_B).
 
-Production hardware path (PySerialTransport) is untouched. This transport is
-selected ONLY when the port name starts with ``LINK_`` (see SerialWorker).
-It connects to the external broker ``scripts/virtual_optical_link.py`` which
-forwards bytes A<->B to emulate the infrared beam on a single PC.
+Kênh truyền tải phần cứng thực tế (DualSerialTransport) hoàn toàn độc lập. Module này chỉ được
+kích hoạt khi tên cổng bắt đầu bằng tiền tố "LINK_" (ví dụ: LINK_A, LINK_B). Kết nối tới tiến trình
+broker trung gian để chuyển tiếp luồng byte hai chiều A và B, mô phỏng tia hồng ngoại trên cùng 1 PC.
 """
 
 from __future__ import annotations
@@ -42,11 +41,14 @@ def resolve_link_endpoint(
     port_name: str,
     endpoints: dict[str, tuple[str, int]] | None = None,
 ) -> tuple[str, int] | None:
-    """Returns (host, port) for a LINK_* virtual port, else None.
+    """Tra cứu địa chỉ host và port của cổng ảo LINK_*, trả về None nếu không tìm thấy.
 
     Args:
-        port_name: Virtual port identifier (case-insensitive).
-        endpoints: Optional override map; defaults to LINK_PORT_MAP.
+        port_name: Tên định danh cổng ảo (không phân biệt chữ hoa chữ thường).
+        endpoints: Bảng ánh xạ tùy chọn; mặc định sử dụng LINK_PORT_MAP.
+
+    Returns:
+        Tuple gồm (host, port) hoặc None nếu tên cổng không hợp lệ.
     """
     key = port_name.strip().upper()
     table = endpoints if endpoints is not None else LINK_PORT_MAP
@@ -54,7 +56,7 @@ def resolve_link_endpoint(
 
 
 class SocketTransport(ITransport):
-    """TCP client transport conforming to ITransport for dual-mock mode."""
+    """Tầng truyền tải TCP Client tuân thủ giao diện ITransport cho chế độ mô phỏng hai ứng dụng."""
 
     def __init__(
         self,
@@ -69,19 +71,18 @@ class SocketTransport(ITransport):
         baudrate: int = DEFAULT_BAUDRATE,
         ctrl_baudrate: int = CONTROL_BAUDRATE,
     ) -> None:
-        """Initializes TCP transport.
+        """Khởi tạo tầng truyền tải TCP Socket.
 
         Args:
-            port_name: Virtual identifier (LINK_A or LINK_B).
-            host: Broker host address.
-            port: Broker TCP port.
-            connect_retries: Extra connect attempts when the broker is not up
-                yet (lets either dual node launch first).
-            retry_interval_sec: Delay between connect attempts.
-            connect_timeout_sec: Per-attempt TCP connect timeout.
-            token: Optional shared secret sent as a handshake line.
-            baudrate: Simulated optical data baudrate.
-            ctrl_baudrate: Fixed simulated control baudrate.
+            port_name: Tên định danh cổng ảo (LINK_A hoặc LINK_B).
+            host: Địa chỉ IP hoặc hostname của Broker.
+            port: Cổng TCP của Broker.
+            connect_retries: Số lần thử kết nối lại bổ sung khi broker chưa sẵn sàng khởi động.
+            retry_interval_sec: Khoảng thời gian chờ giữa các lần thử kết nối lại (giây).
+            connect_timeout_sec: Thời gian chờ tối đa cho mỗi lần kết nối TCP (giây).
+            token: Khóa bí mật chia sẻ gửi kèm trong dòng bắt tay xác thực (nếu có).
+            baudrate: Tốc độ Baud quang học mô phỏng cho kênh dữ liệu.
+            ctrl_baudrate: Tốc độ Baud điều khiển mô phỏng cố định.
         """
         self._port_name = port_name
         self._baudrate = int(baudrate)
@@ -100,7 +101,7 @@ class SocketTransport(ITransport):
         self.on_link_lost: Callable[[], None] | None = None
 
     def open(self) -> None:
-        """Opens TCP connection to the virtual optical link broker."""
+        """Mở kết nối TCP tới tiến trình Broker điều phối liên kết quang ảo."""
         attempts = self._connect_retries + 1
         logger.info(
             "%s Socket open: %s -> %s:%d (attempts=%d, connect_timeout=%.1fs, read_timeout=%.3fs)",
@@ -166,14 +167,14 @@ class SocketTransport(ITransport):
         raise last_exc if last_exc is not None else RuntimeError("SocketTransport open failed")
 
     def _send_handshake(self) -> None:
-        """Sends the optional shared-token handshake line to the broker."""
+        """Gửi dòng bắt tay chứa token xác thực tùy chọn tới broker."""
         sock = self._sock
         if sock is None:
             raise RuntimeError("SocketTransport not open for handshake")
         sock.sendall(f"{_HELLO_PREFIX}{self._token}\n".encode())
 
     def _notify_lost(self) -> None:
-        """Fires the on_link_lost callback at most once per open connection."""
+        """Kích hoạt callback on_link_lost tối đa một lần cho mỗi phiên kết nối."""
         if self._lost_notified:
             return
         self._lost_notified = True
@@ -188,7 +189,7 @@ class SocketTransport(ITransport):
             )
 
     def close(self) -> None:
-        """Closes TCP connection."""
+        """Đóng kết nối TCP và giải phóng tài nguyên socket."""
         was_open = self._is_open
         buffered = len(self._rx_buffer)
         self._is_open = False
@@ -216,21 +217,21 @@ class SocketTransport(ITransport):
 
     @property
     def is_open(self) -> bool:
-        """Returns True if TCP connection is active."""
+        """Kiểm tra kết nối TCP hiện có đang hoạt động hay không."""
         return self._is_open and self._sock is not None
 
     def inject_rx_data(self, data: bytes) -> None:
-        """Injects raw bytes directly into the local RX buffer."""
+        """Bơm trực tiếp dòng byte nhận vào bộ đệm nhận cục bộ."""
         self._rx_buffer.extend(data)
 
     def write(self, data: bytes) -> int:
-        """Sends bytes to the broker for forwarding to the peer app.
+        """Gửi dữ liệu byte tới broker để chuyển tiếp sang ứng dụng đối tác.
 
         Args:
-            data: Raw frame bytes.
+            data: Chuỗi byte thô của khung truyền.
 
         Returns:
-            Number of bytes sent.
+            Số byte đã gửi đi thành công.
         """
         if not self.is_open or self._sock is None:
             logger.warning(
@@ -266,7 +267,7 @@ class SocketTransport(ITransport):
         return len(data)
 
     def _fill(self) -> None:
-        """Pulls available bytes from socket into the RX buffer (non-blocking)."""
+        """Kéo toàn bộ byte có sẵn từ socket vào bộ đệm nhận RX (chế độ non-blocking)."""
         sock = self._sock
         if sock is None or not self._is_open:
             return
@@ -311,17 +312,16 @@ class SocketTransport(ITransport):
             )
 
     def read(self, size: int | None = None) -> bytes:
-        """Reads bytes from the RX buffer.
+        """Đọc chuỗi byte từ bộ đệm nhận RX của socket.
 
-        Only pulls from the socket when the buffer cannot satisfy the request,
-        so the common worker pattern (in_waiting -> read(available)) costs a
-        single recv burst per poll instead of two.
+        Chỉ kéo thêm dữ liệu từ socket khi bộ đệm hiện tại không đủ đáp ứng,
+        giúp tối ưu hóa tần suất đọc mạng trong chu kỳ polling của worker.
 
         Args:
-            size: Max bytes to return, or None for all available.
+            size: Số lượng byte tối đa cần đọc, hoặc None để đọc toàn bộ byte có sẵn.
 
         Returns:
-            Extracted byte sequence.
+            Chuỗi byte nhị phân đã trích xuất từ bộ đệm.
         """
         if not self.is_open:
             return b""
@@ -339,41 +339,41 @@ class SocketTransport(ITransport):
 
     @property
     def in_waiting(self) -> int:
-        """Returns number of bytes available to read."""
+        """Số lượng byte hiện có sẵn để đọc trong bộ đệm nhận."""
         if not self.is_open:
             return 0
         self._fill()
         return len(self._rx_buffer)
 
     def flush(self) -> None:
-        """Flushes the outgoing transmit buffer (no-op for TCP stream)."""
+        """Xả sạch bộ đệm phát (không thao tác đối với luồng TCP)."""
 
     @property
     def baudrate(self) -> int:
-        """Returns the simulated optical data baudrate."""
+        """Tốc độ Baud quang học mô phỏng hiện hành."""
         return self._baudrate
 
     @property
     def control_baudrate(self) -> int:
-        """Returns the fixed simulated control baudrate."""
+        """Tốc độ Baud điều khiển mô phỏng cố định."""
         return self._ctrl_baudrate
 
     @property
     def sent_baud_commands(self) -> list[tuple[int, str]]:
-        """Returns the control commands recorded for this virtual link."""
+        """Danh sách các mã lệnh điều khiển Baud đã ghi nhận cho liên kết ảo này."""
         return list(self._sent_baud_commands)
 
     def send_baud_command(self, baud: int) -> str:
-        """Records a baud switch command for a link-only transport.
+        """Ghi nhận lệnh chuyển đổi tốc độ Baud cho transport mô phỏng liên kết mạng.
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
 
         Returns:
-            The two-character firmware command.
+            Chuỗi 2 ký tự mã lệnh ASCII của firmware.
 
         Raises:
-            ValueError: If the baudrate has no firmware command.
+            ValueError: Nếu tốc độ Baud không được hỗ trợ.
         """
         code = BAUD_COMMANDS.get(int(baud))
         if code is None:
@@ -389,13 +389,13 @@ class SocketTransport(ITransport):
         return code
 
     def reconfigure_data_baud(self, baud: int) -> None:
-        """Updates the simulated optical data baudrate.
+        """Tái cấu hình tốc độ Baud quang học mô phỏng trên kết nối socket.
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud quang học mới cần áp dụng.
 
         Raises:
-            ValueError: If the baudrate has no firmware command.
+            ValueError: Nếu tốc độ Baud không được hỗ trợ.
         """
         target = int(baud)
         if target not in BAUD_COMMANDS:

@@ -1,4 +1,11 @@
-"""Open-loop optical telemetry for the WinForm C# compatible frame stream."""
+"""Dịch vụ giám sát viễn trắc quang học và phân tích gói tin thời gian thực (Telemetry & Packet Sniffer).
+
+Thu thập và tính toán các chỉ số chất lượng kênh truyền Open-Loop:
+- Thông lượng tức thời (Throughput KB/s) theo cửa sổ trượt thời gian 3.0s.
+- Tỷ lệ rớt gói (Packet Loss Rate %) và đếm lỗi khung truyền UART.
+- Độ trễ khứ hồi ước lượng (RTT ms) và bộ đệm bắt gói tin (Live Packet Sniffer 200 bản ghi).
+- Định kỳ lưu trữ mẫu đo lường viễn trắc xuống cơ sở dữ liệu và xuất báo cáo CSV.
+"""
 
 from __future__ import annotations
 
@@ -30,7 +37,7 @@ OPEN_LOOP_STATUS = "OPEN-LOOP"
 
 
 class SnifferRecord(TypedDict):
-    """Sniffer inspection record for one raw optical frame."""
+    """Bản ghi siêu dữ liệu bắt gói tin (sniffer record) cho một khung truyền quang thô."""
 
     time_str: str
     frame_id: str
@@ -43,7 +50,7 @@ class SnifferRecord(TypedDict):
 
 
 class TelemetrySummary(TypedDict):
-    """Snapshot of current channel telemetry state."""
+    """Bản sao trạng thái tổng hợp các chỉ số viễn trắc kênh truyền hiện tại."""
 
     throughput_kbps: float
     rtt_ms: float
@@ -56,13 +63,13 @@ class TelemetrySummary(TypedDict):
 
 
 def frame_type_name(sequence: int) -> str:
-    """Maps a frame sequence identifier to a human-readable type label.
+    """Ánh xạ mã định danh sequence của khung truyền thành nhãn chuỗi trực quan.
 
     Args:
-        sequence: Frame identifier from the wire header.
+        sequence: Mã sequence nhị phân từ tiêu đề khung truyền.
 
     Returns:
-        ``FILE_HEADER``, ``FILE_END`` or ``DATA_CHUNK``.
+        Chuỗi ký tự định danh: "FILE_HEADER", "FILE_END" hoặc "DATA_CHUNK".
     """
     if sequence == SEQ_HEADER:
         return "FILE_HEADER"
@@ -72,7 +79,7 @@ def frame_type_name(sequence: int) -> str:
 
 
 class TelemetryService(QObject):
-    """Calculates open-loop link metrics and records live sniffer frames."""
+    """Tính toán đo lường viễn trắc kênh truyền Open-Loop và quản lý bộ bắt gói tin Sniffer."""
 
     telemetry_updated: ClassVar[Signal] = Signal(float, float, float, int, int)
 
@@ -86,12 +93,12 @@ class TelemetryService(QObject):
         sample_interval_ms: int = 1000,
         window_sec: float = 3.0,
     ) -> None:
-        """Initializes the telemetry service.
+        """Khởi tạo dịch vụ viễn trắc và định thời tính toán chu kỳ.
 
         Args:
-            storage_service: Storage repository for persisted samples.
-            sample_interval_ms: Periodic calculation timer interval in ms.
-            window_sec: Sliding window size in seconds for throughput.
+            storage_service: Dịch vụ lưu trữ bền vững để ghi nhận mẫu viễn trắc.
+            sample_interval_ms: Chu kỳ định thời tính toán số liệu tính bằng mili-giây (mặc định 1000 ms).
+            window_sec: Kích thước cửa sổ trượt tính thông lượng tính bằng giây (mặc định 3.0s).
         """
         super().__init__()
         self._storage = storage_service or StorageService()
@@ -126,49 +133,49 @@ class TelemetryService(QObject):
 
     @property
     def current_throughput_kbps(self) -> float:
-        """Returns instantaneous throughput in KB/s."""
+        """Thông lượng truyền nhận dữ liệu tức thời tính bằng KB/s."""
         return self._current_throughput_kbps
 
     @property
     def last_rtt_ms(self) -> float:
-        """Returns the most recent RTT measurement in ms."""
+        """Độ trễ khứ hồi (RTT) đo lường gần nhất tính bằng mili-giây (ms)."""
         return self._last_rtt_ms
 
     @property
     def packet_loss_rate(self) -> float:
-        """Returns the packet loss percentage (0.0 to 100.0)."""
+        """Tỷ lệ phần trăm gói tin bị mất (trong khoảng từ 0.0 đến 100.0%)."""
         return self._current_loss_rate
 
     @property
     def total_packets_sent(self) -> int:
-        """Returns the total count of packets sent."""
+        """Tổng số lượng gói tin đã phát qua đường truyền quang."""
         return self._total_packets_sent
 
     @property
     def total_packets_received(self) -> int:
-        """Returns the total count of packets received."""
+        """Tổng số lượng gói tin hợp lệ đã thu nhận thành công."""
         return self._total_packets_received
 
     @property
     def total_packets_lost(self) -> int:
-        """Returns the total count of packets considered lost."""
+        """Tổng số lượng gói tin bị ghi nhận rớt trên đường truyền."""
         return self._total_packets_lost
 
     @property
     def total_chunks_transferred(self) -> int:
-        """Returns the total number of file chunks transferred."""
+        """Tổng số lượng chunk dữ liệu file đã chuyển giao thành công."""
         return self._total_chunks_transferred
 
     @property
     def total_frames_captured(self) -> int:
-        """Returns the cumulative number of frames captured."""
+        """Tổng số lượng khung truyền quang đã bắt được bởi bộ Sniffer."""
         return self._total_frames_captured
 
     def record_bytes_sent(self, count: int) -> None:
-        """Registers transmitted bytes in the sliding throughput window.
+        """Ghi nhận số byte vừa phát vào cửa sổ trượt tính thông lượng.
 
         Args:
-            count: Number of bytes transmitted.
+            count: Số lượng byte vừa truyền đi.
         """
         now = time.time()
         self._total_bytes_sent += count
@@ -176,10 +183,10 @@ class TelemetryService(QObject):
         self._tx_window_bytes += count
 
     def record_bytes_received(self, count: int) -> None:
-        """Registers received bytes in the sliding throughput window.
+        """Ghi nhận số byte vừa thu nhận vào cửa sổ trượt tính thông lượng.
 
         Args:
-            count: Number of bytes received.
+            count: Số lượng byte vừa nhận được.
         """
         now = time.time()
         self._total_bytes_received += count
@@ -187,11 +194,11 @@ class TelemetryService(QObject):
         self._rx_window_bytes += count
 
     def record_packet_sent(self, sequence: int, length: int) -> None:
-        """Registers one outgoing frame and appends a sniffer record.
+        """Ghi nhận một khung truyền vừa phát đi và thêm vào hàng đợi Sniffer.
 
         Args:
-            sequence: Frame identifier.
-            length: Payload byte length.
+            sequence: Mã định danh sequence của khung truyền.
+            length: Độ dài byte phần payload.
         """
         self._total_packets_sent += 1
         self._total_frames_captured += 1
@@ -208,11 +215,11 @@ class TelemetryService(QObject):
         self._append_sniffer(sequence, type_str, f"[TX len={length}B]", self._last_rtt_ms)
 
     def record_packet_received(self, pkt: WinFormPacket, latency_ms: float = 0.0) -> None:
-        """Registers one incoming frame and appends a sniffer record.
+        """Ghi nhận một khung truyền vừa thu nhận thành công và cập nhật bộ Sniffer.
 
         Args:
-            pkt: Decoded WinForm frame.
-            latency_ms: Measured latency in milliseconds for this frame.
+            pkt: Đối tượng WinFormPacket đã giải mã.
+            latency_ms: Độ trễ ước lượng đo được tính bằng mili-giây (ms).
         """
         self._total_packets_received += 1
         self._total_frames_captured += 1
@@ -237,7 +244,7 @@ class TelemetryService(QObject):
     def _append_sniffer(
         self, sequence: int, type_str: str, payload_preview: str, latency_ms: float
     ) -> None:
-        """Stores and emits one sniffer record for a frame."""
+        """Lưu trữ và phát tín hiệu cho một bản ghi bắt gói tin Sniffer."""
         time_str = time.strftime("%H:%M:%S")
         frame_id = f"#0x{sequence:08X}"
         rec: SnifferRecord = {
@@ -262,11 +269,11 @@ class TelemetryService(QObject):
         )
 
     def record_framer_error(self, kind: str, count: int = 1) -> None:
-        """Counts discarded stream noise as potential packet loss.
+        """Tính toán các byte nhiễu kênh quang bị loại bỏ như hiện tượng rớt gói tiềm ẩn.
 
         Args:
-            kind: Noise bucket label used for logging.
-            count: Number of dropped byte groups.
+            kind: Nhãn phân loại loại nhiễu phục vụ ghi log.
+            count: Số lượng mẩu byte nhiễu bị hủy.
         """
         if count <= 0:
             return
@@ -280,7 +287,7 @@ class TelemetryService(QObject):
         )
 
     def record_packet_lost(self) -> None:
-        """Registers a lost or incomplete packet event."""
+        """Ghi nhận sự kiện một gói tin bị mất hoặc không hoàn tất trên kênh truyền."""
         self._total_packets_lost += 1
         total_attempts = self._total_packets_sent + self._total_packets_lost
         loss_rate = (self._total_packets_lost / total_attempts * 100.0) if total_attempts else 0.0
@@ -293,19 +300,19 @@ class TelemetryService(QObject):
         )
 
     def record_rtt(self, rtt_ms: float) -> None:
-        """Updates the measured round-trip time.
+        """Cập nhật giá trị độ trễ khứ hồi đo lường được.
 
         Args:
-            rtt_ms: Measured RTT in milliseconds.
+            rtt_ms: Độ trễ RTT tính bằng mili-giây (ms).
         """
         self._last_rtt_ms = max(rtt_ms, 0.1)
 
     def record_chunk_transferred(self) -> None:
-        """Registers the successful transfer of one file chunk."""
+        """Ghi nhận việc hoàn tất chuyển giao thành công một chunk dữ liệu file."""
         self._total_chunks_transferred += 1
 
     def reset_counters(self) -> None:
-        """Resets every metric and clears the sniffer buffer."""
+        """Đặt lại toàn bộ các bộ đếm đo lường và xóa sạch bộ đệm bắt gói tin Sniffer."""
         self._tx_byte_events.clear()
         self._rx_byte_events.clear()
         self._tx_window_bytes = 0
@@ -328,10 +335,10 @@ class TelemetryService(QObject):
         self.telemetry_updated.emit(0.0, 0.0, self._last_rtt_ms, 0, 0)
 
     def get_summary(self) -> TelemetrySummary:
-        """Returns a snapshot of the current telemetry metrics.
+        """Tổng hợp và trả về bản sao các chỉ số viễn trắc đo lường tức thời.
 
         Returns:
-            TelemetrySummary dictionary.
+            Từ điển TelemetrySummary chứa các trường số liệu chi tiết.
         """
         return TelemetrySummary(
             throughput_kbps=round(self._current_throughput_kbps, 2),
@@ -345,38 +352,38 @@ class TelemetryService(QObject):
         )
 
     def get_sniffer_records(self, limit: int = 100) -> list[SnifferRecord]:
-        """Returns recent sniffer records up to ``limit``.
+        """Lấy danh sách các bản ghi Sniffer gần nhất lên tới số lượng giới hạn.
 
         Args:
-            limit: Maximum number of records to return.
+            limit: Số lượng bản ghi tối đa cần lấy.
 
         Returns:
-            List of SnifferRecord items.
+            Danh sách các đối tượng SnifferRecord.
         """
         records = list(self._sniffer_records)
         return records[-limit:]
 
     def export_telemetry_csv(self, output_path: Path | None = None) -> str:
-        """Exports channel telemetry history to CSV.
+        """Xuất lịch sử đo lường viễn trắc kênh truyền ra tệp định dạng CSV.
 
         Args:
-            output_path: Optional destination path.
+            output_path: Đường dẫn tệp đích tùy chọn.
 
         Returns:
-            CSV formatted string.
+            Chuỗi văn bản chứa nội dung CSV hoàn chỉnh.
         """
         if output_path is None:
             output_path = get_logs_dir() / f"telemetry_{int(time.time())}.csv"
         return self._storage.export_telemetry_csv(output_path)
 
     def export_sniffer_csv(self, output_path: Path | None = None) -> str:
-        """Exports sniffer frame captures to CSV.
+        """Xuất danh sách các khung truyền bắt được bởi Sniffer ra tệp CSV.
 
         Args:
-            output_path: Optional destination path.
+            output_path: Đường dẫn tệp đích tùy chọn.
 
         Returns:
-            CSV formatted string.
+            Chuỗi văn bản chứa nội dung CSV hoàn chỉnh.
         """
         if output_path is None:
             output_path = get_logs_dir() / f"sniffer_{int(time.time())}.csv"
@@ -419,7 +426,7 @@ class TelemetryService(QObject):
         return csv_text
 
     def _on_tick(self) -> None:
-        """Periodically recalculates throughput and loss rate."""
+        """Định kỳ tính toán lại thông lượng, tỷ lệ mất gói và lưu mẫu viễn trắc."""
         now = time.time()
         cutoff = now - self._window_sec
 

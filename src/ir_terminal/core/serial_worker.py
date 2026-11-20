@@ -1,4 +1,11 @@
-"""Non-blocking serial worker running on a dedicated QThread."""
+"""Luồng làm việc nền xử lý cổng nối tiếp bất đồng bộ (Serial Worker).
+
+QObject Worker chạy trên một QThread chuyên biệt, chịu trách nhiệm:
+1. Giao tiếp đọc/ghi bất đồng bộ (non-blocking) với cặp cổng COM1 (dữ liệu quang) và COM2 (điều khiển STM32).
+2. Chu kỳ định thời (QTimer polling 10 ms) để liên tục kiểm tra và trích xuất dữ liệu từ UART.
+3. Tích lũy dòng byte nhận, tự động giải mã các khung truyền WinForm C# và phát tín hiệu cho UI/Services.
+4. Giám sát cắm/rút thiết bị phần cứng (Hotplug Port Watcher) và quản lý chuyển đổi Baudrate.
+"""
 
 from __future__ import annotations
 
@@ -27,14 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 def _natural_port_key(name: str) -> str:
-    """Sort key placing COM2 before COM10 in natural numeric order."""
+    """Tạo khóa sắp xếp tự nhiên theo thứ tự số học (ví dụ: COM2 đứng trước COM10)."""
     return "".join(
         f"{int(part):08d}" if part.isdigit() else part.lower() for part in re.split(r"(\d+)", name)
     )
 
 
 def _windows_registry_ports() -> list[str]:
-    """Returns COM names registered in the Windows SERIALCOMM key."""
+    """Truy vấn danh sách cổng COM đã đăng ký trong Registry Windows (khóa SERIALCOMM)."""
     try:
         winreg = importlib.import_module("winreg")
     except ImportError:
@@ -58,7 +65,7 @@ def _windows_registry_ports() -> list[str]:
 
 @dataclass(slots=True)
 class PortInfo:
-    """Detailed metadata describing one selectable serial port."""
+    """Siêu dữ liệu mô tả chi tiết một cổng nối tiếp khả dụng trong hệ thống."""
 
     device: str
     description: str
@@ -69,7 +76,7 @@ class PortInfo:
     label: str
 
     def to_dict(self) -> dict[str, str | None]:
-        """Serializes the port metadata into a JSON-friendly dictionary."""
+        """Tuần tự hóa thông tin cổng nối tiếp thành từ điển (dictionary) chuẩn JSON."""
         return {
             "device": self.device,
             "description": self.description,
@@ -82,14 +89,14 @@ class PortInfo:
 
 
 def _format_hex_identifier(value: int | None) -> str | None:
-    """Formats a numeric USB identifier as a four-character uppercase hex string."""
+    """Định dạng mã định danh USB (VID/PID) thành chuỗi thập lục phân 4 ký tự viết hoa."""
     if value is None:
         return None
     return f"{int(value) & 0xFFFF:04X}"
 
 
 def _friendly_label(device: str, description: str, vid: str | None, pid: str | None) -> str:
-    """Builds a human-friendly display label for a hardware serial port."""
+    """Tạo nhãn hiển thị trực quan, thân thiện cho cổng nối tiếp phần cứng."""
     if vid and pid:
         return f"{description or device} [{vid}:{pid}]"
     if description:
@@ -98,7 +105,7 @@ def _friendly_label(device: str, description: str, vid: str | None, pid: str | N
 
 
 def _virtual_port_info(device: str, description: str) -> PortInfo:
-    """Builds a PortInfo entry for an in-process virtual port."""
+    """Tạo đối tượng PortInfo đại diện cho một cổng nối tiếp ảo chạy trong bộ nhớ."""
     return PortInfo(
         device=device,
         description=description,
@@ -111,7 +118,7 @@ def _virtual_port_info(device: str, description: str) -> PortInfo:
 
 
 class SerialWorker(QObject):
-    """Background worker owning COM1/COM2 I/O and WinForm frame parsing."""
+    """Worker chạy trên QThread nền chịu trách nhiệm I/O COM1/COM2 và giải mã khung WinForm."""
 
     connected: ClassVar[Signal] = Signal(str, int)
     ports_connected: ClassVar[Signal] = Signal(str, str, int)
@@ -134,15 +141,15 @@ class SerialWorker(QObject):
         link_connect_timeout_sec: float = SOCKET_CONNECT_TIMEOUT_SEC,
         link_token: str | None = None,
     ) -> None:
-        """Initializes the worker without opening any port.
+        """Khởi tạo worker serial mà chưa mở cổng kết nối.
 
         Args:
-            link_endpoints: Optional LINK_* to ``(host, port)`` map.
-            include_link: Whether LINK_A/B appear in the port list.
-            link_connect_retries: Extra LINK connect attempts.
-            link_retry_interval_sec: Delay between LINK connect attempts.
-            link_connect_timeout_sec: Per-attempt LINK connect timeout.
-            link_token: Optional broker handshake token.
+            link_endpoints: Ánh xạ tùy chọn LINK_* tới địa chỉ (host, port).
+            include_link: Cho phép cổng LINK_A/B hiển thị trong danh mục quét cổng hay không.
+            link_connect_retries: Số lần thử lại kết nối LINK bổ sung.
+            link_retry_interval_sec: Khoảng thời gian giãn cách giữa các lần thử kết nối lại LINK (giây).
+            link_connect_timeout_sec: Thời gian timeout kết nối socket LINK cho mỗi lần thử (giây).
+            link_token: Token xác thực tùy chọn khi bắt tay với LinkBroker.
         """
         super().__init__()
         self._transport: ITransport | None = None
@@ -172,50 +179,50 @@ class SerialWorker(QObject):
 
     @property
     def current_data_port(self) -> str:
-        """Returns the active COM1 data port name."""
+        """Tên định danh cổng nối tiếp dữ liệu COM1 đang mở."""
         return self._current_data_port
 
     @property
     def current_ctrl_port(self) -> str:
-        """Returns the active COM2 control port name."""
+        """Tên định danh cổng nối tiếp điều khiển COM2 đang mở."""
         return self._current_ctrl_port
 
     @property
     def current_tx_port(self) -> str:
-        """Returns the data port for compatibility with TX-oriented callers."""
+        """Tên cổng phát dữ liệu (tương thích ngược với các caller chỉ định TX)."""
         return self._current_data_port
 
     @property
     def current_rx_port(self) -> str:
-        """Returns the data port for compatibility with RX-oriented callers."""
+        """Tên cổng thu dữ liệu (tương thích ngược với các caller chỉ định RX)."""
         return self._current_data_port
 
     @property
     def current_baud(self) -> int:
-        """Returns the active optical data baudrate."""
+        """Tốc độ Baud quang hiện hành của kênh dữ liệu COM1."""
         return self._current_baud
 
     @property
     def current_control_baud(self) -> int:
-        """Returns the fixed COM2 control baudrate."""
+        """Tốc độ Baud cố định của kênh điều khiển COM2 (115200 bps)."""
         return self._current_ctrl_baud
 
     @property
     def packets_received(self) -> int:
-        """Returns the number of WinForm frames decoded since the last open."""
+        """Tổng số lượng khung truyền WinFormPacket đã giải mã thành công kể từ lần mở cổng gần nhất."""
         return self._packets_received
 
     def _on_link_lost(self) -> None:
-        """Records that the virtual link dropped for the next poll cycle."""
+        """Ghi nhận sự cố mất kết nối đường truyền ảo để xử lý trong chu kỳ thăm dò tiếp theo."""
         self._link_lost_pending = True
 
     @Slot(str, int)
     def open_port(self, port_name: str, baudrate: int = DEFAULT_BAUDRATE) -> None:
-        """Opens one shared data/control port for backward-compatible callers.
+        """Mở cổng dùng chung cho cả kênh dữ liệu và điều khiển (tương thích ngược).
 
         Args:
-            port_name: Port identifier used for both roles.
-            baudrate: Optical data baudrate.
+            port_name: Tên cổng nối tiếp dùng cho cả 2 vai trò.
+            baudrate: Tốc độ Baud quang học.
         """
         self.open_ports(port_name, port_name, baudrate)
 
@@ -226,12 +233,12 @@ class SerialWorker(QObject):
         ctrl_port: str = "",
         baudrate: int = DEFAULT_BAUDRATE,
     ) -> None:
-        """Opens COM1 at the optical rate and COM2 at the MCU rate.
+        """Mở COM1 ở tốc độ Baud quang và COM2 ở tốc độ Baud chuẩn của vi điều khiển.
 
         Args:
-            data_port: COM1 optical data port.
-            ctrl_port: COM2 control port, or an empty string.
-            baudrate: Optical data baudrate.
+            data_port: Tên cổng nối tiếp dữ liệu quang COM1.
+            ctrl_port: Tên cổng nối tiếp điều khiển COM2 (hoặc chuỗi rỗng).
+            baudrate: Tốc độ Baud quang học.
         """
         self.open_hardware_ports(data_port, ctrl_port, baudrate, CONTROL_BAUDRATE)
 
@@ -243,13 +250,13 @@ class SerialWorker(QObject):
         baudrate: int = DEFAULT_BAUDRATE,
         ctrl_baudrate: int = CONTROL_BAUDRATE,
     ) -> None:
-        """Opens COM1 and COM2 and starts the RX polling timer.
+        """Mở đồng thời hai cổng phần cứng COM1/COM2 và khởi chạy định thời thăm dò nhận dữ liệu.
 
         Args:
-            data_port: COM1 optical data port.
-            ctrl_port: COM2 control port, or an empty string.
-            baudrate: Optical data baudrate.
-            ctrl_baudrate: Fixed MCU control baudrate.
+            data_port: Tên cổng dữ liệu quang COM1.
+            ctrl_port: Tên cổng điều khiển STM32 COM2.
+            baudrate: Tốc độ Baud quang học áp dụng cho COM1.
+            ctrl_baudrate: Tốc độ Baud cố định cho COM2 (115200 bps).
         """
         data_name = (data_port or "").strip()
         ctrl_name = (ctrl_port or "").strip()
@@ -321,7 +328,7 @@ class SerialWorker(QObject):
 
     @Slot()
     def close_port(self) -> None:
-        """Stops polling and closes the transport safely."""
+        """Dừng định thời thăm dò và đóng an toàn các kết nối cổng nối tiếp."""
         was_active = self._transport is not None or bool(
             self._current_data_port or self._current_ctrl_port
         )
@@ -359,10 +366,10 @@ class SerialWorker(QObject):
 
     @Slot(bytes)
     def inject_rx_data(self, data: bytes) -> None:
-        """Injects raw COM1 bytes into the RX accumulation buffer.
+        """Bơm trực tiếp dòng byte nhận vào bộ đệm tích lũy RX để giải mã.
 
         Args:
-            data: Raw bytes to parse as an incoming optical stream.
+            data: Chuỗi byte thô nhận từ kênh quang học.
         """
         if not data:
             return
@@ -370,7 +377,7 @@ class SerialWorker(QObject):
         self._drain_rx_buffer()
 
     def _append_rx_chunk(self, chunk: bytes) -> None:
-        """Appends RX bytes and bounds the buffer to the ring capacity."""
+        """Nối thêm dữ liệu nhận vào bộ đệm tích lũy và giới hạn kích thước theo dung lượng RingBuffer."""
         self._rx_accumulation.extend(chunk)
         overflow = len(self._rx_accumulation) - RING_BUFFER_CAPACITY
         if overflow > 0:
@@ -384,7 +391,7 @@ class SerialWorker(QObject):
             )
 
     def _drain_rx_buffer(self) -> None:
-        """Parses complete WinForm frames and emits one signal per packet."""
+        """Giải mã toàn bộ các khung truyền WinForm hoàn chỉnh trong bộ đệm và phát tín hiệu cho từng gói."""
         packets, remaining = parse_stream(self._rx_accumulation)
         self._rx_accumulation = remaining
         for packet in packets:
@@ -401,10 +408,10 @@ class SerialWorker(QObject):
 
     @Slot(bytes)
     def send_bytes(self, data: bytes) -> None:
-        """Writes raw bytes to the COM1 data channel.
+        """Ghi trực tiếp dòng byte thô xuống cổng dữ liệu COM1.
 
         Args:
-            data: Raw bytes to transmit.
+            data: Chuỗi byte thô cần phát.
         """
         if not self._transport or not self._transport.is_open:
             logger.warning(
@@ -437,10 +444,10 @@ class SerialWorker(QObject):
 
     @Slot(int)
     def set_baud(self, baud: int) -> None:
-        """Sends the COM2 baud command and reconfigures COM1.
+        """Gửi lệnh đổi tốc độ Baud qua cổng điều khiển COM2 và cấu hình lại COM1.
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
         """
         if not self._transport or not self._transport.is_open:
             self.error_occurred.emit("Cannot change baudrate: serial link is not connected")
@@ -469,7 +476,7 @@ class SerialWorker(QObject):
 
     @Slot()
     def _poll_serial(self) -> None:
-        """Polls COM1 for bytes and parses complete frames."""
+        """Thăm dò dữ liệu mới trên cổng dữ liệu COM1 và kích hoạt giải mã khung truyền."""
         if self._transport is None:
             return
         if self._link_lost_pending:
@@ -513,7 +520,7 @@ class SerialWorker(QObject):
             self.close_port()
 
     def _start_port_watcher(self) -> None:
-        """Starts the hotplug port watcher."""
+        """Khởi động bộ định thời giám sát cắm/rút thiết bị cổng nối tiếp (Hotplug Port Watcher)."""
         self._last_ports = scan_available_port_infos(self._include_link)
         if self._port_poll_timer is None:
             self._port_poll_timer = QTimer(self)
@@ -522,14 +529,14 @@ class SerialWorker(QObject):
             self._port_poll_timer.start()
 
     def _stop_port_watcher(self) -> None:
-        """Stops the hotplug port watcher."""
+        """Dừng bộ định thời giám sát cắm/rút thiết bị."""
         if self._port_poll_timer is not None:
             self._port_poll_timer.stop()
             self._port_poll_timer = None
 
     @Slot()
     def _poll_ports(self) -> None:
-        """Emits ports_changed when the OS port list changes."""
+        """Phát tín hiệu ports_changed khi phát hiện thay đổi danh sách cổng COM trên hệ điều hành."""
         try:
             current = scan_available_port_infos(self._include_link)
             if current != self._last_ports:
@@ -551,12 +558,12 @@ class SerialWorker(QObject):
 
     @property
     def rx_dropped_bytes(self) -> int:
-        """Returns cumulative RX overflow drops."""
+        """Tổng số lượng byte nhận bị tràn bộ đệm và buộc phải loại bỏ."""
         return self._rx_dropped
 
     @property
     def framer_stats_snapshot(self) -> dict[str, int]:
-        """Returns a minimal parser statistics snapshot for backward compatibility."""
+        """Trả về bản sao thống kê giải mã khung truyền để tương thích ngược."""
         return {
             "frames_ok": self._packets_received,
             "noise_bytes": 0,
@@ -566,7 +573,7 @@ class SerialWorker(QObject):
         }
 
     def _describe_tx_bytes(self, data: bytes) -> None:
-        """Logs a one-line TX descriptor for debugging."""
+        """Ghi log mô tả nhanh nội dung byte phát ra phục vụ gỡ lỗi."""
         logger.debug(
             "%s TX summary len=%dB packet=%s",
             LogTag.PROTO_FRAME,
@@ -576,13 +583,13 @@ class SerialWorker(QObject):
 
 
 def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo]:
-    """Scans host serial ports and appends the virtual mock ports.
+    """Quét toàn bộ cổng nối tiếp vật lý của máy chủ và bổ sung các cổng nối tiếp ảo mô phỏng.
 
     Args:
-        include_link: Whether to list LINK_A/B virtual ports.
+        include_link: Cho phép liệt kê các cổng ảo LINK_A/B hay không.
 
     Returns:
-        Naturally sorted, de-duplicated PortInfo records.
+        Danh sách các bản ghi PortInfo đã loại bỏ trùng lặp và sắp xếp tự nhiên.
     """
     infos: list[PortInfo] = []
     seen: set[str] = set()
@@ -649,12 +656,12 @@ def scan_available_port_infos(include_link: bool | None = None) -> list[PortInfo
 
 
 def scan_available_ports(include_link: bool | None = None) -> list[str]:
-    """Scans and returns available port device names plus virtual options.
+    """Quét và trả về danh sách tên định danh của các cổng serial vật lý và cổng ảo.
 
     Args:
-        include_link: Whether to list LINK_A/B virtual ports.
+        include_link: Cho phép liệt kê các cổng ảo LINK_A/B hay không.
 
     Returns:
-        Naturally sorted port identifiers.
+        Danh sách tên định danh cổng đã được sắp xếp tự nhiên theo thứ tự số học.
     """
     return [info.device for info in scan_available_port_infos(include_link)]

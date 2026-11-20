@@ -1,4 +1,8 @@
-"""QWebEngineView Main Window integrating full HTML/Tailwind SPA with Python Backend."""
+"""Cửa sổ ứng dụng chính tích hợp QWebEngineView hiển thị giao diện Web SPA với lõi Python.
+
+Khởi tạo môi trường Chromium nhúng, đăng ký đối tượng cầu nối BackendBridge thông qua QWebChannel,
+nạp trang chủ index.html và quản lý vòng đời ứng dụng giao diện (thu phóng, đóng cửa sổ, giải phóng luồng).
+"""
 
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebAppPage(QWebEnginePage):
-    """Custom WebEnginePage with enhanced logging for JS console."""
+    """Trang WebEngine mở rộng hỗ trợ chuyển tiếp thông báo log console từ JavaScript sang Python logger."""
 
     def javaScriptConsoleMessage(
         self,
@@ -30,13 +34,13 @@ class WebAppPage(QWebEnginePage):
         line_number: int,
         source_id: str,
     ) -> None:
-        """Forwards JavaScript console output to Python logger.
+        """Chuyển tiếp đầu ra console của JavaScript sang hệ thống logging chuẩn của Python.
 
         Args:
-            level: Log level enum.
-            message: Raw log text.
-            line_number: Line number of the JS file.
-            source_id: Source file URI or name.
+            level: Cấp độ cảnh báo lỗi của console.
+            message: Nội dung văn bản thông điệp log.
+            line_number: Số dòng phát sinh log trong mã nguồn JavaScript.
+            source_id: Tên hoặc URI của tệp tin nguồn JavaScript.
         """
         text = f"JS Console [{source_id}:{line_number}]: {message}"
         if level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
@@ -48,7 +52,7 @@ class WebAppPage(QWebEnginePage):
 
 
 class WebMainWindow(QMainWindow):
-    """Main Application Window hosting Chromium WebEngine and Python QWebChannel."""
+    """Cửa sổ ứng dụng chính chứa trình duyệt Chromium WebEngine và cầu nối QWebChannel."""
 
     def __init__(
         self,
@@ -56,13 +60,12 @@ class WebMainWindow(QMainWindow):
         bridge: BackendBridge | None = None,
         instance_context: InstanceContext | None = None,
     ) -> None:
-        """Initializes main web application window.
+        """Khởi tạo cửa sổ ứng dụng Web.
 
         Args:
-            serial_manager: Serial manager instance managing background I/O.
-            bridge: Optional injected BackendBridge instance.
-            instance_context: Optional per-instance layout/identity. When set,
-                a dedicated QWebEngineProfile isolates Chromium cache/cookies.
+            serial_manager: Bộ quản lý kết nối nối tiếp điều phối luồng worker I/O.
+            bridge: Cầu nối BackendBridge tùy chọn đã được khởi tạo.
+            instance_context: Ngữ cảnh thông tin định danh và đường dẫn bộ nhớ đệm riêng cho từng node.
         """
         super().__init__()
         self._serial_manager = serial_manager
@@ -87,7 +90,7 @@ class WebMainWindow(QMainWindow):
         )
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        """Ensures worker thread and timers stop on window close (no QThread leak)."""
+        """Đảm bảo dừng an toàn luồng worker thread và các bộ định thời khi đóng cửa sổ."""
         logger.info(
             "%s WebMainWindow close requested; shutting down bridge+serial", LogTag.IPC_BRIDGE
         )
@@ -112,7 +115,7 @@ class WebMainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _init_window(self) -> None:
-        """Configures window properties, minimum bounds, and title."""
+        """Cấu hình các thuộc tính hình học của cửa sổ, giới hạn kích thước tối thiểu và tiêu đề."""
         title = (
             self._instance_context.window_title
             if self._instance_context is not None
@@ -123,7 +126,7 @@ class WebMainWindow(QMainWindow):
         self.setMinimumSize(720, 600)
 
     def _create_page(self) -> WebAppPage:
-        """Creates the WebEngine page, isolating the profile per instance."""
+        """Khởi tạo trang WebEngine và cô lập profile lưu trữ/cookies riêng biệt cho từng tiến trình."""
         ctx = self._instance_context
         if ctx is None:
             return WebAppPage(self._view)
@@ -145,7 +148,7 @@ class WebMainWindow(QMainWindow):
         return WebAppPage(profile, self._view)
 
     def _init_webengine(self) -> None:
-        """Instantiates WebEngine view, registers WebChannel bridge, and loads index.html."""
+        """Khởi tạo thành phần hiển thị QWebEngineView, đăng ký cầu nối QWebChannel và tải trang index.html."""
         central_widget = QWidget(self)
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -178,19 +181,19 @@ class WebMainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
 
     def _toggle_maximize(self) -> None:
-        """Toggles window state between maximized and normal restored geometry."""
+        """Chuyển đổi trạng thái giữa phóng to toàn màn hình và kích thước cửa sổ thông thường."""
         if self.isMaximized():
             self.showNormal()
         else:
             self.showMaximized()
 
     def apply_window_position(self, position: str) -> None:
-        """Places the window on the left/right half of the primary screen.
+        """Tự động định vị cửa sổ ứng dụng ở nửa trái hoặc nửa phải màn hình chính.
 
-        Used by the dual-node launcher so Node A and Node B sit side by side.
+        Hỗ trợ hiển thị song song Node A và Node B cạnh nhau khi khởi chạy kiểm thử hai node.
 
         Args:
-            position: ``left``, ``right``, or anything else (no-op).
+            position: 'left' (nửa trái), 'right' (nửa phải), hoặc giá trị khác để giữ nguyên.
         """
         if position not in ("left", "right"):
             return
@@ -204,15 +207,15 @@ class WebMainWindow(QMainWindow):
 
     @property
     def instance_context(self) -> InstanceContext | None:
-        """Returns the per-instance context, or None in single/default mode."""
+        """Ngữ cảnh của phiên tiến trình hiện hành hoặc None nếu ở chế độ đơn lẻ."""
         return self._instance_context
 
     @property
     def bridge(self) -> BackendBridge:
-        """Returns the BackendBridge instance exposed to Chromium."""
+        """Đối tượng cầu nối BackendBridge kết nối với JavaScript."""
         return self._bridge
 
     @property
     def web_view(self) -> QWebEngineView:
-        """Returns the inner QWebEngineView instance."""
+        """Thành phần điều khiển QWebEngineView bên trong."""
         return self._view

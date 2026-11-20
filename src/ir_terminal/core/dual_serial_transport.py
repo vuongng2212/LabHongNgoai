@@ -1,9 +1,12 @@
-"""Dual hardware COM transport with separate data and control channels.
+"""Tầng truyền tải phần cứng hai cổng COM (Dual Hardware COM Transport).
 
-COM1 (``data_port``) is wired to the IR transceiver and runs at the optical
-baudrate. COM2 (``ctrl_port``) is wired to the STM32 MCU and always runs at
-115200 bps, carrying the two-character baud switch commands defined by the
-firmware contract.
+Module này trực tiếp điều khiển giao tiếp nối tiếp vật lý với mạch nhúng:
+- COM1 (data_port): Cổng nối tiếp dữ liệu nối tới transceiver quang (MCP2122 + TFDU4101),
+  hoạt động ở tốc độ baudrate quang biến thiên (2400, 4800, 9600, 19200 bps, 8-N-1).
+- COM2 (ctrl_port): Cổng nối tiếp điều khiển nối tới vi điều khiển STM32F407,
+  hoạt động ở tốc độ cố định 115200 bps (8-N-1), chuyên dùng gửi lệnh đổi baud quang ("00\\r" .. "11\\r").
+- ResilientWin32Serial: Lớp con mở rộng từ serial.Serial, chủ động dọn lỗi driver và bỏ qua WinError 31
+  khi cấu hình DCB trên hệ điều hành Windows.
 """
 
 from __future__ import annotations
@@ -220,13 +223,17 @@ def _is_win32_error_31(exc: BaseException) -> bool:
 
 
 class ResilientWin32Serial(serial.Serial):
-    """Serial subclass neutralizing Windows Error 31 before DCB configuration."""
+    """Lớp con kế thừa từ serial.Serial giúp xử lý triệt để lỗi Windows Error 31 trước khi cấu hình DCB."""
 
     def _reconfigure_port(self, force_update: bool = False) -> None:
-        """Clears driver error state before applying the DCB configuration.
+        """Xóa sạch trạng thái lỗi và hàng đợi comm driver trước khi áp dụng cấu hình DCB (Baudrate/Framing).
+
+        Trên hệ điều hành Windows, các adapter USB-UART thường phát sinh WinError 31 (ERROR_GEN_FAILURE)
+        khi thay đổi tham số cổng nếu hàng đợi driver còn sót lỗi (overrun, frame error). Hàm này gọi
+        ClearCommError và PurgeComm trực tiếp trên native handle trước khi thực hiện SetCommState.
 
         Args:
-            force_update: Forwarded to the POSIX backend, which requires it.
+            force_update: Tham số chuyển tiếp cho backend POSIX (Linux/macOS).
         """
         if not _is_windows():
             self._invoke_base_reconfigure(force_update)
@@ -444,7 +451,12 @@ class DualSerialTransport(ITransport):
             logger.warning("%s Post-open buffer purge warning: %s", LogTag.HW_SERIAL, exc)
 
     def open(self) -> None:
-        """Opens COM1 and COM2 with bounded retry and hardware error recovery."""
+        """Mở đồng thời hai cổng nối tiếp COM1 (dữ liệu quang) và COM2 (điều khiển MCU).
+
+        Tự động dọn sạch rác bộ đệm (purge in/out queues) sau khi mở thành công.
+        Áp dụng thuật toán thử lại theo cấp số nhân (exponential backoff retry tối đa 3 lần)
+        nếu phát hiện lỗi có thể phục hồi từ driver phần cứng.
+        """
         if self.is_open:
             self.close()
 
@@ -637,18 +649,26 @@ class DualSerialTransport(ITransport):
             raise
 
     def send_baud_command(self, baud: int) -> str:
-        """Sends the STM32 baud switch command over COM2.
+        """Gửi lệnh chuyển đổi tốc độ Baud quang sang bo mạch STM32 qua cổng COM2.
+
+        Mã lệnh ASCII 2 ký tự tương ứng:
+            - 19200 bps -> "00\\r" (30 30 0D)
+            - 9600 bps  -> "01\\r" (30 31 0D)
+            - 4800 bps  -> "10\\r" (31 30 0D)
+            - 2400 bps  -> "11\\r" (31 31 0D)
+
+        Sau khi ghi lệnh và flush dữ liệu xuống COM2, hàm sẽ tạm dừng 50 ms (BAUD_SWITCH_GUARD_MS)
+        để vi điều khiển STM32 thực thi chuyển mạch phần cứng trước khi PC đổi tốc độ COM1.
 
         Args:
-            baud: Target optical baudrate. Must be one of 2400, 4800, 9600 or
-                19200.
+            baud: Tốc độ Baud quang học đích (phải thuộc tập 2400, 4800, 9600, 19200 bps).
 
         Returns:
-            The two-character command code that was transmitted.
+            Chuỗi 2 ký tự mã lệnh ASCII đã gửi ("00", "01", "10" hoặc "11").
 
         Raises:
-            ValueError: If the requested baudrate has no firmware command.
-            RuntimeError: If the control port is not open.
+            ValueError: Nếu tốc độ baud không nằm trong danh mục hỗ trợ của firmware.
+            RuntimeError: Nếu cổng COM2 chưa được mở kết nối.
         """
         code = BAUD_COMMANDS.get(int(baud))
         if code is None:
@@ -670,13 +690,17 @@ class DualSerialTransport(ITransport):
         return code
 
     def reconfigure_data_baud(self, new_baud: int) -> None:
-        """Updates the COM1 baudrate in place with bounded reopen fallback.
+        """Tái cấu hình tốc độ Baud của kênh dữ liệu quang COM1.
+
+        Thực hiện thay đổi tốc độ in-place trên handle serial đang mở và xóa sạch buffer.
+        Nếu gặp lỗi từ driver (ví dụ WinError 31), tự động kích hoạt cơ chế fallback an toàn:
+        đóng cổng, trễ 100 ms và mở lại cổng với thuật toán exponential backoff tối đa 3 lần.
 
         Args:
-            new_baud: Target optical baudrate.
+            new_baud: Tốc độ Baud quang học mới cần áp dụng cho COM1.
 
         Raises:
-            ValueError: If the requested baudrate has no firmware command.
+            ValueError: Nếu tốc độ baud không được hỗ trợ.
         """
         target = int(new_baud)
         if target not in BAUD_COMMANDS:

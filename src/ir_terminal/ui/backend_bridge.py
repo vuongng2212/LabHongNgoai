@@ -1,4 +1,12 @@
-"""QWebChannel Bridge exposing Python Core Engine & Services to Web UI JavaScript."""
+"""Cầu nối hai chiều QWebChannel giữa lõi Python và giao diện Web SPA JavaScript.
+
+Module này phơi bày các API nghiệp vụ (slots) và tín hiệu sự kiện (signals) cho Chromium WebEngine:
+- Điều khiển kết nối hai cổng nối tiếp COM1 (dữ liệu quang) và COM2 (điều khiển STM32).
+- Nhắn tin quang thời gian thực (ChatService qua virtual file envelope).
+- Truyền nhận file Open-Loop điều tốc (FileTransferService).
+- Giám sát viễn trắc thông lượng, tỷ lệ rớt gói và bộ bắt gói tin quang Sniffer.
+- Lưu trữ bền vững lịch sử, cấu hình cài đặt và xuất dữ liệu báo cáo ra tệp CSV.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 class BackendBridge(QObject):
-    """Exposes methods and signals to Chromium JavaScript via QWebChannel."""
+    """Cầu nối QWebChannel phơi bày các API Python và phát tín hiệu hai chiều cho JavaScript SPA."""
 
     portConnected: ClassVar[Signal] = Signal(str, str, int)
     portDisconnected: ClassVar[Signal] = Signal()
@@ -78,16 +86,16 @@ class BackendBridge(QObject):
         launch_config: LaunchConfig | None = None,
         instance_context: InstanceContext | None = None,
     ) -> None:
-        """Initializes backend bridge connecting injected services to Web UI.
+        """Khởi tạo cầu nối BackendBridge liên kết các dịch vụ lõi với giao diện Web.
 
         Args:
-            serial_manager: Active SerialManager instance.
-            chat_service: Optional injected ChatService instance.
-            file_service: Optional injected FileTransferService instance.
-            telemetry_service: Optional injected TelemetryService instance.
-            storage_service: Optional injected StorageService instance.
-            launch_config: Optional parsed launch options (exposed to the UI).
-            instance_context: Optional per-instance layout/identity.
+            serial_manager: Đối tượng SerialManager điều phối kết nối cổng nối tiếp.
+            chat_service: Dịch vụ tin nhắn trò chuyện ChatService (hoặc None để tự tạo).
+            file_service: Dịch vụ truyền nhận file FileTransferService (hoặc None để tự tạo).
+            telemetry_service: Dịch vụ đo lường viễn trắc TelemetryService (hoặc None để tự tạo).
+            storage_service: Dịch vụ lưu trữ StorageService (hoặc None để tự tạo).
+            launch_config: Cấu hình tham số dòng lệnh khởi động ứng dụng.
+            instance_context: Ngữ cảnh thông tin định danh của phiên tiến trình hiện hành.
         """
         super().__init__()
         self._serial_manager = serial_manager
@@ -119,7 +127,7 @@ class BackendBridge(QObject):
         self._wire_signals()
 
     def _wire_signals(self) -> None:
-        """Connects underlying core services to bridge signals and telemetry listeners."""
+        """Đăng ký lắng nghe tín hiệu từ các dịch vụ lõi và ánh xạ tới các sự kiện cầu nối."""
         self._serial_manager.ports_connected.connect(self._on_link_up)
         self._serial_manager.disconnected.connect(self.portDisconnected)
         self._serial_manager.disconnected.connect(self._on_link_down)
@@ -145,12 +153,12 @@ class BackendBridge(QObject):
         self._telemetry.sniffer_frame_logged.connect(self.snifferFrameLogged)
 
     def _on_link_up(self, data_port: str, ctrl_port: str, baudrate: int) -> None:
-        """Announces COM1/COM2 once both handles are open.
+        """Xử lý sự kiện mở kết nối thành công cặp cổng COM1 và COM2.
 
         Args:
-            data_port: COM1 optical data port.
-            ctrl_port: COM2 STM32 control port, or an empty string.
-            baudrate: Optical data baudrate applied to COM1.
+            data_port: Tên cổng dữ liệu quang COM1.
+            ctrl_port: Tên cổng điều khiển STM32 COM2 (hoặc chuỗi rỗng).
+            baudrate: Tốc độ Baud quang áp dụng cho COM1.
         """
         self._is_connected = True
         self._optical_baud = int(baudrate)
@@ -174,17 +182,17 @@ class BackendBridge(QObject):
             QTimer.singleShot(200, lambda: self._request_baud(self._optical_baud))
 
     def _on_link_down(self) -> None:
-        """Clears bridge connection state when the hardware link closes."""
+        """Xóa trạng thái kết nối của cầu nối khi phần cứng bị ngắt."""
         was_connected = self._is_connected
         self._is_connected = False
         self._pending_optical_baud = None
         logger.info("%s Bridge link DOWN (was_connected=%s)", LogTag.IPC_BRIDGE, was_connected)
 
     def _request_baud(self, baudrate: int) -> None:
-        """Sends one COM2 baud command and reconfigures COM1.
+        """Gửi yêu cầu đổi tốc độ Baud qua COM2 và tái cấu hình lại COM1.
 
         Args:
-            baudrate: Target optical baudrate.
+            baudrate: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
         """
         if not self._is_connected:
             self.baudControlStatus.emit("error", "Link is not connected")
@@ -197,11 +205,11 @@ class BackendBridge(QObject):
         self._serial_manager.send_baud_command(baudrate)
 
     def _on_baud_command_sent(self, baudrate: int, code: str) -> None:
-        """Reports the exact control code written to COM2.
+        """Báo cáo mã lệnh ASCII chính xác đã gửi thành công sang vi điều khiển STM32 qua COM2.
 
         Args:
-            baudrate: Target optical baudrate.
-            code: Two-character firmware command.
+            baudrate: Tốc độ Baud quang học tương ứng.
+            code: Chuỗi 2 ký tự mã lệnh ASCII ("00", "01", "10", "11").
         """
         logger.info(
             "%s COM2 command sent: %r -> %d bps", LogTag.BAUD_CTRL, code, baudrate
@@ -209,10 +217,10 @@ class BackendBridge(QObject):
         self.baudControlStatus.emit("ok", f"COM2 command {code!r} for {baudrate} bps")
 
     def _on_baud_changed(self, baudrate: int) -> None:
-        """Stores a confirmed optical rate and notifies the UI.
+        """Lưu trữ tốc độ Baud quang học đã xác nhận và phát tín hiệu thông báo cho Web UI.
 
         Args:
-            baudrate: New COM1 optical baudrate.
+            baudrate: Tốc độ Baud mới của kênh dữ liệu quang COM1.
         """
         previous = self._optical_baud
         self._optical_baud = int(baudrate)
@@ -224,7 +232,7 @@ class BackendBridge(QObject):
         self.baudControlStatus.emit("ok", f"COM1 reconfigured to {self._optical_baud} bps")
 
     def _on_ports_changed(self, ports: list[PortInfo]) -> None:
-        """Forwards hotplug port-list changes to the Web UI."""
+        """Chuyển tiếp danh sách cổng cắm/rút mới cập nhật tới giao diện Web SPA."""
         try:
             payload = [self._serialize_port(port) for port in ports]
             logger.info("%s Hotplug ports -> UI: %s", LogTag.IPC_BRIDGE, payload)
@@ -240,7 +248,7 @@ class BackendBridge(QObject):
 
     @staticmethod
     def _serialize_port(port: object) -> dict[str, str | None]:
-        """Normalizes a PortInfo (or legacy string) into a JSON-friendly dict."""
+        """Chuẩn hóa đối tượng PortInfo (hoặc chuỗi) thành từ điển JSON."""
         if isinstance(port, PortInfo):
             return port.to_dict()
         device = str(port)
@@ -255,14 +263,14 @@ class BackendBridge(QObject):
         }
 
     def shutdown(self) -> None:
-        """Stops bridge timers (called on window close / app quit)."""
+        """Dừng an toàn các dịch vụ và hủy phiên truyền file khi đóng cửa sổ hoặc thoát ứng dụng."""
         try:
             self._file_service.cancel_transfer()
         except Exception:
             pass
 
     def _on_raw_rx(self, data: bytes) -> None:
-        """Handles incoming raw bytes from transport."""
+        """Xử lý dữ liệu byte thô nhận được từ kênh truyền và phát tín hiệu lên Web UI."""
         self._telemetry.record_bytes_received(len(data))
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -274,7 +282,7 @@ class BackendBridge(QObject):
         self.rawRxData.emit(data.hex(" ").upper())
 
     def _on_raw_tx(self, data: bytes) -> None:
-        """Handles outgoing raw bytes to transport."""
+        """Xử lý dữ liệu byte thô phát đi qua kênh truyền và phát tín hiệu lên Web UI."""
         self._telemetry.record_bytes_sent(len(data))
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
@@ -286,10 +294,10 @@ class BackendBridge(QObject):
         self.rawTxData.emit(data.hex(" ").upper())
 
     def _on_packet_received(self, pkt: object) -> None:
-        """Registers one decoded WinForm frame with the telemetry service.
+        """Đăng ký một khung truyền WinFormPacket hợp lệ với dịch vụ viễn trắc Telemetry.
 
         Args:
-            pkt: Frame emitted by the serial worker.
+            pkt: Khung truyền do worker phân tích cú pháp thành công.
         """
         if not isinstance(pkt, WinFormPacket):
             logger.debug(
@@ -311,43 +319,43 @@ class BackendBridge(QObject):
     def _on_transfer_progress(
         self, pct: int, speed_kbps: float, eta_sec: float, cur_chunk: int, total_chunks: int
     ) -> None:
-        """Forwards transfer progress and registers chunk in telemetry."""
+        """Chuyển tiếp tiến độ truyền file và ghi nhận chunk dữ liệu vào viễn trắc."""
         self._telemetry.record_chunk_transferred()
         self.transferProgress.emit(pct, speed_kbps, eta_sec, cur_chunk, total_chunks)
 
     def _on_transfer_failed(self, reason: str) -> None:
-        """Registers packet loss on transfer failure and emits signal."""
+        """Ghi nhận sự cố mất gói tin khi truyền file thất bại và phát tín hiệu lỗi."""
         self._telemetry.record_packet_lost()
         self.transferFailed.emit(reason)
 
     @property
     def telemetry_service(self) -> TelemetryService:
-        """Returns the TelemetryService instance."""
+        """Đối tượng dịch vụ viễn trắc TelemetryService."""
         return self._telemetry
 
     @property
     def chat_service(self) -> ChatService:
-        """Returns the ChatService instance."""
+        """Đối tượng dịch vụ tin nhắn ChatService."""
         return self._chat_service
 
     @property
     def file_service(self) -> FileTransferService:
-        """Returns the FileTransferService instance."""
+        """Đối tượng dịch vụ truyền nhận file FileTransferService."""
         return self._file_service
 
     @Slot(result=str)
     def scanPorts(self) -> str:
-        """Returns JSON list of available COM ports with detailed metadata."""
+        """Quét và trả về danh sách các cổng COM khả dụng kèm metadata dưới dạng JSON."""
         ports = self._serial_manager.get_port_info_list()
         return json.dumps([self._serialize_port(port) for port in ports])
 
     @Slot(result=str)
     def getLaunchConfig(self) -> str:
-        """Returns launch/identity config as JSON for UI preselect + branding.
+        """Trả về cấu hình khởi động và định danh ứng dụng dưới dạng chuỗi JSON cho Web UI.
 
         Returns:
-            JSON object with instance id, display name, role, preferred port,
-            baud, dual-port hints, supported baudrates and data directory.
+            Đối tượng JSON chứa thông tin instance id, tên hiển thị, vai trò, cổng ưu tiên,
+            tốc độ baud, danh sách baudrate hỗ trợ và đường dẫn thư mục dữ liệu.
         """
         ctx = self._instance_context
         cfg = self._launch_config
@@ -377,7 +385,7 @@ class BackendBridge(QObject):
         return json.dumps(payload)
 
     def _configured_baudrates(self) -> list[int]:
-        """Returns the supported baudrate list from settings or the defaults."""
+        """Lấy danh sách các tốc độ Baud được cấu hình từ cài đặt hoặc dùng mặc định."""
         raw = self._storage.get_setting("supported_baudrates", "")
         if raw:
             try:
@@ -398,14 +406,14 @@ class BackendBridge(QObject):
         return list(SUPPORTED_BAUDRATES)
 
     def _default_export_dir(self) -> str:
-        """Returns the per-instance logs dir (or the shared one) for exports."""
+        """Trả về đường dẫn thư mục xuất báo cáo tương ứng cho phiên tiến trình."""
         if self._instance_context is not None:
             return str(self._instance_context.logs_dir)
         return str(get_logs_dir())
 
     @Slot(result=str)
     def getAvailableBaudrates(self) -> str:
-        """Returns the configured baudrate list as a JSON array."""
+        """Trả về danh sách các tốc độ Baud khả dụng dưới dạng mảng JSON."""
         try:
             return json.dumps(self._configured_baudrates())
         except Exception as exc:
@@ -419,7 +427,7 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def getConnectedPorts(self) -> str:
-        """Returns active COM1/COM2 ports and baudrates as JSON."""
+        """Trả về thông tin cặp cổng COM1/COM2 đang mở và tốc độ Baud dưới dạng JSON."""
         payload = {
             "com1_port": self._serial_manager.current_data_port,
             "com2_port": self._serial_manager.current_ctrl_port,
@@ -434,22 +442,22 @@ class BackendBridge(QObject):
 
     @Slot(str, int)
     def connectPort(self, port_name: str, baudrate: int) -> None:
-        """Connects one data port without a control channel.
+        """Mở kết nối một cổng dữ liệu đơn lẻ không kèm kênh điều khiển.
 
         Args:
-            port_name: COM1 data port identifier.
-            baudrate: Optical data baudrate.
+            port_name: Tên định danh cổng dữ liệu COM1.
+            baudrate: Tốc độ Baud quang học.
         """
         self.connectDualPorts(port_name, "", baudrate)
 
     @Slot(str, str, int)
     def connectDualPorts(self, com1_data: str, com2_ctrl: str, baudrate: int) -> None:
-        """Opens COM1 at the optical rate and COM2 at the fixed MCU rate.
+        """Mở đồng thời hai cổng COM1 (dữ liệu quang) và COM2 (điều khiển STM32 cố định 115200 bps).
 
         Args:
-            com1_data: COM1 optical data port.
-            com2_ctrl: COM2 STM32 control port, or an empty string.
-            baudrate: Optical data baudrate for COM1.
+            com1_data: Tên cổng dữ liệu quang COM1.
+            com2_ctrl: Tên cổng điều khiển STM32 COM2, hoặc chuỗi rỗng.
+            baudrate: Tốc độ Baud quang học áp dụng cho COM1.
         """
         try:
             data_name = (com1_data or "").strip()
@@ -504,36 +512,36 @@ class BackendBridge(QObject):
 
     @Slot(str, str, int)
     def connectHardwarePorts(self, com1_data: str, com2_ctrl: str, baud_ir: int) -> None:
-        """WinForm-style alias for :meth:`connectDualPorts`.
+        """Tên hàm tương thích kiểu WinForm cho phương thức connectDualPorts.
 
         Args:
-            com1_data: COM1 optical data port.
-            com2_ctrl: COM2 STM32 control port.
-            baud_ir: Optical data baudrate.
+            com1_data: Tên cổng nối tiếp dữ liệu quang COM1.
+            com2_ctrl: Tên cổng nối tiếp điều khiển STM32 COM2.
+            baud_ir: Tốc độ Baud quang học.
         """
         self.connectDualPorts(com1_data, com2_ctrl, baud_ir)
 
     @Slot(int, result=str)
     def setOpticalBaud(self, baudrate: int) -> str:
-        """Requests a COM2 baud command and a COM1 reconfigure.
+        """Yêu cầu đổi tốc độ Baud quang học bằng cách gửi lệnh qua COM2 và cấu hình lại COM1.
 
         Args:
-            baudrate: One of the supported optical rates.
+            baudrate: Tốc độ Baud thuộc danh mục hỗ trợ (2400, 4800, 9600, 19200 bps).
 
         Returns:
-            JSON object with ``ok`` plus connection and baudrate state.
+            Chuỗi JSON chứa trạng thái kết quả và baudrate mới.
         """
         return self.sendBaudCommand(baudrate)
 
     @Slot(int, result=str)
     def sendBaudCommand(self, baudrate: int) -> str:
-        """Sends the two-character baud command over COM2.
+        """Gửi mã lệnh 2 ký tự ASCII chuyển đổi tốc độ Baud quang qua cổng điều khiển COM2.
 
         Args:
-            baudrate: One of the supported optical rates.
+            baudrate: Tốc độ Baud quang học cần chuyển đổi.
 
         Returns:
-            JSON object with ``ok`` plus connection and baudrate state.
+            Chuỗi JSON chứa trạng thái ok, kết nối và trạng thái đang chờ thực thi.
         """
         try:
             request = int(baudrate)
@@ -577,19 +585,19 @@ class BackendBridge(QObject):
 
     @Slot(int, result=str)
     def sendBaudSelection(self, baudrate: int) -> str:
-        """WinForm-style alias for :meth:`sendBaudCommand`.
+        """Tên hàm tương thích WinForm cho phương thức sendBaudCommand.
 
         Args:
-            baudrate: Target optical baudrate.
+            baudrate: Tốc độ Baud quang học đích.
 
         Returns:
-            JSON result object.
+            Chuỗi JSON chứa kết quả thực thi.
         """
         return self.sendBaudCommand(baudrate)
 
     @Slot()
     def disconnectPort(self) -> None:
-        """Disconnects the current COM1/COM2 hardware link."""
+        """Yêu cầu ngắt kết nối toàn bộ các cổng phần cứng COM1 và COM2 đang mở."""
         try:
             logger.info(
                 "%s UI disconnect requested (connected=%s)", LogTag.HW_SERIAL, self._is_connected
@@ -606,25 +614,25 @@ class BackendBridge(QObject):
 
     @Slot()
     def sendPing(self) -> None:
-        """Rejects the legacy ping action: the firmware has no PING opcode."""
+        """Từ chối yêu cầu Ping cũ: giao thức chuẩn WinForm C# và firmware không có opcode PING."""
         logger.warning("%s Legacy ping rejected: unsupported by WinForm protocol", LogTag.PROTO_FRAME)
         self.errorOccurred.emit("Ping is not supported by the WinForm firmware protocol")
 
     @Slot(float)
     def setAutoPingInterval(self, seconds: float) -> None:
-        """Ignores the legacy health-check interval.
+        """Bỏ qua chu kỳ kiểm tra sức khỏe tự động ping cũ (giữ lại để tương thích UI).
 
         Args:
-            seconds: Requested interval, retained only for UI compatibility.
+            seconds: Khoảng thời gian định kỳ được yêu cầu.
         """
         logger.info("%s Auto-ping disabled (requested %.2fs)", LogTag.IPC_BRIDGE, seconds)
 
     @Slot(str)
     def sendChat(self, text: str) -> None:
-        """Transmits chat message via ChatService.
+        """Truyền tin nhắn văn bản UTF-8 tới trạm đối tác qua ChatService.
 
         Args:
-            text: UTF-8 message content string.
+            text: Nội dung văn bản tin nhắn người dùng nhập.
         """
         try:
             if not (text or "").strip():
@@ -656,10 +664,10 @@ class BackendBridge(QObject):
 
     @Slot(str)
     def startFileTransfer(self, file_path: str) -> None:
-        """Starts optical file transfer.
+        """Kích hoạt phiên truyền file qua đường truyền quang Open-Loop.
 
         Args:
-            file_path: Local path to the file.
+            file_path: Đường dẫn tệp tin trên ổ đĩa cần truyền đi.
         """
         try:
             if not (file_path or "").strip():
@@ -701,7 +709,7 @@ class BackendBridge(QObject):
 
     @Slot()
     def abortFileTransfer(self) -> None:
-        """Cancels the current optical file transmission or reception."""
+        """Hủy bỏ phiên truyền hoặc nhận file quang học đang diễn ra."""
         try:
             logger.info(
                 "%s UI abortFileTransfer: stream_state=%s",
@@ -720,15 +728,15 @@ class BackendBridge(QObject):
 
     @Slot()
     def stopFileTransfer(self) -> None:
-        """WinForm-style alias for :meth:`abortFileTransfer`."""
+        """Tên hàm tương thích kiểu WinForm cho phương thức abortFileTransfer."""
         self.abortFileTransfer()
 
     @Slot(result=str)
     def chooseSaveFolder(self) -> str:
-        """Opens a directory chooser and persists the receive folder.
+        """Mở hộp thoại chọn thư mục lưu trữ file nhận và cập nhật vào cấu hình cài đặt.
 
         Returns:
-            Selected directory path, or an empty string on cancellation.
+            Đường dẫn thư mục đã chọn, hoặc chuỗi rỗng nếu người dùng hủy hộp thoại.
         """
         try:
             current = str(self._file_service.transfers_dir_path)
@@ -751,18 +759,18 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def chooseDestinationFolder(self) -> str:
-        """WinForm-style alias for :meth:`chooseSaveFolder`."""
+        """Tên hàm tương thích WinForm cho phương thức chooseSaveFolder."""
         return self.chooseSaveFolder()
 
     @Slot(bool, result=str)
     def setAutoSaveOption(self, enabled: bool) -> str:
-        """Persists the AutoSave flag and returns the updated settings.
+        """Lưu trữ tùy chọn AutoSave (giữ lại file một phần khi lỗi) và trả về cấu hình mới.
 
         Args:
-            enabled: True to keep partial receptions.
+            enabled: True để giữ lại file nhận một phần (.part), False để xóa khi lỗi.
 
         Returns:
-            JSON transfer configuration.
+            Chuỗi JSON chứa cấu hình truyền nhận file đã cập nhật.
         """
         try:
             config = self._file_service.update_config(auto_save=bool(enabled))
@@ -776,16 +784,16 @@ class BackendBridge(QObject):
             return json.dumps({"ok": False, "error": str(exc)})
 
     def _dialog_parent(self) -> QWidget | None:
-        """Returns a QWidget parent for file dialogs when available."""
+        """Trả về QWidget cha cho các hộp thoại hệ thống nếu có."""
         parent = self.parent()
         return parent if isinstance(parent, QWidget) else None
 
     @Slot(result=str)
     def openFileDialog(self) -> str:
-        """Opens native file chooser dialog and returns selected path.
+        """Mở hộp thoại chọn tệp tin của hệ điều hành và trả về đường dẫn tệp đã chọn.
 
         Returns:
-            Selected file path string or empty string.
+            Đường dẫn tệp tin được chọn hoặc chuỗi rỗng nếu bị hủy.
         """
         try:
             path, _ = QFileDialog.getOpenFileName(
@@ -802,14 +810,13 @@ class BackendBridge(QObject):
 
     @Slot(str, result=str)
     def openTransferLocation(self, file_path: str) -> str:
-        """Reveals a transferred file's storage folder in the system file manager.
+        """Mở thư mục chứa file đã truyền nhận trong trình quản lý tệp tin của hệ điều hành.
 
         Args:
-            file_path: Local path recorded for the transfer history entry.
+            file_path: Đường dẫn tệp tin ghi nhận trong lịch sử.
 
         Returns:
-            Opened directory path string on success, or empty string when the
-            recorded file no longer exists.
+            Đường dẫn thư mục đã mở nếu thành công, hoặc chuỗi rỗng nếu tệp không tồn tại.
         """
         candidate = Path(file_path).expanduser()
         if not candidate.exists():
@@ -834,13 +841,7 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def getSettings(self) -> str:
-        """Returns current transfer settings as JSON string.
-
-        Returns:
-            JSON object with max_file_size_bytes (0 = unlimited),
-            max_file_size_mb, max_file_size_label, transfers_dir and
-            default_transfers_dir (used by the "Reset to default" action).
-        """
+        """Truy xuất cấu hình cài đặt truyền file hiện tại dưới dạng chuỗi JSON."""
         try:
             config = self._file_service.get_config()
         except Exception as exc:
@@ -855,14 +856,13 @@ class BackendBridge(QObject):
 
     @Slot(str, result=str)
     def saveSettings(self, settings_json: str) -> str:
-        """Validates and persists transfer settings from the Web UI.
+        """Xác thực và lưu trữ cấu hình truyền nhận file người dùng nhập từ Web UI.
 
         Args:
-            settings_json: JSON string with optional max_file_size_bytes
-                (0 = unlimited) and transfers_dir fields.
+            settings_json: Chuỗi JSON chứa các trường cấu hình cài đặt cần cập nhật.
 
         Returns:
-            JSON string with ok flag plus applied config or error message.
+            Chuỗi JSON chứa cờ ok và cấu hình sau khi áp dụng hoặc thông báo lỗi.
         """
         try:
             data = json.loads(settings_json or "{}")
@@ -917,10 +917,10 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def browseTransfersDir(self) -> str:
-        """Opens a directory chooser and persists the receive folder.
+        """Mở hộp thoại lựa chọn thư mục lưu trữ mặc định cho file nhận.
 
         Returns:
-            Selected directory path string or empty string on cancellation.
+            Đường dẫn thư mục được chọn hoặc chuỗi rỗng nếu bị hủy.
         """
         try:
             current = str(self._file_service.transfers_dir_path)
@@ -941,50 +941,34 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def getChatHistory(self) -> str:
-        """Retrieves durable chat history from hard drive store as JSON string.
-
-        Returns:
-            JSON formatted array of chat history objects.
-        """
+        """Truy xuất lịch sử tin nhắn trò chuyện bền vững từ tệp JSON dưới dạng chuỗi JSON."""
         history = self._storage.get_chat_history(limit=200)
         return json.dumps(history)
 
     @Slot(result=str)
     def getFileHistory(self) -> str:
-        """Retrieves durable file transfer logs from hard drive store as JSON string.
-
-        Returns:
-            JSON formatted array of file transfer objects.
-        """
+        """Truy xuất lịch sử các phiên truyền nhận file từ tệp JSON dưới dạng chuỗi JSON."""
         transfers = self._storage.get_file_transfers(limit=50)
         return json.dumps(transfers)
 
     @Slot(result=str)
     def getTelemetryStats(self) -> str:
-        """Retrieves current telemetry summary as JSON string.
-
-        Returns:
-            JSON serialized TelemetrySummary dictionary.
-        """
+        """Truy xuất bản sao tóm tắt các chỉ số viễn trắc hiện hành dưới dạng chuỗi JSON."""
         summary = self._telemetry.get_summary()
         return json.dumps(summary)
 
     @Slot(result=str)
     def getSnifferRecords(self) -> str:
-        """Retrieves recent sniffer records as JSON string.
-
-        Returns:
-            JSON serialized list of SnifferRecord items.
-        """
+        """Truy xuất danh sách các bản ghi bắt gói tin Sniffer gần nhất dưới dạng chuỗi JSON."""
         records = self._telemetry.get_sniffer_records(limit=100)
         return json.dumps(records)
 
     @Slot(result=str)
     def exportTelemetryCsv(self) -> str:
-        """Exports telemetry history to CSV file via Save File dialog or default path.
+        """Xuất lịch sử dữ liệu viễn trắc ra tệp CSV thông qua hộp thoại lưu tệp của hệ thống.
 
         Returns:
-            Destination file path string on success, or empty string on cancellation.
+            Đường dẫn tệp đích đã lưu thành công hoặc chuỗi rỗng nếu bị hủy.
         """
         try:
             default_dir = self._default_export_dir()
@@ -1017,10 +1001,10 @@ class BackendBridge(QObject):
 
     @Slot(result=str)
     def exportTransfersCsv(self) -> str:
-        """Exports file transfer history to CSV file via Save File dialog.
+        """Xuất lịch sử truyền nhận file ra tệp CSV thông qua hộp thoại lưu tệp của hệ thống.
 
         Returns:
-            Destination file path string on success, or empty string on cancellation.
+            Đường dẫn tệp đích đã lưu thành công hoặc chuỗi rỗng nếu bị hủy.
         """
         try:
             default_dir = self._default_export_dir()
@@ -1053,22 +1037,22 @@ class BackendBridge(QObject):
 
     @Slot()
     def resetTelemetryCounters(self) -> None:
-        """Resets telemetry metrics and sniffer counters."""
+        """Đặt lại toàn bộ các bộ đếm viễn trắc và bộ đệm bắt gói tin Sniffer."""
         summary = self._telemetry.get_summary()
         self._telemetry.reset_counters()
         logger.info("%s Reset telemetry via UI (was %s)", LogTag.IPC_BRIDGE, summary)
 
     @Slot()
     def closeWindow(self) -> None:
-        """Requests application window closure."""
+        """Phát tín hiệu yêu cầu đóng cửa sổ ứng dụng."""
         self.closeWindowRequested.emit()
 
     @Slot()
     def minimizeWindow(self) -> None:
-        """Requests application window minimization."""
+        """Phát tín hiệu yêu cầu thu nhỏ cửa sổ ứng dụng xuống thanh tác vụ."""
         self.minimizeWindowRequested.emit()
 
     @Slot()
     def toggleMaximizeWindow(self) -> None:
-        """Requests toggling application window maximization."""
+        """Phát tín hiệu yêu cầu phóng to hoặc khôi phục kích thước cửa sổ ứng dụng."""
         self.maximizeWindowRequested.emit()

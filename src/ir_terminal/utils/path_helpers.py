@@ -1,14 +1,10 @@
-"""Filesystem, asset, and persistent data storage resolution helpers.
+"""Hàm trợ giúp phân giải đường dẫn hệ thống tệp, tài nguyên và lưu trữ dữ liệu bền vững.
 
-Runtime data (JSON stores, received files, logs, CSV exports) is kept next to
-the running application instead of in the user home directory:
-
-* Frozen PyInstaller build: ``<folder containing IR_OWC_Lab_Terminal.exe>/data``
-  (works for both one-file and one-folder builds).
-* Development checkout: ``<project root>/data``.
-
-``IR_DATA_DIR`` can override the base directory (used by the test suite and
-portable deployments).
+Dữ liệu chạy thời gian thực (các tệp JSON, file nhận được, logs, xuất CSV) được lưu trữ
+cục bộ ngay cạnh ứng dụng thay vì ghi vào thư mục home của người dùng:
+- Bản đóng gói PyInstaller: <thư mục chứa IR_OWC_Lab_Terminal.exe>/data
+- Môi trường phát triển: <gốc dự án>/data
+- Biến môi trường IR_DATA_DIR có thể ghi đè thư mục cơ sở phục vụ kiểm thử tự động.
 """
 
 from __future__ import annotations
@@ -27,23 +23,20 @@ _INSTANCE_ID_RE = re.compile(INSTANCE_ID_PATTERN)
 
 
 class InvalidInstanceIdError(ValueError):
-    """Raised when a dual-mock instance id is not a safe filesystem label."""
+    """Ngoại lệ phát sinh khi định danh instance chứa các ký tự không hợp lệ hoặc không an toàn."""
 
 
 def normalize_instance_id(value: str | None) -> str | None:
-    """Validates and upper-cases a dual-mock instance id.
-
-    The id becomes a directory name under ``data/instances/<ID>`` so it must be
-    a portable filesystem label (no ``.``, ``/``, ``\\`` or ``..`` traversal).
+    """Xác thực và chuyển đổi định danh instance thành chữ in hoa an toàn cho hệ thống tệp.
 
     Args:
-        value: Raw instance id from the CLI/env, or None.
+        value: Chuỗi định danh instance truyền từ CLI hoặc biến môi trường.
 
     Returns:
-        Upper-cased instance id, or None when empty.
+        Chuỗi định danh đã viết hoa, hoặc None nếu rỗng.
 
     Raises:
-        InvalidInstanceIdError: If the value contains unsafe characters.
+        InvalidInstanceIdError: Nếu chuỗi chứa các ký tự không hợp lệ.
     """
     if value is None:
         return None
@@ -58,7 +51,7 @@ def normalize_instance_id(value: str | None) -> str | None:
 
 
 def get_instance_name(explicit: str | None = None) -> str | None:
-    """Returns dual-mock instance name (A/B) from arg or IR_INSTANCE env."""
+    """Lấy tên định danh instance (A/B) từ tham số hoặc biến môi trường IR_INSTANCE."""
     if explicit:
         return explicit.strip().upper() or None
     env = os.environ.get("IR_INSTANCE", "").strip().upper()
@@ -66,7 +59,7 @@ def get_instance_name(explicit: str | None = None) -> str | None:
 
 
 def get_project_root() -> Path:
-    """Returns the absolute root directory of the application bundle."""
+    """Trả về đường dẫn tuyệt đối tới thư mục gốc của dự án."""
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
         return Path(str(meipass))
@@ -74,17 +67,7 @@ def get_project_root() -> Path:
 
 
 def get_app_root() -> Path:
-    """Returns the directory the application was launched from.
-
-    PyInstaller sets ``sys.frozen`` and ``sys.executable`` points at the
-    generated executable. For a one-folder build that is the folder containing
-    ``IR_OWC_Lab_Terminal.exe``; for a one-file build it is the temporary
-    extraction *source* executable path, which is exactly where the user placed
-    the ``.exe``. In development the repository root is used.
-
-    Returns:
-        Absolute directory used as the parent of the ``data/`` tree.
-    """
+    """Trả về thư mục thực thi của ứng dụng (nơi đặt tệp thực thi hoặc gốc mã nguồn)."""
     if getattr(sys, "frozen", False):
         executable = getattr(sys, "executable", "") or sys.argv[0]
         return Path(executable).resolve().parent
@@ -92,13 +75,13 @@ def get_app_root() -> Path:
 
 
 def get_web_index_path() -> Path:
-    """Resolves absolute path to index.html across dev and PyInstaller environments.
+    """Phân giải đường dẫn tuyệt đối tới tệp index.html trong cả môi trường dev và PyInstaller.
 
     Returns:
-        Path pointing to valid index.html file.
+        Đường dẫn Path tới tệp index.html hợp lệ.
 
     Raises:
-        FileNotFoundError: If index.html cannot be located in any bundle path.
+        FileNotFoundError: Nếu không tìm thấy tệp index.html trong bất kỳ đường dẫn nào.
     """
     candidates = [
         get_project_root() / "src" / "ir_terminal" / "ui" / "web" / "index.html",
@@ -112,7 +95,7 @@ def get_web_index_path() -> Path:
 
 
 def get_assets_dir() -> Path:
-    """Returns the directory containing static UI assets and stylesheets."""
+    """Trả về đường dẫn thư mục chứa các tài nguyên tĩnh giao diện và stylesheets."""
     meipass = getattr(sys, "_MEIPASS", None)
     if meipass is not None:
         bundled = Path(str(meipass)) / "ir_terminal" / "ui" / "web" / "assets"
@@ -122,27 +105,13 @@ def get_assets_dir() -> Path:
 
 
 def get_app_data_dir(instance: str | None = None) -> Path:
-    """Returns the persistent application data directory and creates it.
-
-    Default layout::
-
-        <app root>/data/
-            ├── chat_history.json
-            ├── file_transfers.json
-            ├── telemetry_samples.json
-            ├── settings.json
-            ├── transfers/   (received optical files)
-            └── logs/        (rotating tagged log files)
-
-    ``IR_DATA_DIR`` replaces ``<app root>/data`` when set. When instance is set
-    (dual-mock A/B), an isolated ``instances/<A|B>/`` subtree is used so two
-    apps on one PC never share JSON stores, transfers, or logs.
+    """Trả về và tự động tạo thư mục lưu trữ dữ liệu bền vững của ứng dụng.
 
     Args:
-        instance: Optional dual-mock instance name (A/B).
+        instance: Tên instance tùy chọn (A hoặc B) để phân tách thư mục con riêng biệt.
 
     Returns:
-        Existing data directory path.
+        Đường dẫn thư mục dữ liệu đã sẵn sàng sử dụng.
     """
     override = os.environ.get(DATA_DIR_ENV, "").strip()
     if override:
@@ -159,36 +128,32 @@ def get_app_data_dir(instance: str | None = None) -> Path:
 
 
 def get_data_dir(instance: str | None = None) -> Path:
-    """Returns the directory holding JSON file stores (same as app data root)."""
+    """Trả về thư mục lưu trữ các tệp JSON dữ liệu (tương đương get_app_data_dir)."""
     return get_app_data_dir(instance)
 
 
 def get_transfers_dir(instance: str | None = None) -> Path:
-    """Returns the directory where received optical files are stored permanently."""
+    """Trả về thư mục lưu trữ các tệp tin nhận được qua kênh truyền quang."""
     transfers_dir = get_app_data_dir(instance) / "transfers"
     transfers_dir.mkdir(parents=True, exist_ok=True)
     return transfers_dir
 
 
 def get_logs_dir(instance: str | None = None) -> Path:
-    """Returns the directory where rotating system logs are stored."""
+    """Trả về thư mục lưu trữ các tệp tin nhật ký xoay vòng."""
     logs_dir = get_app_data_dir(instance) / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir
 
 
 def get_webengine_dirs(instance: str | None = None) -> tuple[Path, Path]:
-    """Returns per-instance (cache_dir, storage_dir) for QWebEngineProfile.
-
-    Two app processes sharing the default Chromium profile corrupt the cache
-    and cookie SQLite databases. Each instance (and each data root) therefore
-    gets its own profile directory under ``<app data>/webengine/``.
+    """Trả về cặp thư mục (cache_dir, storage_dir) cho QWebEngineProfile theo từng instance.
 
     Args:
-        instance: Optional dual-mock instance name (A/B).
+        instance: Tên định danh instance (A hoặc B).
 
     Returns:
-        Tuple of (http_cache_dir, persistent_storage_dir) that both exist.
+        Tuple gồm (thư_mục_cache, thư_mục_storage) đã được tạo sẵn trên đĩa.
     """
     base = get_app_data_dir(instance) / "webengine"
     cache_dir = base / "cache"
@@ -199,10 +164,10 @@ def get_webengine_dirs(instance: str | None = None) -> tuple[Path, Path]:
 
 
 def is_dev_mode() -> bool:
-    """Returns True when the development flag enables virtual MOCK/LINK ports."""
+    """Kiểm tra xem chế độ phát triển (Developer Mode) có đang được kích hoạt hay không."""
     return os.environ.get(DEV_MODE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def is_dual_mock_enabled() -> bool:
-    """Returns True when LINK_A/B virtual ports should be listed in UI."""
+    """Kiểm tra xem chế độ mô phỏng hai trạm ảo LINK_A/B có được bật hay không."""
     return os.environ.get("IR_ENABLE_DUAL_MOCK", "").strip() in ("1", "true", "TRUE", "yes")

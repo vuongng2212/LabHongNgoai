@@ -1,4 +1,8 @@
-"""Thread-safe circular byte ring buffer for high-speed UART stream ingestion."""
+"""Bộ đệm vòng byte hiệu năng cao (Byte Ring Buffer) an toàn đa luồng.
+
+Được thiết kế để tích lũy dòng byte tốc độ cao từ cổng UART phần cứng, ngăn ngừa tràn bộ nhớ RAM
+khi nhận các loạt gói tin burst frame liên tục từ vi điều khiển MCU.
+"""
 
 from __future__ import annotations
 
@@ -6,16 +10,17 @@ import threading
 
 
 class ByteRingBuffer:
-    """Fixed-capacity circular ring buffer for accumulating raw serial byte streams.
+    """Bộ đệm vòng tuần hoàn kích thước cố định để tích lũy dòng byte nối tiếp.
 
-    Prevents memory runaway when high-speed burst frames arrive from the MCU.
+    Hỗ trợ cơ chế khóa đa luồng threading.Lock, tự động đẩy bỏ các byte cũ nhất khi bị tràn
+    và ghi nhận số byte bị rớt (dropped bytes) phục vụ công tác chẩn đoán viễn trắc.
     """
 
     def __init__(self, capacity: int = 65536) -> None:
-        """Initializes circular buffer with fixed memory capacity.
+        """Khởi tạo bộ đệm vòng với dung lượng bộ nhớ cố định.
 
         Args:
-            capacity: Maximum buffer size in bytes (default 64 KB).
+            capacity: Dung lượng tối đa của bộ đệm tính theo byte (mặc định 64 KB = 65536 bytes).
         """
         self._capacity = capacity
         self._buffer = bytearray(capacity)
@@ -27,30 +32,30 @@ class ByteRingBuffer:
 
     @property
     def capacity(self) -> int:
-        """Returns maximum capacity of the ring buffer."""
+        """Dung lượng tối đa (sức chứa) của bộ đệm vòng tính theo byte."""
         return self._capacity
 
     def __len__(self) -> int:
-        """Returns the number of readable bytes currently in the buffer."""
+        """Số lượng byte hợp lệ hiện đang có sẵn trong bộ đệm để đọc."""
         with self._lock:
             return self._size
 
     @property
     def dropped_bytes(self) -> int:
-        """Returns cumulative bytes dropped due to overflow (diagnostics)."""
+        """Tổng số byte lũy kế đã bị loại bỏ do tràn bộ đệm vòng."""
         with self._lock:
             return self._dropped
 
     def write(self, data: bytes) -> int:
-        """Appends byte sequence to the buffer.
+        """Ghi chuỗi byte vào bộ đệm vòng tuần hoàn.
 
-        If new data exceeds remaining capacity, oldest bytes are dropped.
+        Nếu dữ liệu mới vượt quá dung lượng còn trống, các byte cũ nhất sẽ tự động bị ghi đè.
 
         Args:
-            data: Byte sequence to write.
+            data: Chuỗi byte nhị phân cần ghi vào bộ đệm.
 
         Returns:
-            Number of bytes actually written.
+            Số lượng byte thực tế đã được tiếp nhận.
         """
         with self._lock:
             data_len = len(data)
@@ -78,13 +83,13 @@ class ByteRingBuffer:
             return data_len
 
     def read(self, max_bytes: int | None = None) -> bytes:
-        """Extracts and removes up to max_bytes from the buffer.
+        """Đọc và trích xuất dữ liệu ra khỏi bộ đệm vòng (xóa khỏi buffer).
 
         Args:
-            max_bytes: Maximum number of bytes to retrieve. If None, retrieves all.
+            max_bytes: Số byte tối đa cần đọc. Nếu truyền None, đọc toàn bộ byte hiện có.
 
         Returns:
-            Extracted bytes sequence.
+            Chuỗi byte nhị phân đã trích xuất từ bộ đệm.
         """
         with self._lock:
             if self._size == 0:
@@ -103,10 +108,10 @@ class ByteRingBuffer:
             return bytes(result)
 
     def peek(self) -> bytes:
-        """Inspects all currently available bytes without removing them from buffer.
+        """Xem trước toàn bộ dữ liệu hiện có trong bộ đệm mà không làm thay đổi con trỏ đọc.
 
         Returns:
-            Copy of available bytes in order.
+            Bản sao của chuỗi byte hiện có theo đúng thứ tự FIFO.
         """
         with self._lock:
             if self._size == 0:
@@ -122,7 +127,7 @@ class ByteRingBuffer:
             return bytes(result)
 
     def clear(self) -> None:
-        """Resets head, tail pointers and empties the buffer."""
+        """Xóa sạch bộ đệm và đặt lại các con trỏ head, tail về vị trí ban đầu."""
         with self._lock:
             self._head = 0
             self._tail = 0

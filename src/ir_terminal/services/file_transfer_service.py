@@ -1,15 +1,15 @@
-"""Open-loop paced file streaming for the WinForm C# compatible optical link.
+"""Động cơ truyền nhận file điều tốc vòng hở (Open-Loop Paced File Streaming) chuẩn WinForm C#.
 
-Transmission follows the firmware contract in ``docs/WFF.txt``: the sender
-announces a file with a HEADER frame, streams 256-byte DATA frames at a paced
-interval and closes with an END frame. No acknowledgement, retry or checksum is
-part of the wire protocol.
-
-The receiver writes every DATA frame at its nominal offset
-``sequence * PACKET_SIZE`` into a ``.part`` staging file, so a lost frame only
-leaves a zero-filled gap instead of shifting the rest of the file. RAM usage
-stays flat regardless of the transferred size because payloads go straight to
-disk.
+Module này chịu trách nhiệm:
+1. Phát file Open-Loop: Gửi tuần tự HEADER -> DATA (mỗi chunk 256 bytes) -> END.
+2. Điều tốc phát quang (Pacing Delay): Tính toán chính xác thời gian nghỉ giữa 2 khung liên tiếp
+   theo công thức danh định: ceil(len x 10 x 1000 ÷ baud) + 10 ms, giúp MCU không bị tràn buffer
+   mà không cần tín hiệu phản hồi ACK/NACK.
+3. Thu nhận và ghi file trực tiếp xuống đĩa (Direct Disk Streaming):
+   Ghi chunk nhận được vào file tạm .part tại offset tuyệt đối sequence x 256, chống lệch vị trí file
+   khi rớt gói trên đường truyền quang và tự động đánh dấu PARTIAL nếu thiếu dữ liệu.
+4. Tương thích Virtual File Chat Envelope: Tự động chuyển hướng xử lý tin nhắn chat in-memory
+   khi nhận diện tên file có tiền tố '_chat_' và đuôi '.txt'.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ _MAX_NAME_LENGTH: int = 200
 
 
 class TransferState(Enum):
-    """Lifecycle state of the open-loop file streaming engine."""
+    """Trạng thái vòng đời của phiên truyền hoặc nhận file."""
 
     IDLE = "IDLE"
     SENDING = "SENDING"
@@ -71,22 +71,37 @@ class TransferState(Enum):
 
     @property
     def is_active(self) -> bool:
-        """Returns True while a transmission or reception is in progress."""
+        """Kiểm tra xem hệ thống có đang bận truyền hoặc nhận file hay không."""
         return self in (TransferState.SENDING, TransferState.RECEIVING)
 
 
 def paced_delay_ms(packet_length: int, baudrate: int) -> int:
-    """Returns the WinForm C# inter-frame delay for one wire frame.
+    """Tính toán thời gian trễ nhịp phát (inter-frame pacing delay) giữa 2 khung liên tiếp trên đường quang.
+
+    Công thức chuẩn WinForm C#:
+        delay_ms = ceil(packet_length x 10.0 x 1000 ÷ baudrate) + 10 ms
+
+    Trong đó:
+        - packet_length: Tổng độ dài khung trên dây (bao gồm 8 byte header + payload length).
+          Ví dụ gói DATA 256 bytes thì packet_length = 264 bytes.
+        - 10.0: 10 bit UART vật lý cho mỗi byte truyền (1 start bit + 8 data bits + 1 stop bit).
+        - 10 ms (PACED_DELAY_SAFETY_MS): Biên độ trễ an toàn cho STM32 kịp xử lý ngắt.
+
+    Giá trị danh định cho gói DATA 264 bytes:
+        - 19200 bps: 148 ms
+        - 9600 bps:  285 ms
+        - 4800 bps:  560 ms
+        - 2400 bps:  1110 ms
 
     Args:
-        packet_length: Total frame length in bytes, including the 8-byte header.
-        baudrate: Optical data baudrate in bits per second.
+        packet_length: Tổng số byte của khung truyền trên dây cáp quang.
+        baudrate: Tốc độ Baud quang hiện hành của COM1 (bps).
 
     Returns:
-        Delay in milliseconds: ``ceil(length * 10000 / baud) + 10``.
+        Khoảng thời gian nghỉ giữa hai khung tính bằng mili-giây (ms).
 
     Raises:
-        ValueError: If ``baudrate`` is not positive or length is negative.
+        ValueError: Nếu baudrate <= 0 hoặc độ dài packet âm.
     """
     if baudrate <= 0:
         raise ValueError(f"Baudrate must be positive, got {baudrate}")
@@ -96,14 +111,7 @@ def paced_delay_ms(packet_length: int, baudrate: int) -> int:
 
 
 def is_chat_envelope_name(file_name: str) -> bool:
-    """Returns True if the announced file name matches the chat envelope pattern.
-
-    Args:
-        file_name: File name carried by the incoming HEADER frame.
-
-    Returns:
-        True if the name has the ``_chat_`` prefix and ``.txt`` extension.
-    """
+    """Kiểm tra tên file thông báo có phải là bao thư tin nhắn chat ảo (Virtual File Chat Envelope) hay không."""
     clean = (file_name or "").strip()
     return clean.startswith("_chat_") and clean.endswith(".txt")
 
@@ -561,7 +569,12 @@ class FileTransferService(QObject):
         self.state_changed.emit(new_state.name)
 
     def _send_next_chunk(self) -> None:
-        """Sends the next DATA frame or the terminating END frame."""
+        """Phát khung DATA tiếp theo hoặc kích hoạt phát khung END khi hết dữ liệu.
+
+        Mỗi chunk dữ liệu (tối đa 256 bytes) được đọc từ file và gửi qua cổng nối tiếp COM1.
+        Sau khi phát xong 1 chunk, QTimer sẽ được hẹn giờ với khoảng trễ paced_delay_ms()
+        để đảm bảo không làm tràn bộ đệm nhận của vi điều khiển STM32.
+        """
         if self._state is not TransferState.SENDING:
             return
         if self._tx_file is None:
@@ -734,7 +747,13 @@ class FileTransferService(QObject):
         self._write_chunk(pkt)
 
     def _begin_receive(self, pkt: WinFormPacket) -> None:
-        """Opens a staging buffer or file for an incoming transfer."""
+        """Khởi tạo phiên tiếp nhận file mới khi nhận được khung tiêu đề SEQ_HEADER.
+
+        Giải mã tên file và tổng số lượng packet dự kiến. Nếu là tin nhắn chat ảo
+        (_chat_*.txt), phiên nhận sẽ cấp phát bộ nhớ RAM io.BytesIO() để xử lý tức thì.
+        Nếu là file vật lý, ứng dụng tạo file tạm .ir_rx_<name>.part trên ổ cứng và
+        kích hoạt watchdog timer (3.0s).
+        """
         try:
             file_name, total_packets = unpack_header_payload(pkt.data)
         except ValueError as exc:
@@ -796,7 +815,14 @@ class FileTransferService(QObject):
             )
 
     def _write_chunk(self, pkt: WinFormPacket) -> None:
-        """Writes one DATA frame at its nominal offset in the staging buffer."""
+        """Ghi trực tiếp chunk dữ liệu vào file tạm theo offset tuyệt đối: sequence x 256.
+
+        Cơ chế Seek-and-Write Direct Offset:
+            - Dữ liệu được ghi thẳng vào vị trí: offset = sequence * 256.
+            - Nếu một khung bị mất do nhiễu quang, vị trí tương ứng trên file sẽ tự động
+              chứa các byte 0x00 mà không làm xô lệch bất kỳ byte nào của các chunk sau.
+            - Tự động reset bộ đếm thời gian watchdog (3.0s) sau mỗi lần ghi thành công.
+        """
         if self._state is not TransferState.RECEIVING or self._rx_handle is None:
             logger.debug(
                 "%s RX chunk ignored without active HEADER: seq=0x%08X",

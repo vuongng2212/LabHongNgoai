@@ -1,13 +1,9 @@
-"""In-app virtual optical link broker (zero-driver dual-node mode).
+"""Tiến trình Broker điều phối liên kết quang ảo nội bộ (In-App Virtual Optical Link Broker).
 
-Emulates the infrared beam between two app instances on one PC over TCP
-loopback: Node A connects to ``port_a`` (``LINK_A``), Node B connects to
-``port_b`` (``LINK_B``), and raw frame bytes are relayed A<->B without parsing.
-No kernel driver, no admin rights, works with Secure Boot enabled.
-
-The broker is started **inside** the host node (``--link-role host``) so no
-external Python process or ``scripts/`` checkout is required in the packaged
-``.exe``. ``main()`` remains available for headless/standalone use.
+Mô phỏng đường truyền hồng ngoại giữa hai trạm Node A (cổng LINK_A) và Node B (cổng LINK_B)
+trên cùng một máy tính cá nhân thông qua giao thức TCP loopback.
+Chuyển tiếp nguyên vẹn các khung byte hai chiều mà không cần cài đặt driver kernel hay quyền quản trị viên (Admin).
+Tích hợp sẵn các mô hình suy hao kênh: độ trễ (latency ms), rớt gói (loss rate) và che khuất tầm nhìn (LOS blockage).
 """
 
 from __future__ import annotations
@@ -36,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def _close_quietly(sock: socket.socket | None) -> None:
-    """Closes a socket, swallowing OS errors during shutdown."""
+    """Đóng an toàn một socket và bỏ qua các ngoại lệ hệ điều hành khi tắt."""
     if sock is None:
         return
     try:
@@ -46,7 +42,7 @@ def _close_quietly(sock: socket.socket | None) -> None:
 
 
 class LinkBroker:
-    """Bidirectional TCP relay emulating the IR beam between two nodes."""
+    """Bộ chuyển tiếp TCP hai chiều mô phỏng tia hồng ngoại giữa hai trạm Node A và Node B."""
 
     def __init__(
         self,
@@ -58,15 +54,15 @@ class LinkBroker:
         latency_ms: float = DEFAULT_LATENCY_MS,
         token: str | None = None,
     ) -> None:
-        """Initializes broker endpoints and channel parameters.
+        """Khởi tạo cấu hình các endpoint và tham số kênh truyền ảo.
 
         Args:
-            port_a: TCP port for Node A (LINK_A).
-            port_b: TCP port for Node B (LINK_B).
-            host: Bind/loopback host (default 127.0.0.1; never 0.0.0.0).
-            loss_rate: Random per-chunk drop probability in ``0.0..1.0``.
-            latency_ms: Artificial forwarding delay per chunk (ms).
-            token: Optional shared secret for the client handshake.
+            port_a: Cổng TCP dành cho Node A (LINK_A).
+            port_b: Cổng TCP dành cho Node B (LINK_B).
+            host: Địa chỉ IP lắng nghe loopback (mặc định 127.0.0.1; tuyệt đối không dùng 0.0.0.0).
+            loss_rate: Xác suất rớt gói ngẫu nhiên trên mỗi chunk dữ liệu trong khoảng 0.0 đến 1.0.
+            latency_ms: Độ trễ nhân tạo bổ sung cho mỗi chunk dữ liệu tính bằng mili-giây (ms).
+            token: Khóa bí mật chia sẻ tùy chọn cho bước bắt tay xác thực client.
         """
         self._port_a = int(port_a)
         self._port_b = int(port_b)
@@ -84,41 +80,52 @@ class LinkBroker:
 
     @property
     def host(self) -> str:
-        """Returns the bind host (loopback)."""
+        """Địa chỉ IP lắng nghe kết nối (loopback)."""
         return self._host
 
     @property
     def port_a(self) -> int:
-        """Returns the TCP port for Node A (LINK_A)."""
+        """Cổng TCP kết nối dành cho Node A (LINK_A)."""
         return self._port_a
 
     @property
     def port_b(self) -> int:
-        """Returns the TCP port for Node B (LINK_B)."""
+        """Cổng TCP kết nối dành cho Node B (LINK_B)."""
         return self._port_b
 
     @property
     def los_blocked(self) -> bool:
-        """Returns True when the virtual beam is currently blocked."""
+        """Kiểm tra tia quang ảo hiện có đang bị chặn hay không."""
         return self._los_blocked
 
     @property
     def is_running(self) -> bool:
-        """Returns True while accept/forward threads are active."""
+        """Kiểm tra các luồng lắng nghe và chuyển tiếp của broker có đang chạy hay không."""
         return self._started
 
     def set_los_blocked(self, blocked: bool) -> None:
-        """Blocks or restores the virtual beam (drops all bytes while blocked)."""
+        """Chặn hoặc khôi phục tia quang ảo (loại bỏ toàn bộ dữ liệu khi bị chặn).
+
+        Args:
+            blocked: True để chặn tia sáng, False để khôi phục truyền thông bình thường.
+        """
         self._los_blocked = bool(blocked)
         logger.info("LOS beam %s", "BLOCKED - dropping bytes" if blocked else "RESTORED")
 
     def connected_roles(self) -> list[str]:
-        """Returns the currently connected node labels (subset of A/B)."""
+        """Danh sách các trạm hiện đang kết nối thành công (tập con của 'A' và 'B')."""
         with self._lock:
             return sorted(self._conns.keys())
 
     def wait_for_peers(self, timeout: float = 10.0) -> bool:
-        """Waits until both nodes are connected or the timeout elapses."""
+        """Chờ cho đến khi cả hai Node A và Node B đều kết nối thành công hoặc hết thời gian timeout.
+
+        Args:
+            timeout: Thời gian chờ tối đa tính bằng giây.
+
+        Returns:
+            True nếu cả hai node đều đã kết nối; False nếu hết thời gian chờ.
+        """
         deadline = time.monotonic() + max(0.0, timeout)
         while time.monotonic() < deadline and not self._stop.is_set():
             with self._lock:
@@ -128,7 +135,7 @@ class LinkBroker:
         return False
 
     def start(self) -> None:
-        """Binds both ports and spawns accept/forward daemon threads."""
+        """Mở lắng nghe trên cả hai cổng TCP và khởi chạy các luồng nhận kết nối và chuyển tiếp dữ liệu."""
         if self._started:
             return
         self._stop.clear()
@@ -169,7 +176,7 @@ class LinkBroker:
         )
 
     def stop(self) -> None:
-        """Stops accept/forward loops and closes every socket."""
+        """Dừng toàn bộ các vòng lặp luồng và đóng tất cả các socket đang mở."""
         self._stop.set()
         with self._lock:
             conns = list(self._conns.values())
@@ -186,7 +193,7 @@ class LinkBroker:
         self._started = False
 
     def run(self) -> None:
-        """Starts the broker and blocks until stopped (back-compat entry)."""
+        """Khởi động broker và chặn luồng hiện tại cho đến khi nhận tín hiệu dừng."""
         self.start()
         logger.info("Relaying A<->B once both nodes connect.")
         try:
@@ -198,7 +205,7 @@ class LinkBroker:
             self.stop()
 
     def _bind_server(self, tcp_port: int) -> socket.socket:
-        """Binds one listening socket, exclusive on Windows to avoid hijack."""
+        """Khởi tạo và gán (bind) socket máy chủ lắng nghe; dùng cờ độc quyền trên Windows."""
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             server.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
@@ -210,7 +217,7 @@ class LinkBroker:
         return server
 
     def _accept_loop(self, label: str, server: socket.socket) -> None:
-        """Accepts node connections in a loop so reconnects always work."""
+        """Vòng lặp chấp nhận kết nối từ các node để luôn sẵn sàng kết nối lại."""
         logger.info("Waiting for Node %s on %s:%d ...", label, self._host, self._server_port(label))
         while not self._stop.is_set():
             try:
@@ -231,11 +238,11 @@ class LinkBroker:
             logger.info("Node %s connected from %s", label, addr)
 
     def _server_port(self, label: str) -> int:
-        """Returns the TCP port associated with a node label."""
+        """Trả về cổng TCP tương ứng với nhãn node ('A' hoặc 'B')."""
         return self._port_a if label == "A" else self._port_b
 
     def _verify_handshake(self, conn: socket.socket) -> bool:
-        """Validates the optional shared-token handshake line."""
+        """Xác thực dòng bắt tay chứa token bí mật tùy chọn của client."""
         if self._token is None:
             return True
         conn.settimeout(HANDSHAKE_TIMEOUT_SEC)
@@ -250,7 +257,7 @@ class LinkBroker:
         return True
 
     def _drop(self, label: str, conn: socket.socket) -> None:
-        """Removes and closes a dead connection so the node can reconnect."""
+        """Gỡ bỏ và đóng kết nối đã mất để node có thể tự do kết nối lại."""
         with self._lock:
             if self._conns.get(label) is conn:
                 self._conns.pop(label, None)
@@ -258,7 +265,7 @@ class LinkBroker:
         logger.info("Node %s disconnected, waiting for reconnect", label)
 
     def _forward(self, src: str, dst: str) -> None:
-        """Forwards bytes from src node to dst node with channel effects."""
+        """Chuyển tiếp dữ liệu từ node nguồn sang node đích kèm mô phỏng suy hao kênh."""
         while not self._stop.is_set():
             with self._lock:
                 conn = self._conns.get(src)
@@ -296,7 +303,7 @@ VirtualOpticalLink = LinkBroker
 
 
 def _stdin_los_toggle(broker: LinkBroker) -> None:
-    """Dev helper: type ``b`` + Enter on stdin to toggle LOS blockage."""
+    """Hàm trợ giúp phát triển: gõ ký tự 'b' và Enter trên bàn phím để bật/tắt chặn tia quang (LOS)."""
     if sys.stdin is None:
         return
     try:
@@ -308,13 +315,13 @@ def _stdin_los_toggle(broker: LinkBroker) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Parses args and runs the standalone link broker (blocking).
+    """Phân tích tham số dòng lệnh và khởi chạy LinkBroker ở chế độ độc lập (blocking).
 
     Args:
-        argv: Optional argument list (defaults to ``sys.argv[1:]``).
+        argv: Danh sách tham số tùy chọn (mặc định sys.argv[1:]).
 
     Returns:
-        Process exit code.
+        Mã thoát tiến trình (0 nếu thành công).
     """
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")

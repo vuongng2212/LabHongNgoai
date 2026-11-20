@@ -1,4 +1,9 @@
-"""Virtual COM1/COM2 simulator used by TDD and UI integration tests."""
+"""Trình giả lập hai cổng nối tiếp COM1/COM2 trong bộ nhớ phục vụ kiểm thử (Mock Serial).
+
+Mô phỏng kênh dữ liệu quang COM1 và kênh điều khiển STM32 COM2 trong cùng một đối tượng transport.
+Hỗ trợ tái tạo trễ đường truyền (simulated latency), rớt gói do nhiễu (loss rate), che khuất tầm nhìn (LOS blockage)
+và tự động phản hồi lặp vòng (auto-respond echo) để kiểm thử toàn diện mà không cần thiết bị phần cứng thực tế.
+"""
 
 from __future__ import annotations
 
@@ -24,12 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class MockSerialPort(ITransport):
-    """Simulates the COM1 data link and the COM2 control link in one object.
-
-    The data channel can echo complete WinForm frames to emulate a remote peer
-    on a loopback bench setup. The control channel records the two-character
-    baud commands that would be sent to the STM32.
-    """
+    """Mô phỏng kênh dữ liệu COM1 và kênh điều khiển COM2 phục vụ kiểm thử đơn vị và tích hợp."""
 
     def __init__(
         self,
@@ -41,17 +41,16 @@ class MockSerialPort(ITransport):
         simulated_loss_rate: float = 0.0,
         auto_respond: bool = True,
     ) -> None:
-        """Initializes the virtual dual-port transport.
+        """Khởi tạo tầng truyền tải giả lập hai cổng COM ảo.
 
         Args:
-            data_port: Virtual COM1 identifier.
-            ctrl_port: Virtual COM2 identifier, or None to disable control.
-            baudrate: Simulated optical baudrate for COM1.
-            ctrl_baudrate: Simulated MCU baudrate for COM2.
-            simulated_latency_ms: Echo latency in milliseconds.
-            simulated_loss_rate: Probability in the 0.0 to 1.0 range of dropping
-                one outgoing frame.
-            auto_respond: True to echo complete frames back on the data channel.
+            data_port: Tên định danh cổng dữ liệu ảo COM1.
+            ctrl_port: Tên định danh cổng điều khiển ảo COM2 (hoặc None nếu không dùng).
+            baudrate: Tốc độ Baud quang học mô phỏng cho COM1.
+            ctrl_baudrate: Tốc độ Baud vi điều khiển mô phỏng cho COM2 (115200 bps).
+            simulated_latency_ms: Độ trễ phản hồi lặp vòng giả lập tính bằng mili-giây (ms).
+            simulated_loss_rate: Xác suất rớt khung truyền ngẫu nhiên trong khoảng 0.0 đến 1.0.
+            auto_respond: True để tự động phản hồi lại khung truyền trọn vẹn trên kênh dữ liệu.
         """
         self._data_port = data_port
         self._ctrl_port = ctrl_port or ""
@@ -73,58 +72,58 @@ class MockSerialPort(ITransport):
 
     @property
     def data_port(self) -> str:
-        """Returns the virtual COM1 identifier."""
+        """Tên định danh cổng dữ liệu ảo COM1."""
         return self._data_port
 
     @property
     def ctrl_port(self) -> str:
-        """Returns the virtual COM2 identifier, or an empty string."""
+        """Tên định danh cổng điều khiển ảo COM2 (hoặc chuỗi rỗng nếu không dùng)."""
         return self._ctrl_port
 
     @property
     def tx_port(self) -> str:
-        """Returns the data port for compatibility with legacy callers."""
+        """Tên cổng phát dữ liệu ảo."""
         return self._data_port
 
     @property
     def rx_port(self) -> str:
-        """Returns the data port for compatibility with legacy callers."""
+        """Tên cổng thu dữ liệu ảo."""
         return self._data_port
 
     @property
     def baudrate(self) -> int:
-        """Returns the active optical data baudrate."""
+        """Tốc độ Baud quang học mô phỏng hiện hành."""
         return self._baudrate
 
     @property
     def control_baudrate(self) -> int:
-        """Returns the fixed MCU control baudrate."""
+        """Tốc độ Baud điều khiển vi điều khiển mô phỏng (cố định 115200 bps)."""
         return self._ctrl_baudrate
 
     @property
     def has_control_port(self) -> bool:
-        """Returns True when a virtual COM2 control channel is configured."""
+        """Kiểm tra kênh điều khiển ảo COM2 có được cấu hình hay không."""
         return bool(self._ctrl_port)
 
     @property
     def poll_interval_ms(self) -> int:
-        """Returns the fast RX polling cadence used by the in-memory simulator."""
+        """Chu kỳ định thời thăm dò nhanh của transport mô phỏng trong RAM (mặc định 2 ms)."""
         return MOCK_POLL_MS
 
     @property
     def sent_baud_commands(self) -> list[tuple[int, str]]:
-        """Returns every recorded control command as (baud, code) pairs."""
+        """Danh sách toàn bộ các lệnh đổi Baud đã ghi nhận dưới dạng tuple (baud, code)."""
         with self._lock:
             return list(self._baud_commands)
 
     @property
     def last_baud_command(self) -> tuple[int, str] | None:
-        """Returns the most recent recorded control command, if any."""
+        """Lệnh đổi Baud gần nhất đã ghi nhận được, hoặc None nếu chưa có."""
         with self._lock:
             return self._baud_commands[-1] if self._baud_commands else None
 
     def open(self) -> None:
-        """Opens the virtual transport and clears every buffer."""
+        """Mở transport mô phỏng và dọn sạch toàn bộ các hàng đợi dữ liệu."""
         self._is_open = True
         self._rx_buffer.clear()
         self._tx_accumulation = bytearray()
@@ -144,7 +143,7 @@ class MockSerialPort(ITransport):
         )
 
     def close(self) -> None:
-        """Closes the virtual transport and releases pending echoes."""
+        """Đóng transport mô phỏng và giải phóng hàng đợi phản hồi."""
         was_open = self._is_open
         self._is_open = False
         self._rx_buffer.clear()
@@ -165,14 +164,14 @@ class MockSerialPort(ITransport):
 
     @property
     def is_open(self) -> bool:
-        """Returns True while the virtual transport is active."""
+        """Kiểm tra transport mô phỏng hiện có đang mở hay không."""
         return self._is_open
 
     def set_los_blocked(self, blocked: bool) -> None:
-        """Simulates a physical obstacle blocking the optical beam.
+        """Mô phỏng tình huống bị che khuất tia sáng vật lý (Line-Of-Sight blockage).
 
         Args:
-            blocked: True to discard outgoing frames, False to restore the link.
+            blocked: True để chặn và loại bỏ toàn bộ dữ liệu phát, False để khôi phục liên kết quang.
         """
         self._los_blocked = blocked
         logger.warning(
@@ -183,16 +182,16 @@ class MockSerialPort(ITransport):
         )
 
     def write(self, data: bytes) -> int:
-        """Writes bytes to the simulated COM1 data channel.
+        """Ghi dữ liệu byte vào kênh dữ liệu COM1 mô phỏng.
 
         Args:
-            data: Raw frame bytes produced by the application.
+            data: Dòng byte thô do ứng dụng phát ra.
 
         Returns:
-            Number of bytes accepted.
+            Số byte đã tiếp nhận thành công.
 
         Raises:
-            RuntimeError: If the transport is closed.
+            RuntimeError: Nếu transport chưa được mở.
         """
         if not self._is_open:
             raise RuntimeError("Cannot write to closed MockSerialPort")
@@ -222,7 +221,7 @@ class MockSerialPort(ITransport):
         return len(data)
 
     def _schedule_echo(self, frame: bytes) -> None:
-        """Queues one loopback frame for delivery after the simulated latency."""
+        """Đưa khung phản hồi lặp vòng vào hàng đợi chờ phát theo độ trễ mô phỏng."""
         if self._latency_s <= 0:
             self._rx_buffer.write(frame)
             return
@@ -231,7 +230,7 @@ class MockSerialPort(ITransport):
             self._pending.append((due, frame))
 
     def _deliver_due(self) -> None:
-        """Moves due loopback frames into the RX buffer."""
+        """Chuyển các khung phản hồi đã đến hạn trễ vào bộ đệm nhận RX."""
         now = time.monotonic()
         due_frames: list[bytes] = []
         with self._lock:
@@ -248,13 +247,13 @@ class MockSerialPort(ITransport):
             self._rx_buffer.write(frame)
 
     def read(self, size: int | None = None) -> bytes:
-        """Reads bytes from the simulated COM1 RX buffer.
+        """Đọc dữ liệu từ bộ đệm nhận COM1 mô phỏng.
 
         Args:
-            size: Number of bytes to read, or None for every available byte.
+            size: Số byte cần đọc, hoặc None để đọc toàn bộ dữ liệu có sẵn.
 
         Returns:
-            Extracted byte sequence.
+            Chuỗi byte nhị phân trích xuất được.
         """
         if not self._is_open:
             return b""
@@ -263,27 +262,27 @@ class MockSerialPort(ITransport):
 
     @property
     def in_waiting(self) -> int:
-        """Returns the number of bytes buffered on the simulated COM1 RX path."""
+        """Số byte hiện có sẵn trong bộ đệm nhận COM1 mô phỏng."""
         if not self._is_open:
             return 0
         self._deliver_due()
         return len(self._rx_buffer)
 
     def flush(self) -> None:
-        """Flushes the simulated transmit path (no-op)."""
+        """Xả dữ liệu phát mô phỏng (no-op)."""
 
     def send_baud_command(self, baud: int) -> str:
-        """Records one COM2 baud switch command and updates the simulated rate.
+        """Ghi nhận lệnh chuyển đổi tốc độ Baud qua COM2 và cập nhật tốc độ mô phỏng.
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
 
         Returns:
-            The two-character firmware command.
+            Mã lệnh 2 ký tự ASCII tương ứng ("00", "01", "10", "11").
 
         Raises:
-            ValueError: If the baudrate has no firmware command.
-            RuntimeError: If the transport is closed.
+            ValueError: Nếu tốc độ Baud không được hỗ trợ.
+            RuntimeError: Nếu transport hoặc kênh điều khiển chưa được mở.
         """
         code = BAUD_COMMANDS.get(int(baud))
         if code is None:
@@ -303,13 +302,13 @@ class MockSerialPort(ITransport):
         return code
 
     def reconfigure_data_baud(self, baud: int) -> None:
-        """Updates the simulated COM1 baudrate.
+        """Cập nhật tốc độ Baud của kênh dữ liệu quang COM1 mô phỏng.
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud mới cần áp dụng.
 
         Raises:
-            ValueError: If the baudrate has no firmware command.
+            ValueError: Nếu tốc độ Baud không được hỗ trợ.
         """
         target = int(baud)
         if target not in BAUD_COMMANDS:
@@ -326,29 +325,29 @@ class MockSerialPort(ITransport):
 
     @property
     def simulated_optical_baud(self) -> int:
-        """Returns the optical baudrate currently simulated by the mock."""
+        """Tốc độ Baud quang học hiện đang được mô phỏng."""
         return self._simulated_optical_baud
 
     @property
     def dropped_by_loss(self) -> int:
-        """Returns cumulative frames dropped by simulated noise."""
+        """Tổng số khung truyền bị rớt do mô phỏng nhiễu đường truyền."""
         with self._lock:
             return self._dropped_by_loss
 
     @property
     def dropped_by_los(self) -> int:
-        """Returns cumulative frames dropped by simulated LOS blockage."""
+        """Tổng số khung truyền bị rớt do mô phỏng che khuất tia sáng (LOS)."""
         with self._lock:
             return self._dropped_by_los
 
     def flush_due(self, force: bool = False) -> int:
-        """Delivers pending echo frames for deterministic tests.
+        """Đẩy ngay lập tức các khung phản hồi lặp vòng phục vụ kiểm thử đơn định.
 
         Args:
-            force: True to deliver every pending frame regardless of its due time.
+            force: True để phân phối ngay toàn bộ khung mà không cần chờ hết thời gian trễ.
 
         Returns:
-            Number of frames delivered.
+            Số lượng khung đã được phân phối vào bộ đệm nhận.
         """
         due_frames: list[bytes] = []
         with self._lock:
@@ -369,17 +368,17 @@ class MockSerialPort(ITransport):
         return len(due_frames)
 
     def inject_rx_data(self, data: bytes) -> None:
-        """Injects raw bytes into the COM1 RX buffer.
+        """Bơm trực tiếp dòng byte thô vào bộ đệm nhận COM1 mô phỏng.
 
         Args:
-            data: Byte sequence to inject.
+            data: Chuỗi byte nhị phân cần nạp.
         """
         self._rx_buffer.write(data)
 
     def inject_packet(self, packet: WinFormPacket) -> None:
-        """Injects one pre-built packet into the COM1 RX buffer.
+        """Đóng gói và bơm một đối tượng WinFormPacket vào bộ đệm nhận COM1 mô phỏng.
 
         Args:
-            packet: Packet to serialize and deliver.
+            packet: Gói tin cần tuần tự hóa và nạp vào bộ đệm.
         """
         self._rx_buffer.write(pack_packet(packet.sequence, packet.data))

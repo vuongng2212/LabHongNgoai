@@ -1,4 +1,4 @@
-"""Application services layer for optical chat, file transfer, storage, and telemetry."""
+"""Tầng dịch vụ ứng dụng quản lý nhắn tin quang, truyền nhận file, lưu trữ dữ liệu và viễn trắc."""
 
 from ir_terminal.services.chat_service import ChatService
 from ir_terminal.services.file_transfer_service import FileTransferService

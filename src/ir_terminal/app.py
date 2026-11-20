@@ -1,4 +1,12 @@
-"""Application bootstrap, stylesheet loading, and dependency wiring."""
+"""Khởi tạo ứng dụng, nạp cấu hình và thiết lập liên kết phụ thuộc (Application Bootstrap & Dependency Injection).
+
+Module này chịu trách nhiệm:
+1. Phân tích cấu hình khởi động và thiết lập ngữ cảnh cô lập instance (Node A / Node B).
+2. Chiếm giữ khóa tệp tin chống mở trùng tiến trình (InstanceLock).
+3. Khởi động tiến trình LinkBroker nếu chạy ở vai trò Host (liên kết quang ảo).
+4. Khởi tạo và liên kết các thành phần kiến trúc: StorageService, SerialManager, FileTransferService,
+   ChatService, TelemetryService, BackendBridge và cửa sổ WebMainWindow.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +46,7 @@ _HELD_BROKER: LinkBroker | None = None
 
 
 def _ensure_qapp() -> QApplication:
-    """Returns the existing QApplication or creates the process one."""
+    """Trả về đối tượng QApplication hiện có hoặc khởi tạo một tiến trình QApplication mới."""
     existing = QApplication.instance()
     if isinstance(existing, QApplication):
         return existing
@@ -49,7 +57,7 @@ def _ensure_qapp() -> QApplication:
 
 
 def _build_serial_manager(config: LaunchConfig) -> SerialManager:
-    """Builds a SerialManager wired for the selected transport/link mode."""
+    """Khởi tạo SerialManager được kết nối với chế độ truyền tải (phần cứng hoặc socket link) đã chọn."""
     return SerialManager(
         link_endpoints=config.link_endpoints if config.link_active else None,
         include_link=config.link_active,
@@ -67,7 +75,7 @@ def _build_chat_service(
     storage_service: StorageService,
     file_service: FileTransferService | None = None,
 ) -> ChatService:
-    """Builds the chat service with instance-aware station names."""
+    """Khởi tạo dịch vụ trò chuyện ChatService với tên trạm nhận diện tương ứng của instance."""
     if ctx.instance_id is not None:
         return ChatService(
             serial_manager=serial_manager,
@@ -89,22 +97,20 @@ def create_app(
     *,
     acquire_lock: bool = False,
 ) -> tuple[QApplication, WebMainWindow]:
-    """Bootstraps and configures the Qt application instance.
+    """Khởi động toàn bộ các tầng phụ thuộc và tạo phiên cửa sổ ứng dụng Qt.
 
     Args:
-        config: Parsed launch configuration. When omitted, a minimal config is
-            built from ``instance`` / env (backward-compatible callers).
-        instance: Optional dual-mock instance name (A/B), used only when
-            ``config`` is not provided.
-        acquire_lock: When True, enforce one process per instance data dir.
+        config: Cấu hình tham số khởi động đã phân tích (hoặc None để suy luận từ instance/môi trường).
+        instance: Tên instance tùy chọn (A hoặc B), chỉ dùng khi không truyền config.
+        acquire_lock: True để chiếm giữ khóa chống mở trùng tiến trình trên thư mục dữ liệu.
 
     Returns:
-        A tuple of (QApplication, WebMainWindow).
+        Tuple gồm đối tượng (QApplication, WebMainWindow).
 
     Raises:
-        InvalidInstanceIdError: If the instance id is not a safe label.
-        InstanceLockError: If another process holds the same instance lock.
-        OSError: If the host link broker cannot bind its TCP ports.
+        InvalidInstanceIdError: Nếu định danh instance không hợp lệ.
+        InstanceLockError: Nếu tiến trình khác đang chiếm giữ khóa của cùng một instance.
+        OSError: Nếu Broker không thể gán cổng TCP khi chạy ở vai trò Host.
     """
     if config is None:
         config = LaunchConfig(
@@ -250,7 +256,7 @@ def create_app(
 
 
 def _run_broker_only(config: LaunchConfig) -> int:
-    """Runs only the in-app link broker (headless) until interrupted."""
+    """Khởi chạy Broker liên kết quang ảo ở chế độ độc lập (không giao diện UI) cho đến khi bị ngắt."""
     ctx = build_instance_context(config)
     logger, _ = setup_logger(log_dir=ctx.logs_dir)
     broker = LinkBroker(
@@ -279,18 +285,13 @@ def _run_broker_only(config: LaunchConfig) -> int:
 
 
 def run(argv: list[str] | None = None) -> int:
-    """Application main entry point.
-
-    Examples:
-        ``IR_OWC_Lab_Terminal.exe --instance A --link-role host --auto-connect``
-        ``IR_OWC_Lab_Terminal.exe --instance B --link-role join --auto-connect``
-        ``IR_OWC_Lab_Terminal.exe --instance A --port COM11 --auto-connect``
+    """Điểm vào chính của ứng dụng IR-OWC Lab Terminal.
 
     Args:
-        argv: Optional CLI argument list (defaults to ``sys.argv[1:]``).
+        argv: Danh sách tham số dòng lệnh CLI tùy chọn (mặc định sys.argv[1:]).
 
     Returns:
-        Exit code integer.
+        Mã thoát tiến trình.
     """
     config = parse_launch_args(argv)
     if config.broker_only:

@@ -1,4 +1,10 @@
-"""Transport factory selecting the concrete ITransport implementation."""
+"""Nhà máy khởi tạo tầng truyền tải (Transport Factory) lựa chọn đối tượng ITransport phù hợp.
+
+Dựa trên tiền tố và định dạng của tên cổng COM do người dùng chọn:
+- Cổng bắt đầu bằng "MOCK": Khởi tạo MockSerialPort giả lập trong bộ nhớ.
+- Cổng bắt đầu bằng "LINK_": Khởi tạo SocketTransport kết nối TCP loopback tới Broker.
+- Cổng COM phần cứng chuẩn: Khởi tạo DualSerialTransport giao tiếp trực tiếp qua driver Serial.
+"""
 
 from __future__ import annotations
 
@@ -33,23 +39,23 @@ def create_transport(
     tx_port: str | None = None,
     rx_port: str | None = None,
 ) -> ITransport:
-    """Creates the transport for a COM1 data port and a COM2 control port.
+    """Khởi tạo đối tượng truyền tải ITransport tương ứng cho kênh dữ liệu COM1 và điều khiển COM2.
 
     Args:
-        data_port: COM1 optical data port identifier.
-        ctrl_port: COM2 STM32 control port identifier, or None.
-        baudrate: Optical data baudrate.
-        ctrl_baudrate: Fixed MCU control baudrate.
-        link_endpoints: Optional LINK_* to ``(host, port)`` override map.
-        link_connect_retries: Extra LINK connect attempts.
-        link_retry_interval_sec: Delay between LINK connect attempts.
-        link_connect_timeout_sec: Per-attempt LINK connect timeout.
-        link_token: Optional shared token for the broker handshake.
-        tx_port: Legacy alias for ``data_port``.
-        rx_port: Legacy alias for ``ctrl_port``.
+        data_port: Tên định danh cổng nối tiếp dữ liệu quang COM1.
+        ctrl_port: Tên định danh cổng nối tiếp điều khiển STM32 COM2, hoặc None.
+        baudrate: Tốc độ Baud quang học áp dụng cho COM1.
+        ctrl_baudrate: Tốc độ Baud vi điều khiển áp dụng cho COM2 (115200 bps).
+        link_endpoints: Bảng ánh xạ tùy chọn cổng ảo LINK_* tới địa chỉ (host, port).
+        link_connect_retries: Số lần thử lại kết nối cho cổng LINK.
+        link_retry_interval_sec: Khoảng thời gian giãn cách giữa các lần thử kết nối LINK (giây).
+        link_connect_timeout_sec: Thời gian chờ tối đa cho mỗi lần kết nối socket LINK (giây).
+        link_token: Token xác thực tùy chọn khi bắt tay với LinkBroker.
+        tx_port: Tên thay thế tương thích ngược cho data_port.
+        rx_port: Tên thay thế tương thích ngược cho ctrl_port.
 
     Returns:
-        Concrete, not-yet-opened ITransport instance.
+        Đối tượng cụ thể kế thừa ITransport đã được khởi tạo (chưa mở cổng).
     """
     data_name = (data_port or tx_port or "").strip()
     ctrl_name = (ctrl_port if ctrl_port is not None else rx_port) or ""

@@ -1,6 +1,7 @@
-"""Structured logging system with subsystem IoT tags, rotating files, and Qt Signal sink.
+"""Hệ thống ghi log có cấu trúc tích hợp thẻ phân loại IoT, xoay vòng file và phát tín hiệu Qt Signal.
 
-Follows Google Python Style Guide docstring conventions.
+Cung cấp các thẻ LogTag giúp lọc và chẩn đoán sự cố phần cứng IoT nối tiếp, lớp vật lý quang,
+đóng khung giao thức WinForm, dịch vụ chat, truyền nhận file và cầu nối IPC.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from PySide6.QtCore import QObject, Signal
 
 
 class LogTag(StrEnum):
-    """Subsystem categorization tags for IoT hardware troubleshooting."""
+    """Thẻ định danh phân loại hệ thống con phục vụ khoanh vùng sự cố phần cứng IoT."""
 
     HW_SERIAL = "[HW_SERIAL]"
     OPTICAL_PHY = "[OPTICAL_PHY]"
@@ -39,14 +40,14 @@ MAX_HEX_PREVIEW_BYTES: int = 32
 def format_hex_preview(
     data: bytes | bytearray | memoryview, max_bytes: int = MAX_HEX_PREVIEW_BYTES
 ) -> str:
-    """Formats bytes as truncated upper-case hex for single-line log context.
+    """Định dạng chuỗi byte thành biểu diễn thập lục phân viết hoa rút gọn trên một dòng log.
 
     Args:
-        data: Raw bytes to preview.
-        max_bytes: Maximum bytes rendered before truncation.
+        data: Dữ liệu byte thô cần xem trước.
+        max_bytes: Số byte tối đa được hiển thị trước khi cắt bớt (mặc định 32 bytes).
 
     Returns:
-        String like ``55 AA 02 ... (len=240B, shown=32B)`` or ``<empty>``.
+        Chuỗi ký tự dạng: "55 AA 02 ... (len=240B, shown=32B)" hoặc "<empty>".
     """
     total = len(data)
     if total == 0:
@@ -60,7 +61,7 @@ def format_hex_preview(
 
 
 class QtLogEmitter(QObject):
-    """Qt Object that emits a signal whenever a log record is formatted."""
+    """Đối tượng Qt phát tín hiệu signal mỗi khi một bản ghi log mới được định dạng."""
 
     record_logged: ClassVar[Signal] = Signal(str, str, str)
 
@@ -69,7 +70,7 @@ _qt_log_emitter = QtLogEmitter()
 
 
 class QtSignalLogHandler(logging.Handler):
-    """Custom logging handler routing log messages directly to Qt Signal sink."""
+    """Bộ xử lý log tùy biến chuyển tiếp các thông điệp log trực tiếp tới Qt Signal sink."""
 
     def __init__(self, emitter: QtLogEmitter) -> None:
         super().__init__()
@@ -84,7 +85,7 @@ class QtSignalLogHandler(logging.Handler):
 
 
 def _add_file_handler(logger: logging.Logger, log_dir: Path) -> None:
-    """Attaches (once) a rotating file handler for the given directory."""
+    """Gắn bộ xử lý tệp xoay vòng RotatingFileHandler vào logger cho thư mục tương ứng."""
     from logging.handlers import RotatingFileHandler as _RFH
 
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -103,13 +104,7 @@ def _add_file_handler(logger: logging.Logger, log_dir: Path) -> None:
 
 
 def _retarget_file_handler(logger: logging.Logger, log_dir: Path) -> None:
-    """Moves the rotating file handler to ``log_dir`` if it points elsewhere.
-
-    Used when a logger was already configured (for example by an earlier call
-    in the same process) but the instance-specific log directory is only known
-    afterwards. Removes any stale rotating handler first so two processes never
-    share one ``app.log`` handle.
-    """
+    """Chuyển hướng tệp log xoay vòng sang thư mục log_dir của phiên tiến trình hiện hành."""
     log_dir.mkdir(parents=True, exist_ok=True)
     target = (log_dir / "app.log").resolve()
     for h in list(logger.handlers):
@@ -133,17 +128,14 @@ def setup_logger(
     log_dir: Path | None = None,
     log_level: int = logging.INFO,
 ) -> tuple[logging.Logger, QtLogEmitter]:
-    """Configures root application logger with console, rotating file, and Qt handlers.
+    """Cấu hình bộ ghi log ứng dụng với đầu ra console, tệp xoay vòng app.log và Qt Signal handler.
 
     Args:
-        log_dir: Directory where log files are stored. Defaults to the
-            application data tree (``<exe or project root>/data/logs``).
-        log_level: Base logging severity level.
+        log_dir: Thư mục lưu trữ tệp nhật ký (mặc định lấy theo thư mục logs của ứng dụng).
+        log_level: Cấp độ chi tiết của log (mặc định logging.INFO).
 
     Returns:
-        A tuple containing:
-            - Root configured logger instance.
-            - QtLogEmitter instance for UI subscribers.
+        Tuple gồm đối tượng Logger gốc và QtLogEmitter để giao diện UI đăng ký nhận thông báo.
     """
     logger = logging.getLogger("ir_terminal")
     logger.setLevel(log_level)

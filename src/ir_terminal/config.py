@@ -1,13 +1,10 @@
-"""Launch configuration and per-instance isolation context.
+"""Cấu hình khởi động và ngữ cảnh cô lập cho từng tiến trình (Launch Configuration & Instance Isolation).
 
-A single build of IR-OWC Lab Terminal can run as one production app, or as two
-independent nodes (``--instance A`` / ``--instance B``) on the same PC. This
-module is the single source of truth for:
-
-* CLI/env parsing (:class:`LaunchConfig` + :func:`parse_launch_args`), and
-* filesystem isolation (:class:`InstanceContext` + :func:`build_instance_context`)
-
-so ``app.py`` no longer has to guess the instance after logging starts.
+Hỗ trợ chạy ứng dụng ở chế độ đơn lẻ (single production app) hoặc chạy song song hai node
+độc lập (--instance A / --instance B) trên cùng một máy tính cá nhân.
+Module này là nguồn chân lý duy nhất (single source of truth) cho việc:
+- Phân tích tham số dòng lệnh CLI và biến môi trường (LaunchConfig và parse_launch_args).
+- Phân tách độc lập hệ thống tệp tin, dữ liệu, logs và WebEngine profile (InstanceContext và build_instance_context).
 """
 
 from __future__ import annotations
@@ -52,7 +49,7 @@ LINK_CONNECT_ATTEMPT_TIMEOUT_SEC: float = 0.5
 
 @dataclass(frozen=True)
 class LaunchConfig:
-    """Immutable launch options for a single application process."""
+    """Tùy chọn cấu hình khởi động bất biến cho một tiến trình ứng dụng."""
 
     instance: str | None = None
     transport: str = "auto"
@@ -78,7 +75,7 @@ class LaunchConfig:
 
     @property
     def effective_link_role(self) -> str:
-        """Resolves ``auto`` to ``host`` (Node A / default) or ``join`` (Node B)."""
+        """Giải quyết vai trò link 'auto' thành 'host' (Node A/mặc định) hoặc 'join' (Node B)."""
         role = (self.link_role or "off").strip().lower()
         if role != "auto":
             return role
@@ -87,12 +84,12 @@ class LaunchConfig:
 
     @property
     def link_active(self) -> bool:
-        """Returns True when an in-app TCP link (host/join) is requested."""
+        """Kiểm tra liên kết TCP ảo nội bộ (host hoặc join) có được kích hoạt hay không."""
         return self.effective_link_role in ("host", "join")
 
     @property
     def effective_data_port(self) -> str | None:
-        """Returns the primary COM1 Data port."""
+        """Tên định danh cổng dữ liệu quang COM1 ưu tiên."""
         for candidate in (self.data_port, self.tx_port, self.port):
             if candidate and candidate.strip():
                 return candidate.strip()
@@ -100,7 +97,7 @@ class LaunchConfig:
 
     @property
     def effective_ctrl_port(self) -> str | None:
-        """Returns the COM2 STM32 Control port."""
+        """Tên định danh cổng điều khiển STM32 COM2 ưu tiên."""
         for candidate in (self.ctrl_port, self.rx_port, self.port):
             if candidate and candidate.strip():
                 return candidate.strip()
@@ -108,21 +105,17 @@ class LaunchConfig:
 
     @property
     def effective_tx_port(self) -> str | None:
-        """Legacy alias: returns COM1 data port."""
+        """Tên thay thế tương thích ngược cho effective_data_port."""
         return self.effective_data_port
 
     @property
     def effective_rx_port(self) -> str | None:
-        """Legacy alias: returns COM2 control port."""
+        """Tên thay thế tương thích ngược cho effective_ctrl_port."""
         return self.effective_ctrl_port
 
     @property
     def preferred_port(self) -> str | None:
-        """Returns the port the UI should preselect / auto-connect to.
-
-        Precedence: explicit ``--tx-port``/``--port`` wins, then the LINK port
-        derived from the role, then the mock loopback when ``--transport mock``.
-        """
+        """Tên cổng nối tiếp mà Web UI nên ưu tiên chọn trước hoặc tự động kết nối."""
         if self.effective_tx_port:
             return self.effective_tx_port
         role = self.effective_link_role
@@ -136,7 +129,7 @@ class LaunchConfig:
 
     @property
     def link_endpoints(self) -> dict[str, tuple[str, int]]:
-        """Maps virtual LINK port names to the configured TCP endpoints."""
+        """Ánh xạ tên cổng ảo LINK_* tới endpoint TCP (host, port) tương ứng."""
         base = self.link_base_port
         return {
             DEFAULT_LINK_A_PORT_NAME: (self.link_host, base),
@@ -146,7 +139,7 @@ class LaunchConfig:
 
 @dataclass(frozen=True)
 class InstanceContext:
-    """Resolved per-instance filesystem layout and user-facing identity."""
+    """Ngữ cảnh phân tách hệ thống tệp và định danh hiển thị của từng phiên tiến trình."""
 
     instance_id: str | None
     data_dir: Path
@@ -164,7 +157,7 @@ class InstanceContext:
 
 
 def _role_label(config: LaunchConfig) -> str:
-    """Returns a short human label for the active transport role."""
+    """Tạo nhãn hiển thị ngắn gọn cho vai trò của tầng truyền tải hiện hành."""
     role = config.effective_link_role
     if role == "host":
         return "Host"
@@ -178,7 +171,7 @@ def _role_label(config: LaunchConfig) -> str:
 
 
 def _station_names(instance: str | None) -> tuple[str, str]:
-    """Returns (local, remote) chat station names for the instance role."""
+    """Trả về cặp tên trạm (local, remote) phù hợp với định danh node trong giao diện chat."""
     alpha, bravo = "Station Alpha", "Station Bravo"
     if instance == "B":
         return bravo, alpha
@@ -188,7 +181,7 @@ def _station_names(instance: str | None) -> tuple[str, str]:
 
 
 def _window_title(display_name: str, role_label: str, port: str | None) -> str:
-    """Builds a window title that makes dual-node identity obvious."""
+    """Tạo tiêu đề cửa sổ ứng dụng giúp phân biệt trực quan giữa hai node."""
     from ir_terminal import __version__
 
     base = f"SpectraLink IR-OWC Workstation v{__version__}"
@@ -200,16 +193,16 @@ def _window_title(display_name: str, role_label: str, port: str | None) -> str:
 
 
 def build_instance_context(config: LaunchConfig) -> InstanceContext:
-    """Resolves the isolated data layout and identity for a launch config.
+    """Thiết lập cấu trúc thư mục dữ liệu độc lập và ngữ cảnh định danh cho cấu hình khởi động.
 
     Args:
-        config: Parsed launch options.
+        config: Cấu hình tham số khởi động đã được phân tích.
 
     Returns:
-        InstanceContext with every directory pre-created.
+        Đối tượng InstanceContext đã tạo sẵn toàn bộ các thư mục cần thiết.
 
     Raises:
-        InvalidInstanceIdError: If ``config.instance`` is not a safe label.
+        InvalidInstanceIdError: Nếu định danh instance không an toàn hoặc không hợp lệ.
     """
     instance = normalize_instance_id(config.instance)
     data_dir = get_app_data_dir(instance)
@@ -244,16 +237,13 @@ def build_instance_context(config: LaunchConfig) -> InstanceContext:
 
 
 def parse_launch_args(argv: list[str] | None = None) -> LaunchConfig:
-    """Parses CLI arguments (plus IR_INSTANCE / IR_ENABLE_DUAL_MOCK env).
-
-    Unknown args are ignored so the desktop launcher can pass through platform
-    flags (mirrors the previous ``parse_known_args`` behavior).
+    """Phân tích các đối số dòng lệnh CLI và biến môi trường IR_INSTANCE / IR_ENABLE_DUAL_MOCK.
 
     Args:
-        argv: Argument list, or None to use ``sys.argv[1:]``.
+        argv: Danh sách tham số dòng lệnh tùy chọn (hoặc None để dùng sys.argv[1:]).
 
     Returns:
-        Immutable LaunchConfig.
+        Đối tượng LaunchConfig bất biến chứa toàn bộ tham số khởi động.
     """
     parser = argparse.ArgumentParser(
         prog="IR_OWC_Lab_Terminal",

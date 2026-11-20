@@ -1,9 +1,8 @@
-"""Single-instance lock guarding one application data directory.
+"""Cơ chế khóa tiến trình (Instance Lock) bảo vệ thư mục dữ liệu ứng dụng.
 
-Two processes pointed at the same ``data/instances/<id>/`` would fight over the
-same JSON stores and serial/TCP port. A per-data-directory :class:`QLockFile`
-prevents accidentally opening the same node twice while still allowing Node A
-and Node B (different data dirs) to run side by side.
+Ngăn chặn việc mở trùng lặp hai tiến trình trên cùng một thư mục dữ liệu data/instances/<id>/
+nhằm tránh xung đột ghi đè các tệp JSON và tranh chấp cổng nối tiếp COM.
+Sử dụng QLockFile theo từng thư mục để vẫn cho phép Node A và Node B chạy song song đồng thời.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ DEFAULT_STALE_LOCK_MS: int = 30_000
 
 
 class InstanceLockError(RuntimeError):
-    """Raised when another process already holds the instance lock."""
+    """Ngoại lệ phát sinh khi một tiến trình khác đã chiếm giữ khóa thư mục dữ liệu."""
 
 
 def acquire_instance_lock(
@@ -26,19 +25,19 @@ def acquire_instance_lock(
     stale_ms: int = DEFAULT_STALE_LOCK_MS,
     timeout_ms: int = 200,
 ) -> QLockFile | None:
-    """Acquires the per-instance lock file.
+    """Chiếm giữ khóa tệp tin QLockFile cho phiên tiến trình hiện hành.
 
     Args:
-        lock_path: Path to ``<data_dir>/app.lock``.
-        allow_multiple: When True, locking is disabled (``--allow-multiple``).
-        stale_ms: Age after which a lock left by a crashed process is stolen.
-        timeout_ms: How long to wait for the lock before failing.
+        lock_path: Đường dẫn tệp tin khóa (ví dụ: <data_dir>/app.lock).
+        allow_multiple: Khi là True, bỏ qua kiểm tra khóa (--allow-multiple).
+        stale_ms: Thời gian tính bằng ms để tự động thu hồi khóa nếu tiến trình trước bị crash bất thường.
+        timeout_ms: Thời gian chờ tối đa để chiếm giữ khóa trước khi báo lỗi.
 
     Returns:
-        The held QLockFile, or None when locking is disabled.
+        Đối tượng QLockFile đang giữ khóa, hoặc None nếu cho phép chạy nhiều tiến trình.
 
     Raises:
-        InstanceLockError: If another process currently holds the lock.
+        InstanceLockError: Nếu tiến trình khác hiện đang nắm giữ khóa của thư mục này.
     """
     if allow_multiple:
         return None

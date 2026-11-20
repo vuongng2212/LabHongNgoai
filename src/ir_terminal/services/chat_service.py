@@ -1,12 +1,12 @@
-"""Optical chat service utilizing virtual file envelopes over the WinForm wire protocol.
+"""Dịch vụ nhắn tin quang thời gian thực qua bao thư file ảo (Virtual File Chat Envelope).
 
-The WinForm C# firmware contract only understands file transfers (HEADER, DATA, END).
-To enable real-time messaging without modifying the 8-byte wire overhead or STM32
-forwarding logic, outgoing text messages are packed in-memory into a virtual file
-envelope named ``_chat_<timestamp>_<station>.txt``.
+Giao thức phần cứng chuẩn WinForm C# và STM32 vốn chỉ hỗ trợ các gói truyền file (HEADER, DATA, END).
+Để truyền tin nhắn văn bản tức thời hai chiều mà không phải sửa đổi 1 bit cấu trúc wire format 8 byte
+hay nạp lại firmware cho MCU, tin nhắn UTF-8 được đóng gói trong bộ nhớ RAM thành một file ảo mang tên:
+    _chat_<YYYYMMDD_HHMMSS>_<StationName>.txt
 
-Incoming envelopes with the ``_chat_`` prefix are demultiplexed in RAM by the
-file transfer service and delivered directly to this service without touching disk.
+Phía nhận phát hiện tiền tố '_chat_' sẽ xử lý trực tiếp trong RAM (in-memory) và hiển thị lên giao diện
+chat trong thời gian < 100 ms mà không cần ghi file tạm xuống ổ cứng.
 """
 
 from __future__ import annotations
@@ -91,13 +91,16 @@ class ChatService(QObject):
         )
 
     def send_message(self, text: str) -> bool:
-        """Encapsulates and transmits a text message via a virtual file envelope.
+        """Đóng gói nội dung tin nhắn văn bản UTF-8 vào bao thư file ảo và truyền qua kênh quang.
+
+        Tạo tên file theo định dạng: _chat_<timestamp>_<station>.txt
+        Kích hoạt FileTransferService gửi phiên file in-memory với trình tự: HEADER -> DATA -> END.
 
         Args:
-            text: Message text supplied by the UI.
+            text: Nội dung văn bản người dùng nhập từ giao diện chat.
 
         Returns:
-            True if the transfer was initiated; False if channel is busy or invalid.
+            True nếu phiên truyền được kích hoạt thành công; False nếu kênh truyền đang bận.
         """
         clean_text = (text or "").strip()
         if not clean_text:

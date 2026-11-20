@@ -1,4 +1,7 @@
-"""Abstract Base Classes and Protocol contracts for hardware I/O and transport."""
+"""Giao diện trừu tượng và hợp đồng giao thức cho tầng truyền tải phần cứng (ITransport).
+
+Quy định các hành vi chuẩn cho việc giao tiếp dòng byte (Serial vật lý, Cổng COM ảo, Mock Loopback, Socket Transport).
+"""
 
 from __future__ import annotations
 
@@ -7,79 +10,79 @@ from collections.abc import Callable
 
 
 class ITransport(ABC):
-    """Abstract interface for byte stream transport (Serial / Virtual COM / Mock)."""
+    """Lớp cơ sở trừu tượng (Abstract Base Class) quy định giao diện chuẩn cho tầng truyền tải."""
 
     @property
     def poll_interval_ms(self) -> int:
-        """Returns the RX polling interval in milliseconds for this transport."""
+        """Chu kỳ định thời thăm dò (polling interval) nhận dữ liệu tính bằng mili-giây (ms)."""
         return 10
 
     @abstractmethod
     def open(self) -> None:
-        """Opens the transport medium."""
+        """Mở kết nối tới môi trường truyền thông vật lý hoặc logic."""
 
     @abstractmethod
     def close(self) -> None:
-        """Closes the transport medium."""
+        """Đóng kết nối và giải phóng tài nguyên phần cứng."""
 
     @property
     @abstractmethod
     def is_open(self) -> bool:
-        """Returns True if the transport connection is currently active."""
+        """Kiểm tra xem kết nối truyền tải hiện có đang ở trạng thái mở hay không."""
 
     @abstractmethod
     def write(self, data: bytes) -> int:
-        """Writes binary data to the transport medium.
+        """Ghi dữ liệu nhị phân xuống kênh truyền.
 
         Args:
-            data: Raw bytes to transmit.
+            data: Chuỗi byte thô cần truyền đi.
 
         Returns:
-            Number of bytes written.
+            Số lượng byte thực tế đã được ghi thành công.
         """
 
     @abstractmethod
     def read(self, size: int | None = None) -> bytes:
-        """Reads up to size bytes from the transport buffer.
+        """Đọc dữ liệu từ bộ đệm nhận của kênh truyền.
 
         Args:
-            size: Maximum number of bytes to read, or None to read all available.
+            size: Số lượng byte tối đa cần đọc, hoặc None để đọc toàn bộ dữ liệu có sẵn.
 
         Returns:
-            Bytes read from the buffer.
+            Chuỗi byte nhận được từ bộ đệm.
         """
 
     @property
     @abstractmethod
     def in_waiting(self) -> int:
-        """Returns number of bytes currently available to read."""
+        """Số lượng byte hiện có sẵn trong bộ đệm nhận để đọc."""
 
     @abstractmethod
     def flush(self) -> None:
-        """Flushes the outgoing transmit buffer to the physical medium."""
+        """Xả sạch toàn bộ dữ liệu trong hàng đợi phát xuống môi trường vật lý."""
 
     def send_baud_command(self, baud: int) -> str:
-        """Sends a baud switch command over the control channel.
+        """Gửi lệnh chuyển đổi tốc độ Baud qua kênh điều khiển (ví dụ: COM2 STM32).
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
 
         Returns:
-            The two-character command code accepted by the firmware.
+            Chuỗi 2 ký tự mã lệnh ASCII được firmware chấp nhận ("00", "01", "10", "11").
 
         Raises:
-            NotImplementedError: When the transport has no control channel.
+            NotImplementedError: Nếu transport hiện hành không hỗ trợ kênh điều khiển riêng.
         """
         raise NotImplementedError(f"{type(self).__name__} does not expose a control channel")
 
     def reconfigure_data_baud(self, baud: int) -> None:
-        """Updates the optical data channel baudrate.
+        """Tái cấu hình tốc độ Baud của kênh dữ liệu quang (COM1).
 
         Args:
-            baud: Target optical baudrate.
+            baud: Tốc độ Baud quang học mới cần áp dụng.
 
         Raises:
-            NotImplementedError: When the transport cannot reconfigure its data rate.
+            NotImplementedError: Nếu transport không hỗ trợ thay đổi tốc độ kênh dữ liệu.
         """
         raise NotImplementedError(f"{type(self).__name__} cannot reconfigure the data baudrate")
 

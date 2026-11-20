@@ -1,9 +1,11 @@
-"""Durable file-based storage repository for chat history, file logs, and telemetry.
+"""Dịch vụ lưu trữ dữ liệu bền vững trên tệp tin JSON và xuất báo cáo CSV (Storage Service).
 
-Replaces the former SQLite backend with plain JSON document files under the
-application data directory. Client scope does not need a relational database:
-each collection is a JSON array file written atomically (temporary file plus
-rename) under a threading lock, so background Qt threads can persist safely.
+Lưu trữ các tập dữ liệu người dùng dưới dạng các tệp JSON nguyên tử (atomic write thông qua tệp tạm):
+- Lịch sử tin nhắn nhắn tin quang học (chat_history.json).
+- Nhật ký các phiên truyền và nhận file (file_transfers.json).
+- Mẫu lịch sử viễn trắc đo lường kênh truyền (telemetry_samples.json).
+- Cấu hình cài đặt người dùng (settings.json).
+Bảo vệ bằng khóa threading.Lock đảm bảo an toàn truy cập đồng thời từ các luồng Qt Worker.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ _MAX_TRANSFER_RECORDS = 5000
 
 
 class ChatMessageRecord(TypedDict):
-    """File record representation of a chat message."""
+    """Bản ghi dữ liệu của một tin nhắn văn bản trong lịch sử trò chuyện."""
 
     id: int
     sender: str
@@ -46,7 +48,7 @@ class ChatMessageRecord(TypedDict):
 
 
 class FileTransferRecord(TypedDict):
-    """File record representation of a file transfer event."""
+    """Bản ghi dữ liệu của một phiên truyền hoặc nhận file."""
 
     id: int
     filename: str
@@ -61,7 +63,7 @@ class FileTransferRecord(TypedDict):
 
 
 class TelemetryRecord(TypedDict):
-    """File record representation of an optical link telemetry sample."""
+    """Bản ghi dữ liệu của một mẫu đo lường viễn trắc kênh truyền quang học."""
 
     id: int
     timestamp_epoch: float
@@ -74,18 +76,18 @@ class TelemetryRecord(TypedDict):
 
 
 def _utc_now_iso() -> str:
-    """Returns current UTC time as an ISO-8601 string."""
+    """Trả về thời gian UTC hiện tại theo định dạng chuỗi chuẩn ISO-8601."""
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 class StorageService:
-    """Manages durable JSON file stores on local hard drive with CSV export."""
+    """Quản lý các kho lưu trữ tệp tin JSON cục bộ và xuất báo cáo dữ liệu định dạng CSV."""
 
     def __init__(self, data_dir: Path | None = None) -> None:
-        """Initializes storage service with specified or default data directory.
+        """Khởi tạo dịch vụ lưu trữ với thư mục dữ liệu được chỉ định hoặc mặc định.
 
         Args:
-            data_dir: Optional explicit directory holding the JSON store files.
+            data_dir: Đường dẫn thư mục chứa các tệp JSON lưu trữ (hoặc None để dùng mặc định).
         """
         self._data_dir = data_dir if data_dir is not None else get_data_dir()
         self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -98,11 +100,11 @@ class StorageService:
         )
 
     def _store_path(self, filename: str) -> Path:
-        """Returns absolute path of a JSON store file."""
+        """Trả về đường dẫn tuyệt đối của tệp JSON lưu trữ."""
         return self._data_dir / filename
 
     def _backup_corrupt(self, path: Path) -> None:
-        """Renames a corrupt store to .corrupt-TIMESTAMP instead of wiping silently."""
+        """Đổi tên tệp bị lỗi định dạng sang đuôi .corrupt-TIMESTAMP thay vì xóa đè âm thầm."""
         try:
             size = path.stat().st_size if path.exists() else -1
             backup = path.with_suffix(f"{path.suffix}.corrupt-{int(__import__('time').time())}")
@@ -124,7 +126,7 @@ class StorageService:
             )
 
     def _load_list(self, filename: str) -> list[dict[str, Any]]:
-        """Reads a JSON array store, recovering to empty on missing/corrupt data."""
+        """Đọc danh sách bản ghi từ tệp JSON, tự động phục hồi nếu thiếu tệp hoặc lỗi định dạng."""
         path = self._store_path(filename)
         try:
             raw = path.read_text(encoding="utf-8")
@@ -174,7 +176,7 @@ class StorageService:
         return items
 
     def _save_list(self, filename: str, records: list[dict[str, Any]]) -> None:
-        """Atomically rewrites a JSON array store via temporary file plus rename."""
+        """Ghi đè nguyên tử danh sách bản ghi ra tệp JSON thông qua tệp tạm thời và đổi tên."""
         import os
 
         path = self._store_path(filename)
@@ -187,7 +189,7 @@ class StorageService:
 
     @staticmethod
     def _next_id(records: list[dict[str, Any]]) -> int:
-        """Returns monotonic id (max+1), safe after pruning."""
+        """Sinh mã định danh ID tăng dần đơn điệu (max + 1), an toàn ngay cả khi bị cắt tỉa dữ liệu cũ."""
         if not records:
             return 1
         try:
@@ -196,7 +198,7 @@ class StorageService:
             return len(records) + 1
 
     def _load_settings(self) -> dict[str, str]:
-        """Reads the settings object store, recovering to empty on bad data."""
+        """Đọc tệp cài đặt JSON, tự động phục hồi về từ điển rỗng nếu dữ liệu bị lỗi."""
         path = self._store_path(_SETTINGS_FILE)
         try:
             raw = path.read_text(encoding="utf-8")
@@ -215,7 +217,7 @@ class StorageService:
     def _append_record(
         self, filename: str, record: dict[str, Any], max_records: int | None = None
     ) -> int:
-        """Appends one record with monotonic id, returns the id."""
+        """Thêm một bản ghi mới với ID tăng đơn điệu và giới hạn số lượng bản ghi tối đa."""
         with self._lock:
             records = self._load_list(filename)
             record_id = self._next_id(records)
@@ -235,17 +237,17 @@ class StorageService:
         seq: int,
         is_outgoing: bool,
     ) -> int:
-        """Persists a chat message to hard drive.
+        """Lưu trữ một tin nhắn trò chuyện xuống tệp JSON chat_history.json.
 
         Args:
-            sender: Sender node identifier string.
-            text: UTF-8 message content string.
-            timestamp: Formatted time string (HH:MM:SS).
-            seq: Protocol packet sequence number.
-            is_outgoing: True if transmitted locally; False if received from remote.
+            sender: Tên định danh của trạm gửi tin nhắn.
+            text: Nội dung văn bản tin nhắn (mã hóa UTF-8).
+            timestamp: Chuỗi thời gian hiển thị (HH:MM:SS).
+            seq: Số thứ tự sequence của khung truyền.
+            is_outgoing: True nếu tin nhắn do trạm này gửi đi; False nếu nhận từ trạm đối tác.
 
         Returns:
-            Sequential ID of the stored chat message record.
+            Mã định danh ID số nguyên tăng dần của bản ghi tin nhắn.
         """
         msg_id = self._append_record(
             _CHAT_FILE,
@@ -271,13 +273,13 @@ class StorageService:
         return msg_id
 
     def get_chat_history(self, limit: int = 100) -> list[ChatMessageRecord]:
-        """Retrieves recent chat messages from hard drive.
+        """Truy xuất lịch sử tin nhắn trò chuyện gần nhất từ tệp JSON.
 
         Args:
-            limit: Maximum number of most recent records to fetch.
+            limit: Số lượng bản ghi tin nhắn tối đa cần lấy.
 
         Returns:
-            List of ChatMessageRecord items ordered chronologically.
+            Danh sách các bản ghi ChatMessageRecord sắp xếp theo thứ tự thời gian.
         """
         with self._lock:
             records = self._load_list(_CHAT_FILE)
@@ -306,20 +308,20 @@ class StorageService:
         duration_sec: float,
         status: str,
     ) -> int:
-        """Persists a file transfer record to hard drive.
+        """Lưu trữ thông tin phiên truyền nhận file xuống tệp JSON file_transfers.json.
 
         Args:
-            filename: Base name of the transferred file.
-            file_path: Local filesystem path where file resides.
-            direction: Transfer direction ('TX' or 'RX').
-            size_bytes: Total file size in bytes.
-            crc32_hex: Formatted CRC-32 checksum string (e.g. '0x1A2B3C4D').
-            speed_kbps: Average transfer rate in KB/s.
-            duration_sec: Total duration in seconds.
-            status: Outcome status ('SUCCESS', 'FAILED', 'ABORTED').
+            filename: Tên gốc của tệp tin.
+            file_path: Đường dẫn tệp tin trên hệ thống tập tin cục bộ.
+            direction: Hướng truyền dữ liệu ('TX' hoặc 'RX').
+            size_bytes: Dung lượng file tính bằng byte.
+            crc32_hex: Chuỗi mã kiểm tra CRC-32 định dạng hexa (ví dụ: '0x1A2B3C4D').
+            speed_kbps: Tốc độ truyền trung bình tính bằng KB/s.
+            duration_sec: Tổng thời gian thực thi phiên truyền tính bằng giây.
+            status: Trạng thái kết quả phiên truyền ('SUCCESS', 'FAILED', 'PARTIAL', 'ABORTED').
 
         Returns:
-            Sequential ID of the stored file transfer record.
+            Mã định danh ID số nguyên của bản ghi truyền nhận file.
         """
         transfer_id = self._append_record(
             _TRANSFERS_FILE,
@@ -352,13 +354,13 @@ class StorageService:
         return transfer_id
 
     def get_file_transfers(self, limit: int = 50) -> list[FileTransferRecord]:
-        """Retrieves file transfer history from hard drive.
+        """Truy xuất nhật ký lịch sử các phiên truyền file từ tệp JSON.
 
         Args:
-            limit: Maximum number of recent transfer records to retrieve.
+            limit: Số lượng bản ghi truyền file tối đa cần lấy.
 
         Returns:
-            List of FileTransferRecord items ordered newest first.
+            Danh sách các bản ghi FileTransferRecord sắp xếp mới nhất lên đầu.
         """
         with self._lock:
             records = self._load_list(_TRANSFERS_FILE)
@@ -389,18 +391,18 @@ class StorageService:
         total_packets_sent: int,
         total_packets_lost: int,
     ) -> int:
-        """Persists a realtime optical channel telemetry sample to hard drive.
+        """Lưu trữ mẫu đo lường viễn trắc kênh quang xuống tệp JSON telemetry_samples.json.
 
         Args:
-            timestamp_epoch: Unix epoch floating timestamp.
-            throughput_kbps: Measured optical link throughput in KB/s.
-            rtt_ms: Round-trip flight time in milliseconds.
-            packet_loss_rate: Measured packet loss ratio (0.0 to 100.0%).
-            total_packets_sent: Cumulative count of packets transmitted.
-            total_packets_lost: Cumulative count of lost/retried packets.
+            timestamp_epoch: Dấu thời gian Unix epoch tính bằng giây.
+            throughput_kbps: Thông lượng đo được tính bằng KB/s.
+            rtt_ms: Độ trễ khứ hồi RTT tính bằng mili-giây (ms).
+            packet_loss_rate: Tỷ lệ mất gói tính theo phần trăm (0.0 đến 100.0%).
+            total_packets_sent: Tổng số gói tin đã phát lũy kế.
+            total_packets_lost: Tổng số gói tin bị rớt lũy kế.
 
         Returns:
-            Sequential ID of the stored telemetry sample record.
+            Mã định danh ID số nguyên của mẫu viễn trắc.
         """
         with self._lock:
             records = self._load_list(_TELEMETRY_FILE)
@@ -430,13 +432,13 @@ class StorageService:
         return record_id
 
     def get_telemetry_history(self, limit: int = 100) -> list[TelemetryRecord]:
-        """Retrieves historical telemetry samples ordered by ascending time.
+        """Truy xuất danh sách mẫu viễn trắc lịch sử theo thứ tự thời gian tăng dần.
 
         Args:
-            limit: Maximum number of recent samples to retrieve.
+            limit: Số lượng mẫu viễn trắc tối đa cần lấy.
 
         Returns:
-            List of TelemetryRecord items.
+            Danh sách các bản ghi TelemetryRecord.
         """
         with self._lock:
             records = self._load_list(_TELEMETRY_FILE)
@@ -456,13 +458,13 @@ class StorageService:
         ]
 
     def export_telemetry_csv(self, output_path: Path | None = None) -> str:
-        """Exports all telemetry samples to a CSV formatted string and optional file.
+        """Xuất toàn bộ lịch sử viễn trắc ra chuỗi định dạng CSV và ghi ra tệp nếu chỉ định.
 
         Args:
-            output_path: Optional file path to write CSV content to disk.
+            output_path: Đường dẫn tệp tin trên đĩa để lưu nội dung CSV (tùy chọn).
 
         Returns:
-            CSV content as formatted string.
+            Chuỗi văn bản nội dung tệp CSV hoàn chỉnh.
         """
         samples = self.get_telemetry_history(limit=_MAX_TELEMETRY_SAMPLES)
         output = io.StringIO()
@@ -508,13 +510,13 @@ class StorageService:
         return csv_text
 
     def export_transfers_csv(self, output_path: Path | None = None) -> str:
-        """Exports file transfer logs to a CSV formatted string and optional file.
+        """Xuất nhật ký lịch sử truyền file ra chuỗi định dạng CSV và ghi ra tệp nếu chỉ định.
 
         Args:
-            output_path: Optional file path to write CSV content to disk.
+            output_path: Đường dẫn tệp tin trên đĩa để lưu nội dung CSV (tùy chọn).
 
         Returns:
-            CSV content as formatted string.
+            Chuỗi văn bản nội dung tệp CSV hoàn chỉnh.
         """
         transfers = self.get_file_transfers(limit=5000)
         output = io.StringIO()
@@ -564,11 +566,11 @@ class StorageService:
         return csv_text
 
     def save_setting(self, key: str, value: str) -> None:
-        """Persists a key-value configuration setting.
+        """Lưu một cặp khóa-giá trị cấu hình cài đặt xuống tệp settings.json.
 
         Args:
-            key: Setting identifier key.
-            value: Setting value string.
+            key: Tên khóa cài đặt.
+            value: Giá trị chuỗi của cài đặt.
         """
         with self._lock:
             settings = self._load_settings()
@@ -581,14 +583,14 @@ class StorageService:
             tmp_path.replace(path)
 
     def get_setting(self, key: str, default: str = "") -> str:
-        """Reads a configuration setting value.
+        """Đọc giá trị cài đặt từ tệp settings.json.
 
         Args:
-            key: Setting identifier key.
-            default: Fallback string value if key is not found.
+            key: Tên khóa cài đặt cần tra cứu.
+            default: Giá trị chuỗi mặc định nếu không tìm thấy khóa.
 
         Returns:
-            Persisted string value or default.
+            Giá trị cài đặt đã lưu hoặc giá trị mặc định.
         """
         with self._lock:
             settings = self._load_settings()
