@@ -1,87 +1,212 @@
-<div id="settings-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
-  <div id="settings-backdrop" class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"></div>
-  <div id="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title"
-    class="relative w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col gap-space-md transition-all">
+<div
+  id="settings-overlay"
+  class="fixed inset-0 z-[10000] hidden items-center justify-center p-4"
+>
+  <div
+    id="settings-backdrop"
+    class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"
+  ></div>
+  <div
+    id="settings-card"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+    class="relative w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col gap-space-md transition-all"
+  >
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-space-sm">
-        <div class="w-10 h-10 rounded-xl bg-surface-container text-primary flex items-center justify-center shadow-sm">
+        <div
+          class="w-10 h-10 rounded-xl bg-surface-container text-primary flex items-center justify-center shadow-sm"
+        >
           <span class="material-symbols-outlined text-[22px]">settings</span>
         </div>
         <div>
-          <h3 id="settings-title" class="font-headline-md text-headline-md text-on-surface">Transfer Settings</h3>
-          <p class="font-mono-caption text-mono-caption text-on-surface-variant">OPTICAL LINK • PERSISTED LOCALLY</p>
+          <h3
+            id="settings-title"
+            class="font-headline-md text-headline-md text-on-surface"
+          >
+            Transfer Settings
+          </h3>
+          <p
+            class="font-mono-caption text-mono-caption text-on-surface-variant"
+          >
+            OPTICAL LINK • PERSISTED LOCALLY
+          </p>
         </div>
       </div>
-      <button id="settings-close" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Close settings">
+      <button
+        id="settings-close"
+        class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
+        title="Close settings"
+      >
         <span class="material-symbols-outlined text-[18px]">close</span>
       </button>
     </div>
     <div class="space-y-space-md">
       <div class="space-y-1.5">
-        <label for="settings-dir" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Default receive directory (Files only)</label>
+        <label
+          for="settings-dir"
+          class="block font-label-sm text-label-sm text-on-surface-variant font-medium"
+          >Default receive directory (Files only)</label
+        >
         <div class="flex items-center gap-2">
-          <input id="settings-dir" type="text" placeholder="Type or browse a receive folder" spellcheck="false" autocomplete="off"
-            class="flex-1 bg-surface-container-low border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
-          <button id="settings-browse" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-            <span class="material-symbols-outlined text-[16px]">folder_open</span>
+          <input
+            id="settings-dir"
+            type="text"
+            placeholder="Type or browse a receive folder"
+            spellcheck="false"
+            autocomplete="off"
+            class="flex-1 bg-surface-container-low border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+          />
+          <button
+            id="settings-browse"
+            class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <span class="material-symbols-outlined text-[16px]"
+              >folder_open</span
+            >
             <span>Browse</span>
           </button>
         </div>
-        <p class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed">Only files received over the optical link are saved here. Chat history, logs and telemetry always stay in the app's <span class="font-mono-data">data/</span> folder.</p>
-        <button id="settings-reset" type="button" class="self-start font-title-sm text-title-sm font-medium text-primary hover:underline cursor-pointer">Reset to default</button>
+        <p
+          class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed"
+        >
+          Only files received over the optical link are saved here. Chat
+          history, logs and telemetry always stay in the app's
+          <span class="font-mono-data">data/</span> folder.
+        </p>
+        <button
+          id="settings-reset"
+          type="button"
+          class="self-start font-title-sm text-title-sm font-medium text-primary hover:underline cursor-pointer"
+        >
+          Reset to default
+        </button>
       </div>
-      <p id="settings-error" class="hidden font-body-md text-body-md text-error"></p>
+      <p
+        id="settings-error"
+        class="hidden font-body-md text-body-md text-error"
+      ></p>
     </div>
     <div class="pt-space-xs border-t border-black/[0.06]">
-      <button id="btn-toggle-debug" type="button" class="w-full px-3 py-2.5 bg-surface-container-low hover:bg-surface-container text-on-surface border border-black/[0.1] rounded-xl font-title-sm text-title-sm font-semibold flex items-center justify-between active:scale-[0.99] transition-all cursor-pointer">
+      <button
+        id="btn-toggle-debug"
+        type="button"
+        class="w-full px-3 py-2.5 bg-surface-container-low hover:bg-surface-container text-on-surface border border-black/[0.1] rounded-xl font-title-sm text-title-sm font-semibold flex items-center justify-between active:scale-[0.99] transition-all cursor-pointer"
+      >
         <div class="flex items-center gap-2">
-          <span class="material-symbols-outlined text-primary text-[20px]">bug_report</span>
+          <span class="material-symbols-outlined text-primary text-[20px]"
+            >bug_report</span
+          >
           <span>Debug / Diagnostics</span>
-          <span class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/10 text-primary border border-primary/20">LIVE RAW LOGS</span>
+          <span
+            class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/10 text-primary border border-primary/20"
+            >LIVE RAW LOGS</span
+          >
         </div>
-        <span id="debug-toggle-chevron" class="material-symbols-outlined text-[20px] text-on-surface-variant transition-transform">expand_more</span>
+        <span
+          id="debug-toggle-chevron"
+          class="material-symbols-outlined text-[20px] text-on-surface-variant transition-transform"
+          >expand_more</span
+        >
       </button>
     </div>
-    <div id="settings-debug-panel" class="hidden flex-col gap-space-sm p-3 bg-surface-container-low/70 rounded-xl border border-black/[0.06]">
-      <div class="flex flex-wrap items-center justify-between gap-2 bg-surface-container-lowest p-2.5 rounded-lg border border-black/[0.06]">
+    <div
+      id="settings-debug-panel"
+      class="hidden flex-col gap-space-sm p-3 bg-surface-container-low/70 rounded-xl border border-black/[0.06]"
+    >
+      <div
+        class="flex flex-wrap items-center justify-between gap-2 bg-surface-container-lowest p-2.5 rounded-lg border border-black/[0.06]"
+      >
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex items-center gap-1.5 font-mono text-[11px]">
-            <span class="text-on-surface-variant font-medium">Physical UART:</span>
-            <span id="debug-physical-baud" class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold">115200 bps</span>
+            <span class="text-on-surface-variant font-medium"
+              >Physical UART:</span
+            >
+            <span
+              id="debug-physical-baud"
+              class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold"
+              >115200 bps</span
+            >
           </div>
           <div class="h-3 w-px bg-outline-variant/50"></div>
           <div class="flex items-center gap-1.5 font-mono text-[11px]">
-            <span class="text-on-surface-variant font-medium">Optical Channel:</span>
-            <span id="debug-optical-baud" class="px-2 py-0.5 rounded bg-primary-container text-white font-semibold">9600 bps</span>
+            <span class="text-on-surface-variant font-medium"
+              >Optical Channel:</span
+            >
+            <span
+              id="debug-optical-baud"
+              class="px-2 py-0.5 rounded bg-primary-container text-white font-semibold"
+              >9600 bps</span
+            >
           </div>
         </div>
-        <span id="debug-log-count" class="font-mono text-[11px] text-on-surface-variant">0 logs</span>
+        <span
+          id="debug-log-count"
+          class="font-mono text-[11px] text-on-surface-variant"
+          >0 logs</span
+        >
       </div>
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-1.5">
-          <button id="btn-clear-debug-logs" type="button" class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer" title="Clear logs">
+          <button
+            id="btn-clear-debug-logs"
+            type="button"
+            class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+            title="Clear logs"
+          >
             <span class="material-symbols-outlined text-[14px]">delete</span>
             <span>Clear</span>
           </button>
-          <button id="btn-copy-debug-logs" type="button" class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer" title="Copy raw logs">
-            <span class="material-symbols-outlined text-[14px]">content_copy</span>
+          <button
+            id="btn-copy-debug-logs"
+            type="button"
+            class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+            title="Copy raw logs"
+          >
+            <span class="material-symbols-outlined text-[14px]"
+              >content_copy</span
+            >
             <span>Copy</span>
           </button>
         </div>
-        <label class="flex items-center gap-1.5 font-mono text-[11px] text-on-surface-variant cursor-pointer select-none">
-          <input id="chk-autoscroll-debug" type="checkbox" checked class="rounded border-black/[0.2] text-primary focus:ring-0 cursor-pointer" />
+        <label
+          class="flex items-center gap-1.5 font-mono text-[11px] text-on-surface-variant cursor-pointer select-none"
+        >
+          <input
+            id="chk-autoscroll-debug"
+            type="checkbox"
+            checked
+            class="rounded border-black/[0.2] text-primary focus:ring-0 cursor-pointer"
+          />
           <span>Auto-scroll</span>
         </label>
       </div>
-      <div id="debug-log-console" class="h-60 overflow-y-auto p-2 bg-[#0C1222] text-[#E2E8F0] rounded-lg border border-black/20 font-mono text-[11px] leading-relaxed flex flex-col gap-1 select-text">
-        <div id="debug-log-empty" class="text-slate-500 py-8 text-center italic">Waiting for serial traffic (TX/RX)...</div>
+      <div
+        id="debug-log-console"
+        class="h-60 overflow-y-auto p-2 bg-[#0C1222] text-[#E2E8F0] rounded-lg border border-black/20 font-mono text-[11px] leading-relaxed flex flex-col gap-1 select-text"
+      >
+        <div
+          id="debug-log-empty"
+          class="text-slate-500 py-8 text-center italic"
+        >
+          Waiting for serial traffic (TX/RX)...
+        </div>
       </div>
     </div>
-    <div class="flex items-center justify-end gap-space-sm pt-space-xs border-t border-black/[0.04]">
-      <button id="settings-cancel" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium active:scale-[0.98] transition-all cursor-pointer">
+    <div
+      class="flex items-center justify-end gap-space-sm pt-space-xs border-t border-black/[0.04]"
+    >
+      <button
+        id="settings-cancel"
+        class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium active:scale-[0.98] transition-all cursor-pointer"
+      >
         Cancel
       </button>
-      <button id="settings-save" class="h-[32px] px-space-md bg-primary-container hover:bg-primary text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm active:scale-[0.98] transition-all cursor-pointer">
+      <button
+        id="settings-save"
+        class="h-[32px] px-space-md bg-primary-container hover:bg-primary text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm active:scale-[0.98] transition-all cursor-pointer"
+      >
         Save
       </button>
     </div>

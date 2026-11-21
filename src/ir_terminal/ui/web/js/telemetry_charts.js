@@ -1,14 +1,17 @@
 (function () {
-  'use strict';
+  "use strict";
 
   function drawSingleChart(canvas, data, color, unit, maxVal) {
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+    if (
+      canvas.width !== rect.width * dpr ||
+      canvas.height !== rect.height * dpr
+    ) {
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
     }
@@ -19,7 +22,7 @@
     const h = rect.height;
     ctx.clearRect(0, 0, w, h);
 
-    ctx.strokeStyle = '#D3E4FE';
+    ctx.strokeStyle = "#D3E4FE";
     ctx.lineWidth = 0.8;
     ctx.setLineDash([3, 3]);
     for (let y = 0.25; y <= 0.75; y += 0.25) {
@@ -50,15 +53,15 @@
     ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
     ctx.strokeStyle = color;
     ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
+    ctx.lineCap = "round";
     ctx.stroke();
 
     ctx.lineTo(w, h);
     ctx.lineTo(0, h);
     ctx.closePath();
     const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, color + '33');
-    grad.addColorStop(1, color + '00');
+    grad.addColorStop(0, color + "33");
+    grad.addColorStop(1, color + "00");
     ctx.fillStyle = grad;
     ctx.fill();
 
@@ -67,14 +70,14 @@
     ctx.arc(last.x, last.y, 4, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.strokeStyle = '#FFFFFF';
+    ctx.strokeStyle = "#FFFFFF";
     ctx.lineWidth = 1.5;
     ctx.stroke();
   }
 
   function drawCharts(speedCanvas, rttCanvas, speedHistory, rttHistory) {
-    drawSingleChart(speedCanvas, speedHistory, '#2563EB', 'KB/s', 12.0);
-    drawSingleChart(rttCanvas, rttHistory, '#006C49', 'ms', 100.0);
+    drawSingleChart(speedCanvas, speedHistory, "#2563EB", "KB/s", 12.0);
+    drawSingleChart(rttCanvas, rttHistory, "#006C49", "ms", 100.0);
   }
 
   window.SpectraLinkCharts = {

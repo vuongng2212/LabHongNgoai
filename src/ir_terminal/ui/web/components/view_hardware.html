@@ -1,210 +1,441 @@
-<header class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-sm border-b border-black/[0.06]">
-<div class="min-w-0">
-<div class="flex flex-wrap items-center gap-space-sm min-w-0">
-<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight break-words">Transceiver &amp; Link Configuration</h1>
-<span id="hw-header-link-badge" class="ui-badge" data-tone="neutral" data-size="compact" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">DISCONNECTED</span>
-</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
-              Configure COM1 (optical data) and COM2 (STM32 control), apply the optical baudrate, and verify the physical layer.
-            </p>
-</div>
-<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
-<span>CH: <strong class="text-on-surface font-semibold">880nm NIR</strong></span>
-<span class="text-outline-variant">•</span>
-<span>MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span>
-<span class="text-outline-variant">•</span>
-<span>FRAME: <strong class="text-on-surface font-semibold">8-N-1</strong></span>
-</div>
+<header
+  class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-sm border-b border-black/[0.06]"
+>
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-space-sm min-w-0">
+      <h1
+        class="font-headline-lg text-headline-lg text-on-surface tracking-tight break-words"
+      >
+        Transceiver &amp; Link Configuration
+      </h1>
+      <span
+        id="hw-header-link-badge"
+        class="ui-badge"
+        data-tone="neutral"
+        data-size="compact"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="ui-badge__dot"></span>
+        <span class="ui-badge__label">DISCONNECTED</span>
+      </span>
+    </div>
+    <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
+      Configure COM1 (optical data) and COM2 (STM32 control), apply the optical
+      baudrate, and verify the physical layer.
+    </p>
+  </div>
+  <div
+    class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant"
+  >
+    <span
+      >CH:
+      <strong class="text-on-surface font-semibold">880nm NIR</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >FRAME: <strong class="text-on-surface font-semibold">8-N-1</strong></span
+    >
+  </div>
 </header>
 <div class="split-grid">
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0">
-<div class="space-y-space-md">
-<div class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm">
-<div class="p-1.5 bg-surface-container text-primary rounded-md">
-<span class="material-symbols-outlined text-[20px]" data-icon="cable">cable</span>
+  <section
+    class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0"
+  >
+    <div class="space-y-space-md">
+      <div
+        class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm"
+      >
+        <div class="p-1.5 bg-surface-container text-primary rounded-md">
+          <span class="material-symbols-outlined text-[20px]" data-icon="cable"
+            >cable</span
+          >
+        </div>
+        <div>
+          <h2 class="font-headline-md text-headline-md text-on-surface">
+            Serial Connection
+          </h2>
+          <span
+            class="font-mono-caption text-mono-caption text-on-surface-variant"
+            >DUAL HARDWARE COM PORTS</span
+          >
+        </div>
+      </div>
+      <div class="port-grid">
+        <div class="space-y-1.5 min-w-0">
+          <label
+            class="block font-label-sm text-label-sm text-on-surface-variant font-medium"
+            for="select-port-tx"
+            >COM1 (Kênh Dữ liệu Quang - Data)</label
+          >
+          <div class="relative">
+            <select
+              id="select-port-tx"
+              class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
+            >
+              <option value="MOCK_COM_LOOPBACK">
+                MOCK_COM_LOOPBACK (Virtual Loopback)
+              </option>
+            </select>
+            <div
+              class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="expand_more"
+                >expand_more</span
+              >
+            </div>
+          </div>
+        </div>
+        <div class="space-y-1.5 min-w-0">
+          <label
+            class="block font-label-sm text-label-sm text-on-surface-variant font-medium"
+            for="select-port-rx"
+            >COM2 (Kênh Điều khiển STM32 - Control)</label
+          >
+          <div class="relative">
+            <select
+              id="select-port-rx"
+              class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
+            >
+              <option value="MOCK_COM_LOOPBACK">
+                MOCK_COM_LOOPBACK (Virtual Loopback)
+              </option>
+            </select>
+            <div
+              class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="expand_more"
+                >expand_more</span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <div class="flex justify-between items-center">
+          <label
+            class="font-label-sm text-label-sm text-on-surface-variant font-medium"
+            >Optical Baudrate (bps)</label
+          >
+          <span
+            id="baudrate-source-label"
+            class="font-mono-caption text-mono-caption text-outline"
+            >OPTICAL RATES • COM2 CONTROL</span
+          >
+        </div>
+        <div
+          id="baudrate-selector-container"
+          class="flex flex-wrap gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]"
+        ></div>
+      </div>
+      <div
+        class="p-space-sm bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+      >
+        <div class="flex flex-wrap items-center gap-space-md">
+          <div>
+            <span class="font-mono-caption text-mono-caption text-outline block"
+              >FRAMING</span
+            >
+            <span
+              class="font-mono-data text-mono-data text-on-surface font-semibold"
+              >8-N-1</span
+            >
+          </div>
+          <div class="h-6 w-px bg-outline-variant/40"></div>
+          <div>
+            <span class="font-mono-caption text-mono-caption text-outline block"
+              >UART LINK</span
+            >
+            <span
+              id="hw-physical-baud"
+              class="font-mono-data text-mono-data text-on-surface font-semibold"
+              >115200 bps FIXED</span
+            >
+          </div>
+          <div class="h-6 w-px bg-outline-variant/40"></div>
+          <div>
+            <span class="font-mono-caption text-mono-caption text-outline block"
+              >FLOW CONTROL</span
+            >
+            <span
+              class="font-mono-data text-mono-data text-on-surface font-semibold"
+              >None (Direct)</span
+            >
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span
+            id="hw-tx-status"
+            class="ui-badge"
+            data-tone="neutral"
+            data-size="micro"
+            title="TX port state"
+          >
+            <span id="hw-tx-dot" class="ui-badge__dot"></span>
+            <span class="ui-badge__label">TX IDLE</span>
+          </span>
+          <span
+            id="hw-rx-status"
+            class="ui-badge"
+            data-tone="neutral"
+            data-size="micro"
+            title="RX port state"
+          >
+            <span id="hw-rx-dot" class="ui-badge__dot"></span>
+            <span class="ui-badge__label">RX IDLE</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div
+      class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm"
+    >
+      <button
+        id="btn-connect"
+        data-state="disconnected"
+        class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+      >
+        <span class="material-symbols-outlined text-[16px]" data-icon="link"
+          >link</span
+        >
+        Connect
+      </button>
+      <button
+        id="btn-rescan"
+        class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+      >
+        <span class="material-symbols-outlined text-[16px]" data-icon="refresh"
+          >refresh</span
+        >
+        Rescan Ports
+      </button>
+    </div>
+  </section>
+  <section
+    class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0"
+  >
+    <div class="space-y-space-md">
+      <div
+        class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm"
+      >
+        <div class="p-1.5 bg-surface-container text-primary rounded-md">
+          <span class="material-symbols-outlined text-[20px]" data-icon="radar"
+            >radar</span
+          >
+        </div>
+        <div>
+          <h2 class="font-headline-md text-headline-md text-on-surface">
+            Optical Link &amp; Diagnostics
+          </h2>
+          <span
+            class="font-mono-caption text-mono-caption text-on-surface-variant"
+            >STM32 CONTROL &amp; OPTICAL METRICS</span
+          >
+        </div>
+      </div>
+      <div class="hw-diag-grid items-stretch py-1">
+        <div
+          class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full"
+        >
+          <div
+            class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant"
+          >
+            <span>COM2 CONTROL STATUS</span>
+            <span
+              id="hw-rtt-state"
+              class="ui-badge shrink-0"
+              data-tone="neutral"
+              data-size="micro"
+              role="status"
+              aria-live="polite"
+            >
+              <span class="ui-badge__dot"></span>
+              <span class="ui-badge__label">IDLE</span>
+            </span>
+          </div>
+          <div class="flex items-baseline gap-2 mt-2">
+            <span
+              id="hw-rtt-value"
+              class="font-headline-lg text-headline-lg font-bold text-primary"
+              >--</span
+            >
+            <span class="font-mono-caption text-mono-caption text-outline"
+              >Baud Cmd</span
+            >
+          </div>
+          <div class="text-[11px] text-outline font-mono-caption mt-2">
+            Latest baud command sent over COM2
+          </div>
+        </div>
+        <div class="grid grid-cols-1 gap-2">
+          <div
+            class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]"
+          >
+            <div
+              class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant"
+            >
+              <span>CARRIER WAVELENGTH</span>
+              <span class="text-outline">TFDU4101</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span
+                class="font-headline-md text-headline-md font-bold text-on-surface"
+                >880 nm</span
+              >
+              <span class="font-mono-caption text-mono-caption text-outline"
+                >Direct LOS</span
+              >
+            </div>
+          </div>
+          <div
+            class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]"
+          >
+            <div
+              class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant"
+            >
+              <span>MODULATION ENCODER</span>
+              <span class="text-outline">MCP2122</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span
+                class="font-headline-md text-headline-md font-bold text-on-surface"
+                >3/16</span
+              >
+              <span class="font-mono-caption text-mono-caption text-outline"
+                >Pulse Width</span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm"
+    >
+      <button
+        id="btn-send-baud"
+        class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+      >
+        <span
+          class="material-symbols-outlined text-[16px] text-primary"
+          data-icon="settings_input_component"
+          >settings_input_component</span
+        >
+        Apply Baud via COM2
+      </button>
+    </div>
+  </section>
 </div>
-<div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Serial Connection</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL HARDWARE COM PORTS</span>
-</div>
-</div>
-<div class="port-grid">
-<div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM1 (Kênh Dữ liệu Quang - Data)</label>
-<div class="relative">
-<select id="select-port-tx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
-<option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
-</select>
-<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant">
-<span class="material-symbols-outlined text-[18px]" data-icon="expand_more">expand_more</span>
-</div>
-</div>
-</div>
-<div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM2 (Kênh Điều khiển STM32 - Control)</label>
-<div class="relative">
-<select id="select-port-rx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
-<option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
-</select>
-<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant">
-<span class="material-symbols-outlined text-[18px]" data-icon="expand_more">expand_more</span>
-</div>
-</div>
-</div>
-</div>
-<div class="space-y-1.5">
-<div class="flex justify-between items-center">
-<label class="font-label-sm text-label-sm text-on-surface-variant font-medium">Optical Baudrate (bps)</label>
-<span id="baudrate-source-label" class="font-mono-caption text-mono-caption text-outline">OPTICAL RATES • COM2 CONTROL</span>
-</div>
-<div id="baudrate-selector-container" class="flex flex-wrap gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]"></div>
-</div>
-<div class="p-space-sm bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-<div class="flex flex-wrap items-center gap-space-md">
-<div>
-<span class="font-mono-caption text-mono-caption text-outline block">FRAMING</span>
-<span class="font-mono-data text-mono-data text-on-surface font-semibold">8-N-1</span>
-</div>
-<div class="h-6 w-px bg-outline-variant/40"></div>
-<div>
-<span class="font-mono-caption text-mono-caption text-outline block">UART LINK</span>
-<span id="hw-physical-baud" class="font-mono-data text-mono-data text-on-surface font-semibold">115200 bps FIXED</span>
-</div>
-<div class="h-6 w-px bg-outline-variant/40"></div>
-<div>
-<span class="font-mono-caption text-mono-caption text-outline block">FLOW CONTROL</span>
-<span class="font-mono-data text-mono-data text-on-surface font-semibold">None (Direct)</span>
-</div>
-</div>
-<div class="flex flex-wrap items-center gap-3">
-<span id="hw-tx-status" class="ui-badge" data-tone="neutral" data-size="micro" title="TX port state">
-<span id="hw-tx-dot" class="ui-badge__dot"></span>
-<span class="ui-badge__label">TX IDLE</span>
-</span>
-<span id="hw-rx-status" class="ui-badge" data-tone="neutral" data-size="micro" title="RX port state">
-<span id="hw-rx-dot" class="ui-badge__dot"></span>
-<span class="ui-badge__label">RX IDLE</span>
-</span>
-</div>
-</div>
-</div>
-<div class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm">
-<button id="btn-connect" data-state="disconnected" class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px]" data-icon="link">link</span>
-                Connect
-              </button>
-<button id="btn-rescan" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px]" data-icon="refresh">refresh</span>
-                Rescan Ports
-              </button>
-</div>
-</section>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0">
-<div class="space-y-space-md">
-<div class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm">
-<div class="p-1.5 bg-surface-container text-primary rounded-md">
-<span class="material-symbols-outlined text-[20px]" data-icon="radar">radar</span>
-</div>
-<div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Optical Link &amp; Diagnostics</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">STM32 CONTROL &amp; OPTICAL METRICS</span>
-</div>
-</div>
-<div class="hw-diag-grid items-stretch py-1">
-<div class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full">
-<div class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant">
-<span>COM2 CONTROL STATUS</span>
-<span id="hw-rtt-state" class="ui-badge shrink-0" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">IDLE</span>
-</span>
-</div>
-<div class="flex items-baseline gap-2 mt-2">
-<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">--</span>
-<span class="font-mono-caption text-mono-caption text-outline">Baud Cmd</span>
-</div>
-<div class="text-[11px] text-outline font-mono-caption mt-2">Latest baud command sent over COM2</div>
-</div>
-<div class="grid grid-cols-1 gap-2">
-<div class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>CARRIER WAVELENGTH</span>
-<span class="text-outline">TFDU4101</span>
-</div>
-<div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">880 nm</span>
-<span class="font-mono-caption text-mono-caption text-outline">Direct LOS</span>
-</div>
-</div>
-<div class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>MODULATION ENCODER</span>
-<span class="text-outline">MCP2122</span>
-</div>
-<div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">3/16</span>
-<span class="font-mono-caption text-mono-caption text-outline">Pulse Width</span>
-</div>
-</div>
-</div>
-</div>
-</div>
-<div class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm">
-<button id="btn-send-baud" class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px] text-primary" data-icon="settings_input_component">settings_input_component</span>
-                Apply Baud via COM2
-              </button>
-</div>
-</section>
-</div>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] min-w-0">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.06] pb-space-sm mb-space-md">
-<div class="flex items-center gap-space-sm">
-<div class="p-1.5 bg-surface-container text-primary rounded-md">
-<span class="material-symbols-outlined text-[20px]" data-icon="developer_board">developer_board</span>
-</div>
-<div>
-<h3 class="font-headline-md text-headline-md text-on-surface">Physical Layer Specifications</h3>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">UART BRIDGE, MODULATION AND FRAMING PARAMETERS</span>
-</div>
-</div>
-<span class="font-mono-caption text-mono-caption text-outline">READ-ONLY REFERENCE</span>
-</div>
-<div class="spec-grid gap-px bg-black/[0.06] border border-black/[0.06] rounded-lg overflow-hidden">
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">UART FRAMING</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">8-N-1</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">MODULATION</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">MCP2122 3/16 pulse</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">TRANSCEIVER</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">TFDU4101 NIR</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">DUPLEX MODE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Dual COM1 Data / COM2 Control</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">FRAME DELIMITERS</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">SOF 0xAA55 / 8-byte header</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">INTEGRITY</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">None (Open-Loop)</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">FLOW CONTROL</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Paced Streaming</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">CHUNK SIZE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">256 bytes</span>
-</div>
-</div>
+<section
+  class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] min-w-0"
+>
+  <div
+    class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.06] pb-space-sm mb-space-md"
+  >
+    <div class="flex items-center gap-space-sm">
+      <div class="p-1.5 bg-surface-container text-primary rounded-md">
+        <span
+          class="material-symbols-outlined text-[20px]"
+          data-icon="developer_board"
+          >developer_board</span
+        >
+      </div>
+      <div>
+        <h3 class="font-headline-md text-headline-md text-on-surface">
+          Physical Layer Specifications
+        </h3>
+        <span
+          class="font-mono-caption text-mono-caption text-on-surface-variant"
+          >UART BRIDGE, MODULATION AND FRAMING PARAMETERS</span
+        >
+      </div>
+    </div>
+    <span class="font-mono-caption text-mono-caption text-outline"
+      >READ-ONLY REFERENCE</span
+    >
+  </div>
+  <div
+    class="spec-grid gap-px bg-black/[0.06] border border-black/[0.06] rounded-lg overflow-hidden"
+  >
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >UART FRAMING</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >8-N-1</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >MODULATION</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >MCP2122 3/16 pulse</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >TRANSCEIVER</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >TFDU4101 NIR</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >DUPLEX MODE</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >Dual COM1 Data / COM2 Control</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >FRAME DELIMITERS</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >SOF 0xAA55 / 8-byte header</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >INTEGRITY</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >None (Open-Loop)</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >FLOW CONTROL</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >Paced Streaming</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >CHUNK SIZE</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >256 bytes</span
+      >
+    </div>
+  </div>
 </section>

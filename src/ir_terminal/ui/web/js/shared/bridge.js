@@ -1,5 +1,5 @@
 (function () {
-  'use strict';
+  "use strict";
 
   var wiredKeys = {};
   var waitingKeys = {};
@@ -11,24 +11,30 @@
         cb(window.bridge);
         wiredKeys[key] = true;
       } catch (err) {
-        console.error('Bridge wiring failed for ' + key + ':', err);
-        setTimeout(function () { onReady(key, cb); }, 300);
+        console.error("Bridge wiring failed for " + key + ":", err);
+        setTimeout(function () {
+          onReady(key, cb);
+        }, 300);
       } finally {
         waitingKeys[key] = false;
       }
       return;
     }
     waitingKeys[key] = true;
-    setTimeout(function () { waitingKeys[key] = false; onReady(key, cb); }, 300);
+    setTimeout(function () {
+      waitingKeys[key] = false;
+      onReady(key, cb);
+    }, 300);
   }
 
   function requireBridge(actionLabel) {
     if (window.bridge) return window.bridge;
     if (window.UIFeedback) {
       window.UIFeedback.showToast(
-        'warning',
-        'Backend not connected',
-        (actionLabel || 'This action') + ' needs the SpectraLink Desktop app link.'
+        "warning",
+        "Backend not connected",
+        (actionLabel || "This action") +
+          " needs the SpectraLink Desktop app link.",
       );
     }
     return null;

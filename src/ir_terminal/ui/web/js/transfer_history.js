@@ -1,5 +1,5 @@
 (function () {
-  'use strict';
+  "use strict";
 
   function createHistory(opts) {
     const table = opts.table;
@@ -8,17 +8,21 @@
     let renderedRows = [];
 
     function esc(str) {
-      if (window.SpectraLinkUtils) return window.SpectraLinkUtils.escapeHtml(str);
-      return String(str == null ? '' : str);
+      if (window.SpectraLinkUtils)
+        return window.SpectraLinkUtils.escapeHtml(str);
+      return String(str == null ? "" : str);
     }
 
     function fmtSize(bytes) {
       if (window.SpectraLinkUtils) return window.SpectraLinkUtils.fmtKB(bytes);
-      return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024).toFixed(1) + " KB";
     }
 
     function reload() {
-      if (!window.bridge || typeof window.bridge.getFileHistory !== 'function') {
+      if (
+        !window.bridge ||
+        typeof window.bridge.getFileHistory !== "function"
+      ) {
         render();
         return;
       }
@@ -27,7 +31,7 @@
           const transfers = JSON.parse(historyJson);
           cache = Array.isArray(transfers) ? transfers : [];
         } catch (err) {
-          console.error('Failed to parse file history JSON:', err);
+          console.error("Failed to parse file history JSON:", err);
           cache = [];
         }
         render();
@@ -41,24 +45,26 @@
     }
 
     function filtered() {
-      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-      return cache.filter(item => {
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+      return cache.filter((item) => {
         if (!query) return true;
-        return (item.filename && item.filename.toLowerCase().includes(query)) ||
-               (item.crc32_hex && item.crc32_hex.toLowerCase().includes(query)) ||
-               (item.status && item.status.toLowerCase().includes(query));
+        return (
+          (item.filename && item.filename.toLowerCase().includes(query)) ||
+          (item.crc32_hex && item.crc32_hex.toLowerCase().includes(query)) ||
+          (item.status && item.status.toLowerCase().includes(query))
+        );
       });
     }
 
     function render() {
       if (!table) return;
-      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
-      table.innerHTML = '';
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : "";
+      table.innerHTML = "";
       renderedRows = [];
 
       const items = filtered();
       if (items.length === 0) {
-        const emptyRow = document.createElement('tr');
+        const emptyRow = document.createElement("tr");
         emptyRow.innerHTML = `
           <td colspan="7" class="py-8 text-center text-on-surface-variant text-body-md">
             <div class="flex flex-col items-center justify-center gap-1">
@@ -73,20 +79,35 @@
       }
 
       const fragment = document.createDocumentFragment();
-      items.forEach(item => {
-        const row = document.createElement('tr');
-        row.className = 'hover:bg-surface-container-high/40 transition-colors h-11';
+      items.forEach((item) => {
+        const row = document.createElement("tr");
+        row.className =
+          "hover:bg-surface-container-high/40 transition-colors h-11";
 
         const sizeStr = fmtSize(item.size_bytes);
 
         const rowIdx = renderedRows.length;
         renderedRows.push(item);
-        const stateRaw = String(item.status || 'SUCCESS').toUpperCase();
-        const stateFailed = stateRaw.includes('FAIL') || stateRaw.includes('ABORT');
-        const statePending = stateRaw.includes('STREAM') || stateRaw.includes('PROGRESS');
-        const stateText = stateFailed ? 'Failed' : statePending ? 'In progress' : 'Complete';
-        const stateTone = stateFailed ? 'text-error' : statePending ? 'text-tertiary' : 'text-secondary';
-        const stateDot = stateFailed ? 'bg-error' : statePending ? 'bg-tertiary' : 'bg-secondary';
+        const stateRaw = String(item.status || "SUCCESS").toUpperCase();
+        const stateFailed =
+          stateRaw.includes("FAIL") || stateRaw.includes("ABORT");
+        const statePending =
+          stateRaw.includes("STREAM") || stateRaw.includes("PROGRESS");
+        const stateText = stateFailed
+          ? "Failed"
+          : statePending
+            ? "In progress"
+            : "Complete";
+        const stateTone = stateFailed
+          ? "text-error"
+          : statePending
+            ? "text-tertiary"
+            : "text-secondary";
+        const stateDot = stateFailed
+          ? "bg-error"
+          : statePending
+            ? "bg-tertiary"
+            : "bg-secondary";
         row.innerHTML = `
           <td class="px-space-md">
             <div class="flex items-center gap-2">
@@ -95,9 +116,9 @@
             </div>
           </td>
           <td class="px-space-md font-mono-data text-on-surface-variant">${sizeStr}</td>
-          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.direction || '—')}</td>
-          <td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">${esc(item.timestamp || 'Today')}</td>
-          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.crc32_hex || 'Open-Loop')}</td>
+          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.direction || "—")}</td>
+          <td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">${esc(item.timestamp || "Today")}</td>
+          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.crc32_hex || "Open-Loop")}</td>
           <td class="px-space-md">
             <span class="inline-flex items-center gap-1.5 text-mono-caption font-mono-caption ${stateTone}">
               <span class="w-1.5 h-1.5 rounded-full ${stateDot}"></span>
@@ -122,26 +143,40 @@
     }
 
     function handleRowAction(actionBtn) {
-      if (actionBtn.dataset.action !== 'open-location') return;
+      if (actionBtn.dataset.action !== "open-location") return;
       const item = renderedRows[Number(actionBtn.dataset.idx)];
       const path = item && item.file_path;
       if (!window.bridge) {
-        if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Backend not connected', 'Storage location needs the SpectraLink Desktop app.');
+        if (window.UIFeedback)
+          window.UIFeedback.showToast(
+            "warning",
+            "Backend not connected",
+            "Storage location needs the SpectraLink Desktop app.",
+          );
         return;
       }
       if (!path) {
-        if (window.UIFeedback) window.UIFeedback.showToast('info', 'Location not recorded yet', 'History is syncing — try again in a moment.');
+        if (window.UIFeedback)
+          window.UIFeedback.showToast(
+            "info",
+            "Location not recorded yet",
+            "History is syncing — try again in a moment.",
+          );
         return;
       }
       window.bridge.openTransferLocation(path, (openedDir) => {
         if (!window.UIFeedback) return;
         if (openedDir) {
-          window.UIFeedback.showToast('success', 'Storage folder opened', openedDir);
+          window.UIFeedback.showToast(
+            "success",
+            "Storage folder opened",
+            openedDir,
+          );
         } else {
           window.UIFeedback.showModal({
-            variant: 'info',
-            title: 'File no longer there',
-            message: 'The recorded file was moved or deleted. Nothing to open.',
+            variant: "info",
+            title: "File no longer there",
+            message: "The recorded file was moved or deleted. Nothing to open.",
             details: path,
           });
         }
@@ -149,7 +184,7 @@
     }
 
     if (searchInput) {
-      searchInput.addEventListener('input', render);
+      searchInput.addEventListener("input", render);
     }
 
     return {

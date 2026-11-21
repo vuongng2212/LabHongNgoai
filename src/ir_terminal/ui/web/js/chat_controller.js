@@ -1,28 +1,50 @@
 function initChatController() {
-  const chatInput = document.getElementById('input-chat-text');
-  const sendBtn = document.getElementById('btn-chat-send');
-  const chatContainer = document.querySelector('#view-chat section.overflow-y-auto');
-  const hexDumpElem = document.querySelector('#view-chat pre');
+  const chatInput = document.getElementById("input-chat-text");
+  const sendBtn = document.getElementById("btn-chat-send");
+  const chatContainer = document.querySelector(
+    "#view-chat section.overflow-y-auto",
+  );
+  const hexDumpElem = document.querySelector("#view-chat pre");
   const optimisticMessages = [];
 
   function doSend() {
     if (!chatInput) return;
     if (sendBtn && sendBtn.disabled) {
-      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Link busy', 'Optical link is currently transmitting; please wait.');
+      if (window.UIFeedback)
+        window.UIFeedback.showToast(
+          "warning",
+          "Link busy",
+          "Optical link is currently transmitting; please wait.",
+        );
       return;
     }
     const text = chatInput.value.trim();
     if (!text) {
-      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Empty message', 'Type a text message before sending.');
+      if (window.UIFeedback)
+        window.UIFeedback.showToast(
+          "warning",
+          "Empty message",
+          "Type a text message before sending.",
+        );
       chatInput.focus();
       return;
     }
     if (new Blob([text]).size > 512) {
-      if (window.UIFeedback) window.UIFeedback.showToast('warning', 'Payload too long', 'Maximum packet length is 512 bytes.');
+      if (window.UIFeedback)
+        window.UIFeedback.showToast(
+          "warning",
+          "Payload too long",
+          "Maximum packet length is 512 bytes.",
+        );
       return;
     }
     if (!window.bridge) {
-      if (window.UIFeedback) window.UIFeedback.showToast('error', 'Backend not ready', 'Bridge is still connecting — try again in a moment.');
+      if (window.UIFeedback)
+        window.UIFeedback.showToast(
+          "error",
+          "Backend not ready",
+          "Bridge is still connecting — try again in a moment.",
+        );
       return;
     }
     const timestamp = new Date().toLocaleTimeString();
@@ -33,23 +55,28 @@ function initChatController() {
     } catch (err) {
       const pendingIndex = optimisticMessages.indexOf(text);
       if (pendingIndex >= 0) optimisticMessages.splice(pendingIndex, 1);
-      console.error('Chat send failed:', err);
-      if (window.UIFeedback) window.UIFeedback.showToast('error', 'Send failed', 'The message could not be sent.');
+      console.error("Chat send failed:", err);
+      if (window.UIFeedback)
+        window.UIFeedback.showToast(
+          "error",
+          "Send failed",
+          "The message could not be sent.",
+        );
       return;
     }
-    chatInput.value = '';
+    chatInput.value = "";
   }
 
   if (sendBtn) {
-    sendBtn.addEventListener('click', (e) => {
+    sendBtn.addEventListener("click", (e) => {
       e.preventDefault();
       doSend();
     });
   }
 
   if (chatInput) {
-    chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
         e.preventDefault();
         doSend();
       }
@@ -70,7 +97,8 @@ function initChatController() {
   }
 
   function tryWireBridge() {
-    if (window.SpectraLinkBridge) window.SpectraLinkBridge.onReady('chat', wireBridgeSignals);
+    if (window.SpectraLinkBridge)
+      window.SpectraLinkBridge.onReady("chat", wireBridgeSignals);
     else if (!window.bridge) setTimeout(tryWireBridge, 300);
     else wireBridgeSignals();
   }
@@ -89,37 +117,48 @@ function initChatController() {
 
     if (window.bridge.transferStateChanged) {
       window.bridge.transferStateChanged.connect((state) => {
-        const busy = state === 'SENDING' || state === 'RECEIVING';
+        const busy = state === "SENDING" || state === "RECEIVING";
         if (sendBtn) {
           sendBtn.disabled = busy;
-          sendBtn.classList.toggle('opacity-50', busy);
-          sendBtn.classList.toggle('cursor-not-allowed', busy);
+          sendBtn.classList.toggle("opacity-50", busy);
+          sendBtn.classList.toggle("cursor-not-allowed", busy);
         }
-        const badge = document.getElementById('chat-link-state');
+        const badge = document.getElementById("chat-link-state");
         if (badge) {
           if (window.UIBadge) {
-            window.UIBadge.set('chat-link-state', {
-              tone: busy ? 'warning' : 'neutral',
-              label: busy ? 'CHANNEL BUSY' : 'LINK STANDBY'
+            window.UIBadge.set("chat-link-state", {
+              tone: busy ? "warning" : "neutral",
+              label: busy ? "CHANNEL BUSY" : "LINK STANDBY",
             });
           } else {
-            badge.dataset.tone = busy ? 'warning' : 'neutral';
-            const labelElem = badge.querySelector('.ui-badge__label');
-            if (labelElem) labelElem.textContent = busy ? 'CHANNEL BUSY' : 'LINK STANDBY';
+            badge.dataset.tone = busy ? "warning" : "neutral";
+            const labelElem = badge.querySelector(".ui-badge__label");
+            if (labelElem)
+              labelElem.textContent = busy ? "CHANNEL BUSY" : "LINK STANDBY";
           }
         }
       });
     }
 
-    if (typeof window.bridge.getChatHistory === 'function') {
+    if (typeof window.bridge.getChatHistory === "function") {
       window.bridge.getChatHistory((historyJson) => {
         try {
           const messages = JSON.parse(historyJson);
-          if (Array.isArray(messages) && messages.length > 0 && chatContainer && !chatContainer.querySelector('.chat-message-row')) {
-            chatContainer.innerHTML = '';
+          if (
+            Array.isArray(messages) &&
+            messages.length > 0 &&
+            chatContainer &&
+            !chatContainer.querySelector(".chat-message-row")
+          ) {
+            chatContainer.innerHTML = "";
             const fragment = document.createDocumentFragment();
-            messages.forEach(msg => {
-              appendChatMessage(msg.text, msg.timestamp, msg.is_outgoing, fragment);
+            messages.forEach((msg) => {
+              appendChatMessage(
+                msg.text,
+                msg.timestamp,
+                msg.is_outgoing,
+                fragment,
+              );
             });
             chatContainer.appendChild(fragment);
             chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -127,7 +166,7 @@ function initChatController() {
             renderEmptyChatState();
           }
         } catch (err) {
-          console.error('Failed to parse chat history JSON:', err);
+          console.error("Failed to parse chat history JSON:", err);
           renderEmptyChatState();
         }
       });
@@ -141,14 +180,16 @@ function initChatController() {
   function appendChatMessage(text, timeStr, isOutgoing, target) {
     const container = target || chatContainer;
     if (!container) return;
-    const emptyState = chatContainer && chatContainer.querySelector('#chat-empty-state');
+    const emptyState =
+      chatContainer && chatContainer.querySelector("#chat-empty-state");
     if (emptyState) {
       emptyState.remove();
     }
 
-    const wrapper = document.createElement('div');
+    const wrapper = document.createElement("div");
     if (isOutgoing) {
-      wrapper.className = 'chat-message-row flex flex-col items-end ml-auto group';
+      wrapper.className =
+        "chat-message-row flex flex-col items-end ml-auto group";
       wrapper.innerHTML = `
         <div class="flex items-center gap-2 mb-1 px-1">
           <span class="text-mono-caption font-mono-caption text-outline">${escapeHtml(timeStr)}</span>
@@ -164,7 +205,7 @@ function initChatController() {
         </div>
       `;
     } else {
-      wrapper.className = 'chat-message-row flex flex-col items-start group';
+      wrapper.className = "chat-message-row flex flex-col items-start group";
       wrapper.innerHTML = `
         <div class="flex items-center gap-2 mb-1 px-1">
           <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
@@ -192,15 +233,19 @@ function initChatController() {
 
   function escapeHtml(str) {
     if (window.SpectraLinkUtils) return window.SpectraLinkUtils.escapeHtml(str);
-    if (!str) return '';
+    if (!str) return "";
     return String(str);
   }
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(initChatController, 100);
-  }, { once: true });
+if (document.readyState === "loading") {
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      setTimeout(initChatController, 100);
+    },
+    { once: true },
+  );
 } else {
   setTimeout(initChatController, 100);
 }

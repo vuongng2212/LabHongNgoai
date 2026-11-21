@@ -1,199 +1,371 @@
-<div class="flex flex-col md:flex-row md:items-end justify-between gap-space-sm pb-space-sm border-b border-black/[0.06]">
-<div class="min-w-0">
-<div class="flex flex-wrap items-baseline gap-space-sm">
-<h2 class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight">Lab Analytics &amp; Performance</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">COM1 DATA • 880 nm • 100 Hz sampling</span>
-</div>
-<p class="text-on-surface-variant font-body-md text-body-md mt-0.5">
-              Carrier throughput, bit error distribution, and raw packet frame inspection.
-            </p>
-</div>
-<div class="flex flex-wrap items-center gap-space-xs w-full md:w-auto md:shrink-0">
-<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-black/[0.08] font-label-sm text-label-sm text-on-surface">
-<span class="w-2 h-2 rounded-full bg-secondary"></span>
-<span class="font-medium">Live capture</span>
-</div>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer">
-<span class="material-symbols-outlined text-[15px]">file_download</span>
-<span>Export CSV</span>
-</button>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer">
-<span class="material-symbols-outlined text-[15px]">refresh</span>
-<span>Reset Counters</span>
-</button>
-</div>
+<div
+  class="flex flex-col md:flex-row md:items-end justify-between gap-space-sm pb-space-sm border-b border-black/[0.06]"
+>
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-baseline gap-space-sm">
+      <h2
+        class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight"
+      >
+        Lab Analytics &amp; Performance
+      </h2>
+      <span class="font-mono-caption text-mono-caption text-on-surface-variant"
+        >COM1 DATA • 880 nm • 100 Hz sampling</span
+      >
+    </div>
+    <p class="text-on-surface-variant font-body-md text-body-md mt-0.5">
+      Carrier throughput, bit error distribution, and raw packet frame
+      inspection.
+    </p>
+  </div>
+  <div
+    class="flex flex-wrap items-center gap-space-xs w-full md:w-auto md:shrink-0"
+  >
+    <div
+      class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-black/[0.08] font-label-sm text-label-sm text-on-surface"
+    >
+      <span class="w-2 h-2 rounded-full bg-secondary"></span>
+      <span class="font-medium">Live capture</span>
+    </div>
+    <button
+      class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer"
+    >
+      <span class="material-symbols-outlined text-[15px]">file_download</span>
+      <span>Export CSV</span>
+    </button>
+    <button
+      class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer"
+    >
+      <span class="material-symbols-outlined text-[15px]">refresh</span>
+      <span>Reset Counters</span>
+    </button>
+  </div>
 </div>
 <div class="kpi-grid">
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
-<div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmission speed</span>
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">speed</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-speed-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0.00</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">KB/s</span>
-</div>
-<span class="font-mono-caption text-[11px] text-outline">Active baud throughput</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div id="kpi-speed-bar" class="h-full bg-primary rounded-full" style="width: 0%;"></div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
-<div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet loss</span>
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">check_circle</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-loss-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0.00%</span>
-<span id="kpi-loss-pkts" class="font-mono-caption text-on-surface-variant font-medium">(0 pkts)</span>
-</div>
-<span class="font-mono-caption text-[11px] text-secondary">Clean optical channel</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-secondary rounded-full" style="width: 100%;"></div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between min-w-0">
-<div class="flex items-center justify-between gap-2">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Optical packet latency</span>
-<span id="kpi-rtt-badge" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">IDLE</span>
-</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-rtt-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">--</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">ms</span>
-</div>
-<span class="font-mono-caption text-[11px] text-outline">Optical frame transit latency</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary/70 rounded-full" style="width: 0%;"></div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
-<div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmitted chunks</span>
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">inventory_2</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-chunks-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">blks</span>
-</div>
-<span class="font-mono-caption text-[11px] text-outline">Open-loop paced streaming</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-secondary-container rounded-full" style="width: 100%;"></div>
-</div>
-</div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between"
+  >
+    <div class="flex items-center justify-between">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Transmission speed</span
+      >
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >speed</span
+      >
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-speed-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >0.00</span
+        >
+        <span class="font-mono-caption text-on-surface-variant font-medium"
+          >KB/s</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-outline"
+        >Active baud throughput</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div
+        id="kpi-speed-bar"
+        class="h-full bg-primary rounded-full"
+        style="width: 0%"
+      ></div>
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between"
+  >
+    <div class="flex items-center justify-between">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Packet loss</span
+      >
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >check_circle</span
+      >
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-loss-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >0.00%</span
+        >
+        <span
+          id="kpi-loss-pkts"
+          class="font-mono-caption text-on-surface-variant font-medium"
+          >(0 pkts)</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-secondary"
+        >Clean optical channel</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div class="h-full bg-secondary rounded-full" style="width: 100%"></div>
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between min-w-0"
+  >
+    <div class="flex items-center justify-between gap-2">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Optical packet latency</span
+      >
+      <span
+        id="kpi-rtt-badge"
+        class="ui-badge"
+        data-tone="neutral"
+        data-size="micro"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="ui-badge__dot"></span>
+        <span class="ui-badge__label">IDLE</span>
+      </span>
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-rtt-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >--</span
+        >
+        <span class="font-mono-caption text-on-surface-variant font-medium"
+          >ms</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-outline"
+        >Optical frame transit latency</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div class="h-full bg-primary/70 rounded-full" style="width: 0%"></div>
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between"
+  >
+    <div class="flex items-center justify-between">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Transmitted chunks</span
+      >
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >inventory_2</span
+      >
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-chunks-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >0</span
+        >
+        <span class="font-mono-caption text-on-surface-variant font-medium"
+          >blks</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-outline"
+        >Open-loop paced streaming</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div
+        class="h-full bg-secondary-container rounded-full"
+        style="width: 100%"
+      ></div>
+    </div>
+  </div>
 </div>
 <div class="split-grid">
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative">
-<div class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]">
-<div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Realtime transmission speed</span>
-</div>
-<div class="flex items-center gap-3 font-mono-caption text-[11px]">
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[2px] bg-primary"></span>
-<span class="text-on-surface-variant">Throughput (KB/s)</span>
-</div>
-</div>
-</div>
-<div class="relative w-full h-44 flex items-center justify-center">
-<canvas id="live-speed-chart" class="w-full h-full"></canvas>
-</div>
-<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]">
-<span>30s ago</span>
-<span>20s ago</span>
-<span>10s ago</span>
-<span>Now</span>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative">
-<div class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]">
-<div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Optical frame latency (RTT)</span>
-</div>
-<div class="flex items-center gap-3 font-mono-caption text-[11px]">
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[2px] bg-secondary"></span>
-<span class="text-on-surface-variant">RTT (ms)</span>
-</div>
-</div>
-</div>
-<div class="relative w-full h-44 flex items-center justify-center">
-<canvas id="live-rtt-chart" class="w-full h-full"></canvas>
-</div>
-<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]">
-<span>30s ago</span>
-<span>20s ago</span>
-<span>10s ago</span>
-<span>Now</span>
-</div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg border border-black/[0.08] flex flex-col overflow-hidden">
-<div class="p-space-sm px-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">terminal</span>
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Raw optical frame sniffer</span>
-<span id="sniffer-frame-count" class="font-mono-caption text-[10px] text-on-surface-variant">0 frames captured</span>
-</div>
-<div class="flex items-center gap-space-sm">
-<div id="sniffer-filter-bar" class="flex flex-wrap items-center bg-surface-container-low p-0.5 rounded-md border border-black/[0.08] font-mono-caption text-[10px]">
-<button class="px-2 py-1 rounded bg-surface-container-lowest text-on-surface font-semibold shadow-xs cursor-pointer">ALL</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">HEADER</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">DATA</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">END</button>
-<button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">INVALID (0)</button>
-</div>
-<div class="relative">
-<span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
-<input id="sniffer-search" class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-full sm:w-44" placeholder="Frame ID or type..." type="text"/>
-</div>
-<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer" title="Collapse / Expand Drawer">
-<span class="material-symbols-outlined text-[18px]">expand_more</span>
-</button>
-</div>
-</div>
-<div id="sniffer-table-container" class="overflow-x-auto max-h-56">
-<table class="data-table w-full text-left border-collapse">
-<thead>
-<tr class="bg-surface-container-low font-mono-caption text-[10px] text-outline uppercase tracking-wider border-b border-black/[0.08]">
-<th class="py-2 px-space-md font-medium">Time (UTC)</th>
-<th class="py-2 px-space-sm font-medium">Frame ID</th>
-<th class="py-2 px-space-sm font-medium">Carrier</th>
-<th class="py-2 px-space-sm font-medium">Type</th>
-<th class="py-2 px-space-sm font-medium">Payload hex preview</th>
-<th class="py-2 px-space-sm font-medium">Integrity</th>
-<th class="py-2 px-space-md font-medium text-right">Latency</th>
-</tr>
-</thead>
-<tbody id="sniffer-table-body" class="font-mono-data text-[11px] divide-y divide-black/[0.05]">
-<tr>
-<td colspan="7" class="py-8 text-center text-on-surface-variant text-mono-data">
-  <div class="flex flex-col items-center justify-center gap-1">
-    <span class="material-symbols-outlined text-[20px] text-outline">memory</span>
-    <span>Waiting for optical frames...</span>
-    <span class="text-[10px] text-outline">Transmitted and received frames will appear here in real time.</span>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative"
+  >
+    <div
+      class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]"
+    >
+      <div class="flex items-center gap-2">
+        <span class="font-title-sm text-title-sm font-semibold text-on-surface"
+          >Realtime transmission speed</span
+        >
+      </div>
+      <div class="flex items-center gap-3 font-mono-caption text-[11px]">
+        <div class="flex items-center gap-1">
+          <span class="w-2.5 h-[2px] bg-primary"></span>
+          <span class="text-on-surface-variant">Throughput (KB/s)</span>
+        </div>
+      </div>
+    </div>
+    <div class="relative w-full h-44 flex items-center justify-center">
+      <canvas id="live-speed-chart" class="w-full h-full"></canvas>
+    </div>
+    <div
+      class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]"
+    >
+      <span>30s ago</span>
+      <span>20s ago</span>
+      <span>10s ago</span>
+      <span>Now</span>
+    </div>
   </div>
-</td>
-</tr>
-</tbody>
-</table>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative"
+  >
+    <div
+      class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]"
+    >
+      <div class="flex items-center gap-2">
+        <span class="font-title-sm text-title-sm font-semibold text-on-surface"
+          >Optical frame latency (RTT)</span
+        >
+      </div>
+      <div class="flex items-center gap-3 font-mono-caption text-[11px]">
+        <div class="flex items-center gap-1">
+          <span class="w-2.5 h-[2px] bg-secondary"></span>
+          <span class="text-on-surface-variant">RTT (ms)</span>
+        </div>
+      </div>
+    </div>
+    <div class="relative w-full h-44 flex items-center justify-center">
+      <canvas id="live-rtt-chart" class="w-full h-full"></canvas>
+    </div>
+    <div
+      class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]"
+    >
+      <span>30s ago</span>
+      <span>20s ago</span>
+      <span>10s ago</span>
+      <span>Now</span>
+    </div>
+  </div>
 </div>
-<div class="px-space-md py-1.5 bg-surface-container-low border-t border-black/[0.08] flex flex-wrap items-center justify-between gap-2 font-mono-caption text-[10px] text-on-surface-variant">
-<div class="flex flex-wrap items-center gap-3">
-<span>Auto-scroll active</span>
-<span>Ring buffer: 65536 bytes</span>
-<span>COM1 optical 8-N-1</span>
-</div>
-<span>OPEN-LOOP / no checksum</span>
-</div>
+<div
+  class="bg-surface-container-lowest rounded-lg border border-black/[0.08] flex flex-col overflow-hidden"
+>
+  <div
+    class="p-space-sm px-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm"
+  >
+    <div class="flex items-center gap-2">
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >terminal</span
+      >
+      <span class="font-title-sm text-title-sm font-semibold text-on-surface"
+        >Raw optical frame sniffer</span
+      >
+      <span
+        id="sniffer-frame-count"
+        class="font-mono-caption text-[10px] text-on-surface-variant"
+        >0 frames captured</span
+      >
+    </div>
+    <div class="flex items-center gap-space-sm">
+      <div
+        id="sniffer-filter-bar"
+        class="flex flex-wrap items-center bg-surface-container-low p-0.5 rounded-md border border-black/[0.08] font-mono-caption text-[10px]"
+      >
+        <button
+          class="px-2 py-1 rounded bg-surface-container-lowest text-on-surface font-semibold shadow-xs cursor-pointer"
+        >
+          ALL
+        </button>
+        <button
+          class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer"
+        >
+          HEADER
+        </button>
+        <button
+          class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer"
+        >
+          DATA
+        </button>
+        <button
+          class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer"
+        >
+          END
+        </button>
+        <button
+          class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer"
+        >
+          INVALID (0)
+        </button>
+      </div>
+      <div class="relative">
+        <span
+          class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]"
+          >search</span
+        >
+        <input
+          id="sniffer-search"
+          class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-full sm:w-44"
+          placeholder="Frame ID or type..."
+          type="text"
+        />
+      </div>
+      <button
+        class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer"
+        title="Collapse / Expand Drawer"
+      >
+        <span class="material-symbols-outlined text-[18px]">expand_more</span>
+      </button>
+    </div>
+  </div>
+  <div id="sniffer-table-container" class="overflow-x-auto max-h-56">
+    <table class="data-table w-full text-left border-collapse">
+      <thead>
+        <tr
+          class="bg-surface-container-low font-mono-caption text-[10px] text-outline uppercase tracking-wider border-b border-black/[0.08]"
+        >
+          <th class="py-2 px-space-md font-medium">Time (UTC)</th>
+          <th class="py-2 px-space-sm font-medium">Frame ID</th>
+          <th class="py-2 px-space-sm font-medium">Carrier</th>
+          <th class="py-2 px-space-sm font-medium">Type</th>
+          <th class="py-2 px-space-sm font-medium">Payload hex preview</th>
+          <th class="py-2 px-space-sm font-medium">Integrity</th>
+          <th class="py-2 px-space-md font-medium text-right">Latency</th>
+        </tr>
+      </thead>
+      <tbody
+        id="sniffer-table-body"
+        class="font-mono-data text-[11px] divide-y divide-black/[0.05]"
+      >
+        <tr>
+          <td
+            colspan="7"
+            class="py-8 text-center text-on-surface-variant text-mono-data"
+          >
+            <div class="flex flex-col items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-[20px] text-outline"
+                >memory</span
+              >
+              <span>Waiting for optical frames...</span>
+              <span class="text-[10px] text-outline"
+                >Transmitted and received frames will appear here in real
+                time.</span
+              >
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div
+    class="px-space-md py-1.5 bg-surface-container-low border-t border-black/[0.08] flex flex-wrap items-center justify-between gap-2 font-mono-caption text-[10px] text-on-surface-variant"
+  >
+    <div class="flex flex-wrap items-center gap-3">
+      <span>Auto-scroll active</span>
+      <span>Ring buffer: 65536 bytes</span>
+      <span>COM1 optical 8-N-1</span>
+    </div>
+    <span>OPEN-LOOP / no checksum</span>
+  </div>
 </div>
