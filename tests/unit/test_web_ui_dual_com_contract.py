@@ -75,8 +75,8 @@ class TestHardwareDualComUi:
         assert "<span>Send</span>" in chat_html
         assert "Type a text message to send across the optical link..." in chat_html
         assert "exclusively in File Transfer Station" in chat_html
-        assert "getElementById('btn-chat-send')" in script
-        assert "getElementById('input-chat-text')" in script
+        assert 'getElementById("btn-chat-send")' in script or "getElementById('btn-chat-send')" in script
+        assert 'getElementById("input-chat-text")' in script or "getElementById('input-chat-text')" in script
         assert "Type a text message before sending." in script
 
 
@@ -102,7 +102,7 @@ class TestBridgeClientContract:
 
     def test_connect_button_starts_in_disconnected_state(self) -> None:
         hardware_html = (COMPONENTS_DIR / "view_hardware.html").read_text(encoding="utf-8")
-        assert 'id="btn-connect" data-state="disconnected"' in hardware_html
+        assert 'id="btn-connect"' in hardware_html and 'data-state="disconnected"' in hardware_html
 
     def test_default_baudrates_are_optical_values(self) -> None:
         """Backend and browser fallbacks expose only the four optical rates."""

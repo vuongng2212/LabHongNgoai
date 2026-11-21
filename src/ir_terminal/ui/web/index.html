@@ -155,37 +155,84 @@
 </head>
 <body class="bg-[#F5F5F7] text-on-surface antialiased min-h-screen flex flex-col font-body-md text-body-md select-none overflow-hidden">
   <div class="w-full h-screen bg-[#F5F5F7] flex flex-col overflow-hidden">
-    <header class="app-header h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none min-w-0">
+    <header
+  class="app-header h-[38px] bg-surface-container-lowest border-b border-black/[0.08] px-space-md flex items-center justify-between flex-shrink-0 select-none min-w-0"
+>
   <div class="app-header__left flex items-center gap-space-md min-w-0">
     <div class="flex items-center gap-2 pr-2 shrink-0">
-      <button aria-label="Close" class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none cursor-pointer">
-        <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">×</span>
+      <button
+        aria-label="Close"
+        class="traffic-dot w-3 h-3 rounded-full bg-[#FF5F56] border border-[#E0443E] flex items-center justify-center group focus:outline-none cursor-pointer"
+      >
+        <span
+          class="text-[8px] text-black font-bold opacity-0 transition-opacity"
+          >×</span
+        >
       </button>
-      <button aria-label="Minimize" class="traffic-dot w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] flex items-center justify-center group focus:outline-none cursor-pointer">
-        <span class="text-[8px] text-black font-bold opacity-0 transition-opacity">-</span>
+      <button
+        aria-label="Minimize"
+        class="traffic-dot w-3 h-3 rounded-full bg-[#FFBD2E] border border-[#DEA123] flex items-center justify-center group focus:outline-none cursor-pointer"
+      >
+        <span
+          class="text-[8px] text-black font-bold opacity-0 transition-opacity"
+          >-</span
+        >
       </button>
-      <button aria-label="Zoom" class="traffic-dot w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] flex items-center justify-center group focus:outline-none cursor-pointer">
-        <span class="text-[7px] text-black font-bold opacity-0 transition-opacity">+</span>
+      <button
+        aria-label="Zoom"
+        class="traffic-dot w-3 h-3 rounded-full bg-[#27C93F] border border-[#1AAB29] flex items-center justify-center group focus:outline-none cursor-pointer"
+      >
+        <span
+          class="text-[7px] text-black font-bold opacity-0 transition-opacity"
+          >+</span
+        >
       </button>
     </div>
     <div class="h-4 w-px bg-outline-variant/40 shrink-0"></div>
-    <div id="ribbon-badge" class="app-ribbon flex items-center gap-space-xs px-2 py-0.5 rounded-md border min-w-0" data-tone="neutral">
+    <div
+      id="ribbon-badge"
+      class="app-ribbon flex items-center gap-space-xs px-2 py-0.5 rounded-md border min-w-0"
+      data-tone="neutral"
+    >
       <span id="ribbon-dot" class="ui-badge__dot"></span>
-      <span id="ribbon-text" class="app-ribbon__text font-mono-data text-mono-data text-on-surface font-medium" title="STM32 Optical Bridge • Disconnected">STM32 Optical Bridge • Disconnected</span>
+      <span
+        id="ribbon-text"
+        class="app-ribbon__text font-mono-data text-mono-data text-on-surface font-medium"
+        title="STM32 Optical Bridge • Disconnected"
+        >STM32 Optical Bridge • Disconnected</span
+      >
     </div>
   </div>
 
   <div class="app-header__center flex items-center gap-2 min-w-0">
-    <span class="material-symbols-outlined text-primary text-[16px] shrink-0">terminal</span>
-    <span id="window-center-title" class="app-header__title font-title-sm text-title-sm text-on-surface font-semibold">SpectraLink IR-OWC — Hardware &amp; Optical Link Setup</span>
+    <span class="material-symbols-outlined text-primary text-[16px] shrink-0"
+      >terminal</span
+    >
+    <span
+      id="window-center-title"
+      class="app-header__title font-title-sm text-title-sm text-on-surface font-semibold"
+      >SpectraLink IR-OWC — Hardware &amp; Optical Link Setup</span
+    >
   </div>
 
   <div class="app-header__right flex items-center gap-space-xs">
-    <span id="chrome-instance-label" class="font-mono-caption text-mono-caption text-on-surface-variant border border-outline-variant/50 px-2 py-0.5 rounded">IR-OWC</span>
-    <button id="btn-top-refresh" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Refresh Port List">
+    <span
+      id="chrome-instance-label"
+      class="font-mono-caption text-mono-caption text-on-surface-variant border border-outline-variant/50 px-2 py-0.5 rounded"
+      >IR-OWC</span
+    >
+    <button
+      id="btn-top-refresh"
+      class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
+      title="Refresh Port List"
+    >
       <span class="material-symbols-outlined text-[16px]">refresh</span>
     </button>
-    <button id="btn-top-settings" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Transfer Settings">
+    <button
+      id="btn-top-settings"
+      class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
+      title="Transfer Settings"
+    >
       <span class="material-symbols-outlined text-[16px]">settings</span>
     </button>
   </div>
@@ -193,59 +240,128 @@
 
 
     <div class="flex flex-1 overflow-hidden min-w-0">
-      <aside id="app-sidebar" class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0">
+      <aside
+  id="app-sidebar"
+  class="w-64 bg-surface-container-low/70 border-r border-black/[0.08] flex flex-col justify-between p-space-md select-none flex-shrink-0"
+>
   <div class="space-y-space-md">
     <div class="sidebar-brand flex items-center gap-space-sm px-1 py-1">
-      <div class="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center shadow-sm shrink-0">
-        <span class="material-symbols-outlined text-[20px] text-white">radar</span>
+      <div
+        class="w-8 h-8 rounded-lg bg-primary-container text-white flex items-center justify-center shadow-sm shrink-0"
+      >
+        <span class="material-symbols-outlined text-[20px] text-white"
+          >radar</span
+        >
       </div>
       <div class="sidebar-brand-text leading-tight min-w-0">
-        <div class="font-title-sm text-title-sm font-bold text-on-surface truncate">SpectraLink IR-OWC</div>
-        <div class="font-mono-caption text-mono-caption text-on-surface-variant truncate">Lab Terminal v1.0</div>
+        <div
+          class="font-title-sm text-title-sm font-bold text-on-surface truncate"
+        >
+          SpectraLink IR-OWC
+        </div>
+        <div
+          class="font-mono-caption text-mono-caption text-on-surface-variant truncate"
+        >
+          Lab Terminal v1.0
+        </div>
       </div>
     </div>
 
     <div class="space-y-1">
-      <div class="sidebar-section-title px-space-xs py-1 text-mono-caption font-mono-caption text-outline font-semibold tracking-wider">
+      <div
+        class="sidebar-section-title px-space-xs py-1 text-mono-caption font-mono-caption text-outline font-semibold tracking-wider"
+      >
         OPTICAL SUBSYSTEMS
       </div>
       <nav class="space-y-1" id="nav-menu">
-        <a data-target="view-hardware" title="Hardware &amp; Link" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-primary-container text-white font-medium shadow-sm transition-all cursor-pointer">
-          <span class="material-symbols-outlined text-[18px] shrink-0">tune</span>
-          <span class="sidebar-label font-label-md text-label-md truncate">Hardware &amp; Link</span>
+        <a
+          data-target="view-hardware"
+          title="Hardware &amp; Link"
+          class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-primary-container text-white font-medium shadow-sm transition-all cursor-pointer"
+        >
+          <span class="material-symbols-outlined text-[18px] shrink-0"
+            >tune</span
+          >
+          <span class="sidebar-label font-label-md text-label-md truncate"
+            >Hardware &amp; Link</span
+          >
         </a>
-        <a data-target="view-file" title="File Transfer" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
-          <span class="material-symbols-outlined text-[18px] shrink-0">swap_horiz</span>
-          <span class="sidebar-label font-label-md text-label-md truncate">File Transfer</span>
+        <a
+          data-target="view-file"
+          title="File Transfer"
+          class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer"
+        >
+          <span class="material-symbols-outlined text-[18px] shrink-0"
+            >swap_horiz</span
+          >
+          <span class="sidebar-label font-label-md text-label-md truncate"
+            >File Transfer</span
+          >
         </a>
-        <a data-target="view-chat" title="Realtime Chat" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
-          <span class="material-symbols-outlined text-[18px] shrink-0">forum</span>
-          <span class="sidebar-label font-label-md text-label-md truncate">Realtime Chat</span>
+        <a
+          data-target="view-chat"
+          title="Realtime Chat"
+          class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer"
+        >
+          <span class="material-symbols-outlined text-[18px] shrink-0"
+            >forum</span
+          >
+          <span class="sidebar-label font-label-md text-label-md truncate"
+            >Realtime Chat</span
+          >
         </a>
-        <a data-target="view-telemetry" title="Lab Diagnostics" class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer">
-          <span class="material-symbols-outlined text-[18px] shrink-0">terminal</span>
-          <span class="sidebar-label font-label-md text-label-md truncate">Lab Diagnostics</span>
+        <a
+          data-target="view-telemetry"
+          title="Lab Diagnostics"
+          class="nav-item flex items-center gap-space-sm px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container-highest/60 transition-colors cursor-pointer"
+        >
+          <span class="material-symbols-outlined text-[18px] shrink-0"
+            >terminal</span
+          >
+          <span class="sidebar-label font-label-md text-label-md truncate"
+            >Lab Diagnostics</span
+          >
         </a>
       </nav>
     </div>
   </div>
 
-  <div class="sidebar-footer bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-2">
+  <div
+    class="sidebar-footer bg-surface-container-lowest rounded-xl p-space-md border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] space-y-2"
+  >
     <div class="flex items-center justify-between gap-1">
       <div class="flex items-center gap-1.5 min-w-0">
-        <span id="footer-health-dot" class="w-2 h-2 rounded-full bg-outline shrink-0"></span>
-        <span id="footer-health-text" class="font-mono-caption text-mono-caption font-medium text-outline truncate">OFFLINE</span>
+        <span
+          id="footer-health-dot"
+          class="w-2 h-2 rounded-full bg-outline shrink-0"
+        ></span>
+        <span
+          id="footer-health-text"
+          class="font-mono-caption text-mono-caption font-medium text-outline truncate"
+          >OFFLINE</span
+        >
       </div>
-      <span class="sidebar-footer-detail text-[10px] font-mono text-outline tracking-widest">DUAL COM</span>
+      <span
+        class="sidebar-footer-detail text-[10px] font-mono text-outline tracking-widest"
+        >DUAL COM</span
+      >
     </div>
-    <div class="sidebar-footer-detail text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1">
+    <div
+      class="sidebar-footer-detail text-[11px] font-mono leading-relaxed text-on-surface-variant border-t border-black/[0.06] pt-2 flex flex-col gap-1"
+    >
       <div class="flex items-center justify-between gap-2">
         <span class="text-outline">Ports:</span>
-        <span id="footer-port-label" class="font-medium text-on-surface truncate text-right">Disconnected</span>
+        <span
+          id="footer-port-label"
+          class="font-medium text-on-surface truncate text-right"
+          >Disconnected</span
+        >
       </div>
       <div class="flex items-center justify-between">
         <span class="text-outline">Baud:</span>
-        <span id="footer-baud-label" class="font-medium text-on-surface">--</span>
+        <span id="footer-baud-label" class="font-medium text-on-surface"
+          >--</span
+        >
       </div>
     </div>
   </div>
@@ -254,634 +370,1274 @@
 
       <div class="flex-1 flex flex-col overflow-hidden bg-[#F5F5F7] min-w-0">
         <div id="view-hardware" class="view-panel active flex-1 overflow-y-auto p-space-lg flex-col gap-space-lg bg-[#F5F5F7] min-w-0">
-          <header class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-sm border-b border-black/[0.06]">
-<div class="min-w-0">
-<div class="flex flex-wrap items-center gap-space-sm min-w-0">
-<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight break-words">Transceiver &amp; Link Configuration</h1>
-<span id="hw-header-link-badge" class="ui-badge" data-tone="neutral" data-size="compact" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">DISCONNECTED</span>
-</span>
-</div>
-<p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
-              Configure COM1 (optical data) and COM2 (STM32 control), apply the optical baudrate, and verify the physical layer.
-            </p>
-</div>
-<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
-<span>CH: <strong class="text-on-surface font-semibold">880nm NIR</strong></span>
-<span class="text-outline-variant">•</span>
-<span>MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span>
-<span class="text-outline-variant">•</span>
-<span>FRAME: <strong class="text-on-surface font-semibold">8-N-1</strong></span>
-</div>
+          <header
+  class="flex flex-col md:flex-row md:items-center justify-between gap-space-md pb-space-sm border-b border-black/[0.06]"
+>
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-center gap-space-sm min-w-0">
+      <h1
+        class="font-headline-lg text-headline-lg text-on-surface tracking-tight break-words"
+      >
+        Transceiver &amp; Link Configuration
+      </h1>
+      <span
+        id="hw-header-link-badge"
+        class="ui-badge"
+        data-tone="neutral"
+        data-size="compact"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="ui-badge__dot"></span>
+        <span class="ui-badge__label">DISCONNECTED</span>
+      </span>
+    </div>
+    <p class="font-body-md text-body-md text-on-surface-variant mt-0.5">
+      Configure COM1 (optical data) and COM2 (STM32 control), apply the optical
+      baudrate, and verify the physical layer.
+    </p>
+  </div>
+  <div
+    class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant"
+  >
+    <span
+      >CH:
+      <strong class="text-on-surface font-semibold">880nm NIR</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >FRAME: <strong class="text-on-surface font-semibold">8-N-1</strong></span
+    >
+  </div>
 </header>
 <div class="split-grid">
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0">
-<div class="space-y-space-md">
-<div class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm">
-<div class="p-1.5 bg-surface-container text-primary rounded-md">
-<span class="material-symbols-outlined text-[20px]" data-icon="cable">cable</span>
+  <section
+    class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0"
+  >
+    <div class="space-y-space-md">
+      <div
+        class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm"
+      >
+        <div class="p-1.5 bg-surface-container text-primary rounded-md">
+          <span class="material-symbols-outlined text-[20px]" data-icon="cable"
+            >cable</span
+          >
+        </div>
+        <div>
+          <h2 class="font-headline-md text-headline-md text-on-surface">
+            Serial Connection
+          </h2>
+          <span
+            class="font-mono-caption text-mono-caption text-on-surface-variant"
+            >DUAL HARDWARE COM PORTS</span
+          >
+        </div>
+      </div>
+      <div class="port-grid">
+        <div class="space-y-1.5 min-w-0">
+          <label
+            class="block font-label-sm text-label-sm text-on-surface-variant font-medium"
+            for="select-port-tx"
+            >COM1 (Kênh Dữ liệu Quang - Data)</label
+          >
+          <div class="relative">
+            <select
+              id="select-port-tx"
+              class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
+            >
+              <option value="MOCK_COM_LOOPBACK">
+                MOCK_COM_LOOPBACK (Virtual Loopback)
+              </option>
+            </select>
+            <div
+              class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="expand_more"
+                >expand_more</span
+              >
+            </div>
+          </div>
+        </div>
+        <div class="space-y-1.5 min-w-0">
+          <label
+            class="block font-label-sm text-label-sm text-on-surface-variant font-medium"
+            for="select-port-rx"
+            >COM2 (Kênh Điều khiển STM32 - Control)</label
+          >
+          <div class="relative">
+            <select
+              id="select-port-rx"
+              class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer"
+            >
+              <option value="MOCK_COM_LOOPBACK">
+                MOCK_COM_LOOPBACK (Virtual Loopback)
+              </option>
+            </select>
+            <div
+              class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant"
+            >
+              <span
+                class="material-symbols-outlined text-[18px]"
+                data-icon="expand_more"
+                >expand_more</span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <div class="flex justify-between items-center">
+          <label
+            class="font-label-sm text-label-sm text-on-surface-variant font-medium"
+            >Optical Baudrate (bps)</label
+          >
+          <span
+            id="baudrate-source-label"
+            class="font-mono-caption text-mono-caption text-outline"
+            >OPTICAL RATES • COM2 CONTROL</span
+          >
+        </div>
+        <div
+          id="baudrate-selector-container"
+          class="flex flex-wrap gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]"
+        ></div>
+      </div>
+      <div
+        class="p-space-sm bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+      >
+        <div class="flex flex-wrap items-center gap-space-md">
+          <div>
+            <span class="font-mono-caption text-mono-caption text-outline block"
+              >FRAMING</span
+            >
+            <span
+              class="font-mono-data text-mono-data text-on-surface font-semibold"
+              >8-N-1</span
+            >
+          </div>
+          <div class="h-6 w-px bg-outline-variant/40"></div>
+          <div>
+            <span class="font-mono-caption text-mono-caption text-outline block"
+              >UART LINK</span
+            >
+            <span
+              id="hw-physical-baud"
+              class="font-mono-data text-mono-data text-on-surface font-semibold"
+              >115200 bps FIXED</span
+            >
+          </div>
+          <div class="h-6 w-px bg-outline-variant/40"></div>
+          <div>
+            <span class="font-mono-caption text-mono-caption text-outline block"
+              >FLOW CONTROL</span
+            >
+            <span
+              class="font-mono-data text-mono-data text-on-surface font-semibold"
+              >None (Direct)</span
+            >
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <span
+            id="hw-tx-status"
+            class="ui-badge"
+            data-tone="neutral"
+            data-size="micro"
+            title="TX port state"
+          >
+            <span id="hw-tx-dot" class="ui-badge__dot"></span>
+            <span class="ui-badge__label">TX IDLE</span>
+          </span>
+          <span
+            id="hw-rx-status"
+            class="ui-badge"
+            data-tone="neutral"
+            data-size="micro"
+            title="RX port state"
+          >
+            <span id="hw-rx-dot" class="ui-badge__dot"></span>
+            <span class="ui-badge__label">RX IDLE</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div
+      class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm"
+    >
+      <button
+        id="btn-connect"
+        data-state="disconnected"
+        class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+      >
+        <span class="material-symbols-outlined text-[16px]" data-icon="link"
+          >link</span
+        >
+        Connect
+      </button>
+      <button
+        id="btn-rescan"
+        class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+      >
+        <span class="material-symbols-outlined text-[16px]" data-icon="refresh"
+          >refresh</span
+        >
+        Rescan Ports
+      </button>
+    </div>
+  </section>
+  <section
+    class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0"
+  >
+    <div class="space-y-space-md">
+      <div
+        class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm"
+      >
+        <div class="p-1.5 bg-surface-container text-primary rounded-md">
+          <span class="material-symbols-outlined text-[20px]" data-icon="radar"
+            >radar</span
+          >
+        </div>
+        <div>
+          <h2 class="font-headline-md text-headline-md text-on-surface">
+            Optical Link &amp; Diagnostics
+          </h2>
+          <span
+            class="font-mono-caption text-mono-caption text-on-surface-variant"
+            >STM32 CONTROL &amp; OPTICAL METRICS</span
+          >
+        </div>
+      </div>
+      <div class="hw-diag-grid items-stretch py-1">
+        <div
+          class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full"
+        >
+          <div
+            class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant"
+          >
+            <span>COM2 CONTROL STATUS</span>
+            <span
+              id="hw-rtt-state"
+              class="ui-badge shrink-0"
+              data-tone="neutral"
+              data-size="micro"
+              role="status"
+              aria-live="polite"
+            >
+              <span class="ui-badge__dot"></span>
+              <span class="ui-badge__label">IDLE</span>
+            </span>
+          </div>
+          <div class="flex items-baseline gap-2 mt-2">
+            <span
+              id="hw-rtt-value"
+              class="font-headline-lg text-headline-lg font-bold text-primary"
+              >--</span
+            >
+            <span class="font-mono-caption text-mono-caption text-outline"
+              >Baud Cmd</span
+            >
+          </div>
+          <div class="text-[11px] text-outline font-mono-caption mt-2">
+            Latest baud command sent over COM2
+          </div>
+        </div>
+        <div class="grid grid-cols-1 gap-2">
+          <div
+            class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]"
+          >
+            <div
+              class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant"
+            >
+              <span>CARRIER WAVELENGTH</span>
+              <span class="text-outline">TFDU4101</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span
+                class="font-headline-md text-headline-md font-bold text-on-surface"
+                >880 nm</span
+              >
+              <span class="font-mono-caption text-mono-caption text-outline"
+                >Direct LOS</span
+              >
+            </div>
+          </div>
+          <div
+            class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]"
+          >
+            <div
+              class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant"
+            >
+              <span>MODULATION ENCODER</span>
+              <span class="text-outline">MCP2122</span>
+            </div>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span
+                class="font-headline-md text-headline-md font-bold text-on-surface"
+                >3/16</span
+              >
+              <span class="font-mono-caption text-mono-caption text-outline"
+                >Pulse Width</span
+              >
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm"
+    >
+      <button
+        id="btn-send-baud"
+        class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+      >
+        <span
+          class="material-symbols-outlined text-[16px] text-primary"
+          data-icon="settings_input_component"
+          >settings_input_component</span
+        >
+        Apply Baud via COM2
+      </button>
+    </div>
+  </section>
 </div>
-<div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Serial Connection</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">DUAL HARDWARE COM PORTS</span>
-</div>
-</div>
-<div class="port-grid">
-<div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-tx">COM1 (Kênh Dữ liệu Quang - Data)</label>
-<div class="relative">
-<select id="select-port-tx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
-<option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
-</select>
-<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant">
-<span class="material-symbols-outlined text-[18px]" data-icon="expand_more">expand_more</span>
-</div>
-</div>
-</div>
-<div class="space-y-1.5 min-w-0">
-<label class="block font-label-sm text-label-sm text-on-surface-variant font-medium" for="select-port-rx">COM2 (Kênh Điều khiển STM32 - Control)</label>
-<div class="relative">
-<select id="select-port-rx" class="appearance-none w-full bg-[#FFFFFF] border border-black/[0.12] rounded-lg px-3 py-1.5 pr-8 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all cursor-pointer">
-<option value="MOCK_COM_LOOPBACK">MOCK_COM_LOOPBACK (Virtual Loopback)</option>
-</select>
-<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-on-surface-variant">
-<span class="material-symbols-outlined text-[18px]" data-icon="expand_more">expand_more</span>
-</div>
-</div>
-</div>
-</div>
-<div class="space-y-1.5">
-<div class="flex justify-between items-center">
-<label class="font-label-sm text-label-sm text-on-surface-variant font-medium">Optical Baudrate (bps)</label>
-<span id="baudrate-source-label" class="font-mono-caption text-mono-caption text-outline">OPTICAL RATES • COM2 CONTROL</span>
-</div>
-<div id="baudrate-selector-container" class="flex flex-wrap gap-1 p-1 bg-[#E8EAEF] rounded-lg border border-black/[0.04]"></div>
-</div>
-<div class="p-space-sm bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-<div class="flex flex-wrap items-center gap-space-md">
-<div>
-<span class="font-mono-caption text-mono-caption text-outline block">FRAMING</span>
-<span class="font-mono-data text-mono-data text-on-surface font-semibold">8-N-1</span>
-</div>
-<div class="h-6 w-px bg-outline-variant/40"></div>
-<div>
-<span class="font-mono-caption text-mono-caption text-outline block">UART LINK</span>
-<span id="hw-physical-baud" class="font-mono-data text-mono-data text-on-surface font-semibold">115200 bps FIXED</span>
-</div>
-<div class="h-6 w-px bg-outline-variant/40"></div>
-<div>
-<span class="font-mono-caption text-mono-caption text-outline block">FLOW CONTROL</span>
-<span class="font-mono-data text-mono-data text-on-surface font-semibold">None (Direct)</span>
-</div>
-</div>
-<div class="flex flex-wrap items-center gap-3">
-<span id="hw-tx-status" class="ui-badge" data-tone="neutral" data-size="micro" title="TX port state">
-<span id="hw-tx-dot" class="ui-badge__dot"></span>
-<span class="ui-badge__label">TX IDLE</span>
-</span>
-<span id="hw-rx-status" class="ui-badge" data-tone="neutral" data-size="micro" title="RX port state">
-<span id="hw-rx-dot" class="ui-badge__dot"></span>
-<span class="ui-badge__label">RX IDLE</span>
-</span>
-</div>
-</div>
-</div>
-<div class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm">
-<button id="btn-connect" data-state="disconnected" class="flex-1 h-[32px] bg-primary-container hover:bg-primary text-on-primary font-title-sm text-title-sm font-semibold rounded-lg shadow-sm flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px]" data-icon="link">link</span>
-                Connect
-              </button>
-<button id="btn-rescan" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px]" data-icon="refresh">refresh</span>
-                Rescan Ports
-              </button>
-</div>
-</section>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] flex flex-col justify-between min-w-0">
-<div class="space-y-space-md">
-<div class="flex items-center gap-space-sm border-b border-black/[0.06] pb-space-sm">
-<div class="p-1.5 bg-surface-container text-primary rounded-md">
-<span class="material-symbols-outlined text-[20px]" data-icon="radar">radar</span>
-</div>
-<div>
-<h2 class="font-headline-md text-headline-md text-on-surface">Optical Link &amp; Diagnostics</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">STM32 CONTROL &amp; OPTICAL METRICS</span>
-</div>
-</div>
-<div class="hw-diag-grid items-stretch py-1">
-<div class="p-3 bg-surface-container-low rounded-lg border border-black/[0.04] flex flex-col justify-between h-full">
-<div class="flex flex-wrap justify-between items-center gap-1 text-mono-caption font-mono-caption text-on-surface-variant">
-<span>COM2 CONTROL STATUS</span>
-<span id="hw-rtt-state" class="ui-badge shrink-0" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">IDLE</span>
-</span>
-</div>
-<div class="flex items-baseline gap-2 mt-2">
-<span id="hw-rtt-value" class="font-headline-lg text-headline-lg font-bold text-primary">--</span>
-<span class="font-mono-caption text-mono-caption text-outline">Baud Cmd</span>
-</div>
-<div class="text-[11px] text-outline font-mono-caption mt-2">Latest baud command sent over COM2</div>
-</div>
-<div class="grid grid-cols-1 gap-2">
-<div class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>CARRIER WAVELENGTH</span>
-<span class="text-outline">TFDU4101</span>
-</div>
-<div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">880 nm</span>
-<span class="font-mono-caption text-mono-caption text-outline">Direct LOS</span>
-</div>
-</div>
-<div class="p-2.5 bg-surface-container-low rounded-lg border border-black/[0.04]">
-<div class="flex justify-between items-center text-mono-caption font-mono-caption text-on-surface-variant">
-<span>MODULATION ENCODER</span>
-<span class="text-outline">MCP2122</span>
-</div>
-<div class="flex items-baseline gap-2 mt-0.5">
-<span class="font-headline-md text-headline-md font-bold text-on-surface">3/16</span>
-<span class="font-mono-caption text-mono-caption text-outline">Pulse Width</span>
-</div>
-</div>
-</div>
-</div>
-</div>
-<div class="pt-space-md mt-space-md border-t border-black/[0.06] flex items-center justify-between gap-space-sm">
-<button id="btn-send-baud" class="flex-1 h-[32px] bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-<span class="material-symbols-outlined text-[16px] text-primary" data-icon="settings_input_component">settings_input_component</span>
-                Apply Baud via COM2
-              </button>
-</div>
-</section>
-</div>
-<section class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] min-w-0">
-<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.06] pb-space-sm mb-space-md">
-<div class="flex items-center gap-space-sm">
-<div class="p-1.5 bg-surface-container text-primary rounded-md">
-<span class="material-symbols-outlined text-[20px]" data-icon="developer_board">developer_board</span>
-</div>
-<div>
-<h3 class="font-headline-md text-headline-md text-on-surface">Physical Layer Specifications</h3>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">UART BRIDGE, MODULATION AND FRAMING PARAMETERS</span>
-</div>
-</div>
-<span class="font-mono-caption text-mono-caption text-outline">READ-ONLY REFERENCE</span>
-</div>
-<div class="spec-grid gap-px bg-black/[0.06] border border-black/[0.06] rounded-lg overflow-hidden">
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">UART FRAMING</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">8-N-1</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">MODULATION</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">MCP2122 3/16 pulse</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">TRANSCEIVER</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">TFDU4101 NIR</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">DUPLEX MODE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Dual COM1 Data / COM2 Control</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">FRAME DELIMITERS</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">SOF 0xAA55 / 8-byte header</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">INTEGRITY</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">None (Open-Loop)</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">FLOW CONTROL</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">Paced Streaming</span>
-</div>
-<div class="bg-surface-container-lowest p-space-sm">
-<span class="block font-mono-caption text-mono-caption text-outline">CHUNK SIZE</span>
-<span class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5">256 bytes</span>
-</div>
-</div>
+<section
+  class="bg-surface-container-lowest rounded-xl p-space-lg border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] min-w-0"
+>
+  <div
+    class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-black/[0.06] pb-space-sm mb-space-md"
+  >
+    <div class="flex items-center gap-space-sm">
+      <div class="p-1.5 bg-surface-container text-primary rounded-md">
+        <span
+          class="material-symbols-outlined text-[20px]"
+          data-icon="developer_board"
+          >developer_board</span
+        >
+      </div>
+      <div>
+        <h3 class="font-headline-md text-headline-md text-on-surface">
+          Physical Layer Specifications
+        </h3>
+        <span
+          class="font-mono-caption text-mono-caption text-on-surface-variant"
+          >UART BRIDGE, MODULATION AND FRAMING PARAMETERS</span
+        >
+      </div>
+    </div>
+    <span class="font-mono-caption text-mono-caption text-outline"
+      >READ-ONLY REFERENCE</span
+    >
+  </div>
+  <div
+    class="spec-grid gap-px bg-black/[0.06] border border-black/[0.06] rounded-lg overflow-hidden"
+  >
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >UART FRAMING</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >8-N-1</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >MODULATION</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >MCP2122 3/16 pulse</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >TRANSCEIVER</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >TFDU4101 NIR</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >DUPLEX MODE</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >Dual COM1 Data / COM2 Control</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >FRAME DELIMITERS</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >SOF 0xAA55 / 8-byte header</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >INTEGRITY</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >None (Open-Loop)</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >FLOW CONTROL</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >Paced Streaming</span
+      >
+    </div>
+    <div class="bg-surface-container-lowest p-space-sm">
+      <span class="block font-mono-caption text-mono-caption text-outline"
+        >CHUNK SIZE</span
+      >
+      <span
+        class="block font-mono-data text-mono-data text-on-surface font-semibold mt-0.5"
+        >256 bytes</span
+      >
+    </div>
+  </div>
 </section>
 
         </div>
 
         <div id="view-file" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg min-w-0">
-          <div class="flex flex-col md:flex-row md:items-end justify-between gap-space-md pb-space-sm border-b border-black/[0.06]">
-<div class="flex flex-col gap-0.5 min-w-0">
-<h1 class="text-headline-lg font-headline-lg text-on-surface tracking-tight break-words">File &amp; Media Transfer Station</h1>
-<p class="text-body-md font-body-md text-on-surface-variant">
-              Transmit binary payloads, media packets, and documents over the optical link.
-            </p>
-</div>
-<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant min-w-0">
-<span>CHUNK: <strong class="text-on-surface font-semibold">256 B</strong></span>
-<span class="text-outline-variant">•</span>
-<span>INTEGRITY: <strong class="text-on-surface font-semibold">Open-Loop</strong></span>
-<span class="text-outline-variant">•</span>
-<span>FLOW: <strong class="text-on-surface font-semibold">Paced Streaming</strong></span>
-</div>
+          <div
+  class="flex flex-col md:flex-row md:items-end justify-between gap-space-md pb-space-sm border-b border-black/[0.06]"
+>
+  <div class="flex flex-col gap-0.5 min-w-0">
+    <h1
+      class="text-headline-lg font-headline-lg text-on-surface tracking-tight break-words"
+    >
+      File &amp; Media Transfer Station
+    </h1>
+    <p class="text-body-md font-body-md text-on-surface-variant">
+      Transmit binary payloads, media packets, and documents over the optical
+      link.
+    </p>
+  </div>
+  <div
+    class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant min-w-0"
+  >
+    <span
+      >CHUNK: <strong class="text-on-surface font-semibold">256 B</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >INTEGRITY:
+      <strong class="text-on-surface font-semibold">Open-Loop</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >FLOW:
+      <strong class="text-on-surface font-semibold"
+        >Paced Streaming</strong
+      ></span
+    >
+  </div>
 </div>
 <div class="split-grid">
-<div id="file-dropzone" class="bg-surface-container-lowest rounded-xl border-2 border-dashed border-[#CBD5E1] p-space-xl flex flex-col items-center justify-center text-center hover:border-primary/60 transition-colors duration-150 group cursor-pointer min-h-[280px] min-w-0">
-<div class="w-12 h-12 rounded-lg border border-black/[0.08] bg-surface-container-low flex items-center justify-center text-on-surface-variant group-hover:text-primary transition-colors mb-space-md">
-<span class="material-symbols-outlined text-[26px]" data-icon="upload_file">upload_file</span>
-</div>
-<h3 id="file-limit-hint" class="text-headline-md font-headline-md text-on-surface mb-1">
-              Drop file to transmit (256-byte paced frames)
-            </h3>
-<p class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg">
-              Supports PDF, images, firmware binaries, and raw packet captures
-            </p>
-<div class="flex items-center gap-space-sm">
-<button class="h-[30px] px-space-lg rounded-lg bg-primary-container text-on-primary text-label-md font-label-md hover:bg-primary transition-colors flex items-center gap-1.5 active:scale-[0.98] cursor-pointer">
-<span class="material-symbols-outlined text-[16px]" data-icon="folder_open">folder_open</span>
-<span>Browse Files</span>
-</button>
-<span class="text-mono-caption font-mono-caption text-on-surface-variant">or drag &amp; drop payload</span>
-</div>
-<div class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline">
-<span class="material-symbols-outlined text-[13px]" data-icon="verified_user">verified_user</span>
-<span>Automatically framed into 256-byte chunks with paced open-loop streaming</span>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between min-w-0">
-<div>
-<div class="flex flex-wrap items-center justify-between gap-2 pb-space-sm border-b border-black/[0.06] mb-space-md">
-<div class="flex items-center gap-2">
-<span class="text-title-sm font-title-sm font-semibold text-on-surface">Active Transmission</span>
-</div>
-<div class="flex items-center gap-2 font-mono-caption text-mono-caption text-on-surface-variant">
-<span>COM1 DATA</span>
-<span id="file-active-status" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">STREAM IDLE</span>
-</span>
-</div>
-</div>
-<div class="flex items-start gap-space-md mb-space-md">
-<div class="w-10 h-10 rounded-lg bg-surface-container-low text-on-surface-variant flex items-center justify-center shrink-0 border border-black/[0.06]">
-<span class="material-symbols-outlined text-[22px]" data-icon="description">description</span>
-</div>
-<div class="flex flex-col flex-1 overflow-hidden">
-<div class="flex items-center justify-between gap-2">
-<span id="file-active-name" class="text-title-sm font-title-sm font-semibold text-on-surface truncate">No active transfer</span>
-<span id="file-active-size" class="text-mono-data font-mono-data font-medium text-on-surface-variant shrink-0">-- KB</span>
-</div>
-<div class="flex items-center gap-2 mt-1">
-<span class="text-mono-caption font-mono-caption text-outline">State:</span>
-<span class="text-mono-caption font-mono-caption text-on-surface-variant">Ready for payload</span>
-</div>
-</div>
-</div>
-<div class="flex flex-col gap-1.5 mb-space-lg">
-<div class="flex items-center justify-between text-mono-caption font-mono-caption">
-<span class="text-on-surface font-medium">Transfer progress</span>
-<span id="file-progress-pct" class="text-primary font-semibold text-mono-data font-mono-data">0%</span>
-</div>
-<div class="w-full h-2 rounded-full bg-surface-container overflow-hidden">
-<div id="file-progress-bar" class="h-full bg-primary rounded-full transition-all duration-300 w-0"></div>
-</div>
-</div>
-<div class="file-stats p-space-sm rounded-lg bg-surface-container-low border border-black/[0.04] mb-space-md">
-<div class="flex flex-col">
-<span class="text-mono-caption font-mono-caption uppercase text-outline">Throughput</span>
-<span id="file-speed" class="text-headline-md font-headline-md text-on-surface font-semibold">0.0 <span class="text-label-sm font-label-sm font-normal text-on-surface-variant">KB/s</span></span>
-</div>
-<div class="flex flex-col">
-<span class="text-mono-caption font-mono-caption uppercase text-outline">ETA</span>
-<span id="file-eta" class="text-headline-md font-headline-md text-on-surface font-semibold">--</span>
-</div>
-<div class="flex flex-col">
-<span class="text-mono-caption font-mono-caption uppercase text-outline">Chunks</span>
-<span id="file-packets" class="text-headline-md font-headline-md text-on-surface font-semibold">0<span class="text-label-sm font-label-sm font-normal text-outline">/0</span></span>
-</div>
-</div>
-</div>
-<div class="flex items-center justify-end gap-space-sm pt-space-xs">
-<button class="flex-1 h-[30px] px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary transition-colors text-label-md font-label-md font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer">
-<span class="material-symbols-outlined text-[15px]" data-icon="send">send</span>
-<span>Transmit</span>
-</button>
-<button class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-black/[0.12] text-on-surface-variant hover:text-error hover:border-error/40 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer">
-<span class="material-symbols-outlined text-[15px]" data-icon="close">close</span>
-<span>Cancel</span>
-</button>
-</div>
-</div>
+  <div
+    id="file-dropzone"
+    class="bg-surface-container-lowest rounded-xl border-2 border-dashed border-[#CBD5E1] p-space-xl flex flex-col items-center justify-center text-center hover:border-primary/60 transition-colors duration-150 group cursor-pointer min-h-[280px] min-w-0"
+  >
+    <div
+      class="w-12 h-12 rounded-lg border border-black/[0.08] bg-surface-container-low flex items-center justify-center text-on-surface-variant group-hover:text-primary transition-colors mb-space-md"
+    >
+      <span
+        class="material-symbols-outlined text-[26px]"
+        data-icon="upload_file"
+        >upload_file</span
+      >
+    </div>
+    <h3
+      id="file-limit-hint"
+      class="text-headline-md font-headline-md text-on-surface mb-1"
+    >
+      Drop file to transmit (256-byte paced frames)
+    </h3>
+    <p
+      class="text-body-md font-body-md text-on-surface-variant max-w-sm mb-space-lg"
+    >
+      Supports PDF, images, firmware binaries, and raw packet captures
+    </p>
+    <div class="flex items-center gap-space-sm">
+      <button
+        class="h-[30px] px-space-lg rounded-lg bg-primary-container text-on-primary text-label-md font-label-md hover:bg-primary transition-colors flex items-center gap-1.5 active:scale-[0.98] cursor-pointer"
+      >
+        <span
+          class="material-symbols-outlined text-[16px]"
+          data-icon="folder_open"
+          >folder_open</span
+        >
+        <span>Browse Files</span>
+      </button>
+      <span class="text-mono-caption font-mono-caption text-on-surface-variant"
+        >or drag &amp; drop payload</span
+      >
+    </div>
+    <div
+      class="mt-space-lg flex items-center gap-1.5 text-mono-caption font-mono-caption text-outline"
+    >
+      <span
+        class="material-symbols-outlined text-[13px]"
+        data-icon="verified_user"
+        >verified_user</span
+      >
+      <span
+        >Automatically framed into 256-byte chunks with paced open-loop
+        streaming</span
+      >
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-xl border border-black/[0.08] p-space-lg flex flex-col justify-between min-w-0"
+  >
+    <div>
+      <div
+        class="flex flex-wrap items-center justify-between gap-2 pb-space-sm border-b border-black/[0.06] mb-space-md"
+      >
+        <div class="flex items-center gap-2">
+          <span
+            class="text-title-sm font-title-sm font-semibold text-on-surface"
+            >Active Transmission</span
+          >
+        </div>
+        <div
+          class="flex items-center gap-2 font-mono-caption text-mono-caption text-on-surface-variant"
+        >
+          <span>COM1 DATA</span>
+          <span
+            id="file-active-status"
+            class="ui-badge"
+            data-tone="neutral"
+            data-size="micro"
+            role="status"
+            aria-live="polite"
+          >
+            <span class="ui-badge__dot"></span>
+            <span class="ui-badge__label">STREAM IDLE</span>
+          </span>
+        </div>
+      </div>
+      <div class="flex items-start gap-space-md mb-space-md">
+        <div
+          class="w-10 h-10 rounded-lg bg-surface-container-low text-on-surface-variant flex items-center justify-center shrink-0 border border-black/[0.06]"
+        >
+          <span
+            class="material-symbols-outlined text-[22px]"
+            data-icon="description"
+            >description</span
+          >
+        </div>
+        <div class="flex flex-col flex-1 overflow-hidden">
+          <div class="flex items-center justify-between gap-2">
+            <span
+              id="file-active-name"
+              class="text-title-sm font-title-sm font-semibold text-on-surface truncate"
+              >No active transfer</span
+            >
+            <span
+              id="file-active-size"
+              class="text-mono-data font-mono-data font-medium text-on-surface-variant shrink-0"
+              >-- KB</span
+            >
+          </div>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-mono-caption font-mono-caption text-outline"
+              >State:</span
+            >
+            <span
+              class="text-mono-caption font-mono-caption text-on-surface-variant"
+              >Ready for payload</span
+            >
+          </div>
+        </div>
+      </div>
+      <div class="flex flex-col gap-1.5 mb-space-lg">
+        <div
+          class="flex items-center justify-between text-mono-caption font-mono-caption"
+        >
+          <span class="text-on-surface font-medium">Transfer progress</span>
+          <span
+            id="file-progress-pct"
+            class="text-primary font-semibold text-mono-data font-mono-data"
+            >0%</span
+          >
+        </div>
+        <div
+          class="w-full h-2 rounded-full bg-surface-container overflow-hidden"
+        >
+          <div
+            id="file-progress-bar"
+            class="h-full bg-primary rounded-full transition-all duration-300 w-0"
+          ></div>
+        </div>
+      </div>
+      <div
+        class="file-stats p-space-sm rounded-lg bg-surface-container-low border border-black/[0.04] mb-space-md"
+      >
+        <div class="flex flex-col">
+          <span
+            class="text-mono-caption font-mono-caption uppercase text-outline"
+            >Throughput</span
+          >
+          <span
+            id="file-speed"
+            class="text-headline-md font-headline-md text-on-surface font-semibold"
+            >0.0
+            <span
+              class="text-label-sm font-label-sm font-normal text-on-surface-variant"
+              >KB/s</span
+            ></span
+          >
+        </div>
+        <div class="flex flex-col">
+          <span
+            class="text-mono-caption font-mono-caption uppercase text-outline"
+            >ETA</span
+          >
+          <span
+            id="file-eta"
+            class="text-headline-md font-headline-md text-on-surface font-semibold"
+            >--</span
+          >
+        </div>
+        <div class="flex flex-col">
+          <span
+            class="text-mono-caption font-mono-caption uppercase text-outline"
+            >Chunks</span
+          >
+          <span
+            id="file-packets"
+            class="text-headline-md font-headline-md text-on-surface font-semibold"
+            >0<span class="text-label-sm font-label-sm font-normal text-outline"
+              >/0</span
+            ></span
+          >
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center justify-end gap-space-sm pt-space-xs">
+      <button
+        class="flex-1 h-[30px] px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary transition-colors text-label-md font-label-md font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer"
+      >
+        <span class="material-symbols-outlined text-[15px]" data-icon="send"
+          >send</span
+        >
+        <span>Transmit</span>
+      </button>
+      <button
+        class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-black/[0.12] text-on-surface-variant hover:text-error hover:border-error/40 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer"
+      >
+        <span class="material-symbols-outlined text-[15px]" data-icon="close"
+          >close</span
+        >
+        <span>Cancel</span>
+      </button>
+    </div>
+  </div>
 </div>
 
-<div class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md min-w-0">
-<div class="flex flex-wrap items-center justify-between gap-space-md">
-<div class="flex flex-wrap items-center gap-space-md min-w-0">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]" data-icon="history">history</span>
-<h2 class="text-title-sm font-title-sm font-semibold text-on-surface">Recent Transfers</h2>
-</div>
-<span class="flex items-center gap-1 font-mono-caption text-mono-caption text-outline">
-<span class="material-symbols-outlined text-[13px]" data-icon="check_circle">check_circle</span>
-<span>Open-loop paced</span>
-</span>
-</div>
-<div class="relative w-full sm:w-auto">
-<span class="material-symbols-outlined absolute left-2 top-1.5 text-[15px] text-outline" data-icon="search">search</span>
-<input class="h-[28px] pl-7 pr-2 text-label-sm font-label-sm rounded-lg bg-surface border border-black/[0.1] focus:border-primary focus:ring-1 focus:ring-primary outline-none w-full sm:w-48" placeholder="Filter transmissions..." type="text"/>
-</div>
-</div>
-<div class="overflow-x-auto border border-black/[0.08] rounded-lg">
-<table class="data-table w-full text-left border-collapse">
-<thead>
-<tr class="bg-surface-container-low border-b border-black/[0.08] text-mono-caption font-mono-caption text-outline uppercase tracking-wider h-8">
-<th class="px-space-md font-medium">File Payload</th>
-<th class="px-space-md font-medium">Size</th>
-<th class="px-space-md font-medium">Direction</th>
-<th class="px-space-md font-medium">Timestamp</th>
-<th class="px-space-md font-medium">Mode</th>
-<th class="px-space-md font-medium">State</th>
-<th class="px-space-md text-right font-medium">Actions</th>
-</tr>
-</thead>
-<tbody id="file-history-body" class="divide-y divide-black/[0.05] text-body-md font-body-md">
-<tr>
-<td colspan="7" class="py-8 text-center text-on-surface-variant text-body-md">
-  <div class="flex flex-col items-center justify-center gap-1">
-    <span class="material-symbols-outlined text-[22px] text-outline">folder_off</span>
-    <span class="font-medium text-on-surface">No file transfers recorded yet</span>
-    <span class="text-label-sm text-outline">Transferred files will be logged here as open-loop paced streams.</span>
+<div
+  class="bg-surface-container-lowest rounded-xl border border-black/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.04)] p-space-lg flex flex-col gap-space-md min-w-0"
+>
+  <div class="flex flex-wrap items-center justify-between gap-space-md">
+    <div class="flex flex-wrap items-center gap-space-md min-w-0">
+      <div class="flex items-center gap-2">
+        <span
+          class="material-symbols-outlined text-on-surface-variant text-[18px]"
+          data-icon="history"
+          >history</span
+        >
+        <h2 class="text-title-sm font-title-sm font-semibold text-on-surface">
+          Recent Transfers
+        </h2>
+      </div>
+      <span
+        class="flex items-center gap-1 font-mono-caption text-mono-caption text-outline"
+      >
+        <span
+          class="material-symbols-outlined text-[13px]"
+          data-icon="check_circle"
+          >check_circle</span
+        >
+        <span>Open-loop paced</span>
+      </span>
+    </div>
+    <div class="relative w-full sm:w-auto">
+      <span
+        class="material-symbols-outlined absolute left-2 top-1.5 text-[15px] text-outline"
+        data-icon="search"
+        >search</span
+      >
+      <input
+        class="h-[28px] pl-7 pr-2 text-label-sm font-label-sm rounded-lg bg-surface border border-black/[0.1] focus:border-primary focus:ring-1 focus:ring-primary outline-none w-full sm:w-48"
+        placeholder="Filter transmissions..."
+        type="text"
+      />
+    </div>
   </div>
-</td>
-</tr>
-</tbody>
-</table>
-</div>
-<div class="flex flex-wrap items-center justify-between gap-2 text-mono-caption font-mono-caption text-outline px-1">
-<div class="flex flex-wrap items-center gap-space-md">
-<span>Open-Loop Paced</span>
-<span>•</span>
-<span>No checksum</span>
-<span>•</span>
-<span>Chunk size: <strong class="text-on-surface font-medium">256 bytes</strong></span>
-</div>
-<span>Optical carrier 880 nm</span>
-</div>
+  <div class="overflow-x-auto border border-black/[0.08] rounded-lg">
+    <table class="data-table w-full text-left border-collapse">
+      <thead>
+        <tr
+          class="bg-surface-container-low border-b border-black/[0.08] text-mono-caption font-mono-caption text-outline uppercase tracking-wider h-8"
+        >
+          <th class="px-space-md font-medium">File Payload</th>
+          <th class="px-space-md font-medium">Size</th>
+          <th class="px-space-md font-medium">Direction</th>
+          <th class="px-space-md font-medium">Timestamp</th>
+          <th class="px-space-md font-medium">Mode</th>
+          <th class="px-space-md font-medium">State</th>
+          <th class="px-space-md text-right font-medium">Actions</th>
+        </tr>
+      </thead>
+      <tbody
+        id="file-history-body"
+        class="divide-y divide-black/[0.05] text-body-md font-body-md"
+      >
+        <tr>
+          <td
+            colspan="7"
+            class="py-8 text-center text-on-surface-variant text-body-md"
+          >
+            <div class="flex flex-col items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-[22px] text-outline"
+                >folder_off</span
+              >
+              <span class="font-medium text-on-surface"
+                >No file transfers recorded yet</span
+              >
+              <span class="text-label-sm text-outline"
+                >Transferred files will be logged here as open-loop paced
+                streams.</span
+              >
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div
+    class="flex flex-wrap items-center justify-between gap-2 text-mono-caption font-mono-caption text-outline px-1"
+  >
+    <div class="flex flex-wrap items-center gap-space-md">
+      <span>Open-Loop Paced</span>
+      <span>•</span>
+      <span>No checksum</span>
+      <span>•</span>
+      <span
+        >Chunk size:
+        <strong class="text-on-surface font-medium">256 bytes</strong></span
+      >
+    </div>
+    <span>Optical carrier 880 nm</span>
+  </div>
 </div>
 
         </div>
 
         <div id="view-chat" class="view-panel flex-1 bg-[#F5F5F7] overflow-hidden flex-col min-w-0">
-          <section class="px-space-lg py-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm shadow-xs shrink-0">
-<div class="min-w-0">
-<div class="flex flex-wrap items-baseline gap-space-sm">
-<h1 class="text-headline-md font-headline-md font-semibold text-on-surface">Realtime Optical Messaging</h1>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">Half-Duplex • 880 nm • Direct LOS</span>
-</div>
-<p class="text-body-md font-body-md text-on-surface-variant mt-0.5">
-              Text messaging over optical link via virtual file envelope streaming.
-            </p>
-</div>
-<div class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant">
-<span>CH: <strong class="text-on-surface font-semibold">880nm NIR</strong></span>
-<span class="text-outline-variant">•</span>
-<span>MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span>
-<span class="text-outline-variant">•</span>
-<span id="chat-link-state" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">LINK STANDBY</span>
-</span>
-</div>
-</section>
-<section class="flex-1 overflow-y-auto px-space-md sm:px-space-xl py-space-lg space-y-4 bg-[#FBFBFC] flex flex-col">
-<div id="chat-empty-state" class="flex flex-col items-center justify-center py-16 text-center text-on-surface-variant my-auto">
-  <div class="w-10 h-10 rounded-lg border border-black/[0.08] bg-surface-container-low flex items-center justify-center text-on-surface-variant mb-3">
-    <span class="material-symbols-outlined text-[22px]">forum</span>
+          <section
+  class="px-space-lg py-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm shadow-xs shrink-0"
+>
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-baseline gap-space-sm">
+      <h1
+        class="text-headline-md font-headline-md font-semibold text-on-surface"
+      >
+        Realtime Optical Messaging
+      </h1>
+      <span class="font-mono-caption text-mono-caption text-on-surface-variant"
+        >Half-Duplex • 880 nm • Direct LOS</span
+      >
+    </div>
+    <p class="text-body-md font-body-md text-on-surface-variant mt-0.5">
+      Text messaging over optical link via virtual file envelope streaming.
+    </p>
   </div>
-  <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">No messages yet</p>
-  <p class="text-body-md font-body-md text-outline max-w-sm">Type a message below and press Enter to transmit across the infrared link.</p>
-</div>
+  <div
+    class="flex flex-wrap items-center gap-space-md font-mono-caption text-mono-caption text-on-surface-variant"
+  >
+    <span
+      >CH:
+      <strong class="text-on-surface font-semibold">880nm NIR</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      >MOD: <strong class="text-on-surface font-semibold">MCP2122</strong></span
+    >
+    <span class="text-outline-variant">•</span>
+    <span
+      id="chat-link-state"
+      class="ui-badge"
+      data-tone="neutral"
+      data-size="micro"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="ui-badge__dot"></span>
+      <span class="ui-badge__label">LINK STANDBY</span>
+    </span>
+  </div>
 </section>
-<footer class="p-space-lg bg-surface-container-lowest border-t border-black/[0.08] shrink-0">
-<div class="flex flex-col gap-2">
-<div class="flex items-center gap-2 p-1.5 pl-3 bg-surface-container-lowest border border-black/[0.12] rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-150">
-<span class="font-mono-data text-mono-data text-on-surface-variant font-semibold shrink-0 select-none">TX &gt;</span>
-<input id="input-chat-text" class="flex-1 min-w-0 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline" placeholder="Type a text message to send across the optical link..." type="text" value=""/>
-<div class="flex items-center gap-1.5 shrink-0">
-<button id="btn-chat-send" class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-primary transition-colors active:scale-[0.98] cursor-pointer" title="Send text message (Enter)">
-<span>Send</span>
-<span class="material-symbols-outlined text-[14px]" data-icon="send">send</span>
-</button>
-</div>
-</div>
-<div class="flex items-center justify-between px-1 text-mono-caption font-mono-caption text-outline">
-<div class="flex items-center gap-1 min-w-0 truncate" title="Realtime Chat sends text messages up to 512 bytes. Binary files and large transfers are handled exclusively in File Transfer Station.">
-<span class="material-symbols-outlined text-[12px]" data-icon="info">info</span>
-<span class="truncate">Text messages only (max 512 bytes). Binary files and large transfers belong exclusively in File Transfer Station.</span>
-</div>
-</div>
-</div>
+<section
+  class="flex-1 overflow-y-auto px-space-md sm:px-space-xl py-space-lg space-y-4 bg-[#FBFBFC] flex flex-col"
+>
+  <div
+    id="chat-empty-state"
+    class="flex flex-col items-center justify-center py-16 text-center text-on-surface-variant my-auto"
+  >
+    <div
+      class="w-10 h-10 rounded-lg border border-black/[0.08] bg-surface-container-low flex items-center justify-center text-on-surface-variant mb-3"
+    >
+      <span class="material-symbols-outlined text-[22px]">forum</span>
+    </div>
+    <p class="text-title-sm font-title-sm font-semibold text-on-surface mb-1">
+      No messages yet
+    </p>
+    <p class="text-body-md font-body-md text-outline max-w-sm">
+      Type a message below and press Enter to transmit across the infrared link.
+    </p>
+  </div>
+</section>
+<footer
+  class="p-space-lg bg-surface-container-lowest border-t border-black/[0.08] shrink-0"
+>
+  <div class="flex flex-col gap-2">
+    <div
+      class="flex items-center gap-2 p-1.5 pl-3 bg-surface-container-lowest border border-black/[0.12] rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.03)] focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-all duration-150"
+    >
+      <span
+        class="font-mono-data text-mono-data text-on-surface-variant font-semibold shrink-0 select-none"
+        >TX &gt;</span
+      >
+      <input
+        id="input-chat-text"
+        class="flex-1 min-w-0 bg-transparent border-0 text-mono-data font-mono-data text-on-surface focus:ring-0 focus:outline-none p-0 h-8 placeholder:text-outline"
+        placeholder="Type a text message to send across the optical link..."
+        type="text"
+        value=""
+      />
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          id="btn-chat-send"
+          class="flex items-center gap-1.5 px-3 h-[30px] rounded-lg bg-primary-container text-white text-label-sm font-label-sm font-semibold hover:bg-primary transition-colors active:scale-[0.98] cursor-pointer"
+          title="Send text message (Enter)"
+        >
+          <span>Send</span>
+          <span class="material-symbols-outlined text-[14px]" data-icon="send"
+            >send</span
+          >
+        </button>
+      </div>
+    </div>
+    <div
+      class="flex items-center justify-between px-1 text-mono-caption font-mono-caption text-outline"
+    >
+      <div
+        class="flex items-center gap-1 min-w-0 truncate"
+        title="Realtime Chat sends text messages up to 512 bytes. Binary files and large transfers are handled exclusively in File Transfer Station."
+      >
+        <span class="material-symbols-outlined text-[12px]" data-icon="info"
+          >info</span
+        >
+        <span class="truncate"
+          >Text messages only (max 512 bytes). Binary files and large transfers
+          belong exclusively in File Transfer Station.</span
+        >
+      </div>
+    </div>
+  </div>
 </footer>
 
         </div>
 
         <div id="view-telemetry" class="view-panel flex-1 bg-[#F5F5F7] overflow-y-auto p-space-lg flex-col gap-space-lg min-w-0">
-          <div class="flex flex-col md:flex-row md:items-end justify-between gap-space-sm pb-space-sm border-b border-black/[0.06]">
-<div class="min-w-0">
-<div class="flex flex-wrap items-baseline gap-space-sm">
-<h2 class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight">Lab Analytics &amp; Performance</h2>
-<span class="font-mono-caption text-mono-caption text-on-surface-variant">COM1 DATA • 880 nm • 100 Hz sampling</span>
-</div>
-<p class="text-on-surface-variant font-body-md text-body-md mt-0.5">
-              Carrier throughput, bit error distribution, and raw packet frame inspection.
-            </p>
-</div>
-<div class="flex flex-wrap items-center gap-space-xs w-full md:w-auto md:shrink-0">
-<div class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-black/[0.08] font-label-sm text-label-sm text-on-surface">
-<span class="w-2 h-2 rounded-full bg-secondary"></span>
-<span class="font-medium">Live capture</span>
-</div>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer">
-<span class="material-symbols-outlined text-[15px]">file_download</span>
-<span>Export CSV</span>
-</button>
-<button class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer">
-<span class="material-symbols-outlined text-[15px]">refresh</span>
-<span>Reset Counters</span>
-</button>
-</div>
+          <div
+  class="flex flex-col md:flex-row md:items-end justify-between gap-space-sm pb-space-sm border-b border-black/[0.06]"
+>
+  <div class="min-w-0">
+    <div class="flex flex-wrap items-baseline gap-space-sm">
+      <h2
+        class="font-headline-lg text-headline-lg text-on-surface font-semibold tracking-tight"
+      >
+        Lab Analytics &amp; Performance
+      </h2>
+      <span class="font-mono-caption text-mono-caption text-on-surface-variant"
+        >COM1 DATA • 880 nm • 100 Hz sampling</span
+      >
+    </div>
+    <p class="text-on-surface-variant font-body-md text-body-md mt-0.5">
+      Carrier throughput, bit error distribution, and raw packet frame
+      inspection.
+    </p>
+  </div>
+  <div
+    class="flex flex-wrap items-center gap-space-xs w-full md:w-auto md:shrink-0"
+  >
+    <div
+      class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-black/[0.08] font-label-sm text-label-sm text-on-surface"
+    >
+      <span class="w-2 h-2 rounded-full bg-secondary"></span>
+      <span class="font-medium">Live capture</span>
+    </div>
+    <button
+      class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer"
+    >
+      <span class="material-symbols-outlined text-[15px]">file_download</span>
+      <span>Export CSV</span>
+    </button>
+    <button
+      class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-container-lowest hover:bg-surface-container-high border border-black/[0.08] text-on-surface font-label-sm text-label-sm transition-colors cursor-pointer"
+    >
+      <span class="material-symbols-outlined text-[15px]">refresh</span>
+      <span>Reset Counters</span>
+    </button>
+  </div>
 </div>
 <div class="kpi-grid">
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
-<div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmission speed</span>
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">speed</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-speed-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0.00</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">KB/s</span>
-</div>
-<span class="font-mono-caption text-[11px] text-outline">Active baud throughput</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div id="kpi-speed-bar" class="h-full bg-primary rounded-full" style="width: 0%;"></div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
-<div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Packet loss</span>
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">check_circle</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-loss-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0.00%</span>
-<span id="kpi-loss-pkts" class="font-mono-caption text-on-surface-variant font-medium">(0 pkts)</span>
-</div>
-<span class="font-mono-caption text-[11px] text-secondary">Clean optical channel</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-secondary rounded-full" style="width: 100%;"></div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between min-w-0">
-<div class="flex items-center justify-between gap-2">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Optical packet latency</span>
-<span id="kpi-rtt-badge" class="ui-badge" data-tone="neutral" data-size="micro" role="status" aria-live="polite">
-<span class="ui-badge__dot"></span>
-<span class="ui-badge__label">IDLE</span>
-</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-rtt-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">--</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">ms</span>
-</div>
-<span class="font-mono-caption text-[11px] text-outline">Optical frame transit latency</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-primary/70 rounded-full" style="width: 0%;"></div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between">
-<div class="flex items-center justify-between">
-<span class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider">Transmitted chunks</span>
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">inventory_2</span>
-</div>
-<div class="my-2">
-<div class="flex items-baseline gap-2">
-<span id="kpi-chunks-value" class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight">0</span>
-<span class="font-mono-caption text-on-surface-variant font-medium">blks</span>
-</div>
-<span class="font-mono-caption text-[11px] text-outline">Open-loop paced streaming</span>
-</div>
-<div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
-<div class="h-full bg-secondary-container rounded-full" style="width: 100%;"></div>
-</div>
-</div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between"
+  >
+    <div class="flex items-center justify-between">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Transmission speed</span
+      >
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >speed</span
+      >
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-speed-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >0.00</span
+        >
+        <span class="font-mono-caption text-on-surface-variant font-medium"
+          >KB/s</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-outline"
+        >Active baud throughput</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div
+        id="kpi-speed-bar"
+        class="h-full bg-primary rounded-full"
+        style="width: 0%"
+      ></div>
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between"
+  >
+    <div class="flex items-center justify-between">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Packet loss</span
+      >
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >check_circle</span
+      >
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-loss-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >0.00%</span
+        >
+        <span
+          id="kpi-loss-pkts"
+          class="font-mono-caption text-on-surface-variant font-medium"
+          >(0 pkts)</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-secondary"
+        >Clean optical channel</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div class="h-full bg-secondary rounded-full" style="width: 100%"></div>
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between min-w-0"
+  >
+    <div class="flex items-center justify-between gap-2">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Optical packet latency</span
+      >
+      <span
+        id="kpi-rtt-badge"
+        class="ui-badge"
+        data-tone="neutral"
+        data-size="micro"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="ui-badge__dot"></span>
+        <span class="ui-badge__label">IDLE</span>
+      </span>
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-rtt-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >--</span
+        >
+        <span class="font-mono-caption text-on-surface-variant font-medium"
+          >ms</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-outline"
+        >Optical frame transit latency</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div class="h-full bg-primary/70 rounded-full" style="width: 0%"></div>
+    </div>
+  </div>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between"
+  >
+    <div class="flex items-center justify-between">
+      <span
+        class="font-mono-caption text-mono-caption text-outline uppercase tracking-wider"
+        >Transmitted chunks</span
+      >
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >inventory_2</span
+      >
+    </div>
+    <div class="my-2">
+      <div class="flex items-baseline gap-2">
+        <span
+          id="kpi-chunks-value"
+          class="font-display-lg text-display-lg font-semibold text-on-surface tracking-tight"
+          >0</span
+        >
+        <span class="font-mono-caption text-on-surface-variant font-medium"
+          >blks</span
+        >
+      </div>
+      <span class="font-mono-caption text-[11px] text-outline"
+        >Open-loop paced streaming</span
+      >
+    </div>
+    <div class="h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+      <div
+        class="h-full bg-secondary-container rounded-full"
+        style="width: 100%"
+      ></div>
+    </div>
+  </div>
 </div>
 <div class="split-grid">
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative">
-<div class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]">
-<div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Realtime transmission speed</span>
-</div>
-<div class="flex items-center gap-3 font-mono-caption text-[11px]">
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[2px] bg-primary"></span>
-<span class="text-on-surface-variant">Throughput (KB/s)</span>
-</div>
-</div>
-</div>
-<div class="relative w-full h-44 flex items-center justify-center">
-<canvas id="live-speed-chart" class="w-full h-full"></canvas>
-</div>
-<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]">
-<span>30s ago</span>
-<span>20s ago</span>
-<span>10s ago</span>
-<span>Now</span>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative">
-<div class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]">
-<div class="flex items-center gap-2">
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Optical frame latency (RTT)</span>
-</div>
-<div class="flex items-center gap-3 font-mono-caption text-[11px]">
-<div class="flex items-center gap-1">
-<span class="w-2.5 h-[2px] bg-secondary"></span>
-<span class="text-on-surface-variant">RTT (ms)</span>
-</div>
-</div>
-</div>
-<div class="relative w-full h-44 flex items-center justify-center">
-<canvas id="live-rtt-chart" class="w-full h-full"></canvas>
-</div>
-<div class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]">
-<span>30s ago</span>
-<span>20s ago</span>
-<span>10s ago</span>
-<span>Now</span>
-</div>
-</div>
-</div>
-<div class="bg-surface-container-lowest rounded-lg border border-black/[0.08] flex flex-col overflow-hidden">
-<div class="p-space-sm px-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[18px]">terminal</span>
-<span class="font-title-sm text-title-sm font-semibold text-on-surface">Raw optical frame sniffer</span>
-<span id="sniffer-frame-count" class="font-mono-caption text-[10px] text-on-surface-variant">0 frames captured</span>
-</div>
-<div class="flex items-center gap-space-sm">
-<div id="sniffer-filter-bar" class="flex flex-wrap items-center bg-surface-container-low p-0.5 rounded-md border border-black/[0.08] font-mono-caption text-[10px]">
-<button class="px-2 py-1 rounded bg-surface-container-lowest text-on-surface font-semibold shadow-xs cursor-pointer">ALL</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">HEADER</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">DATA</button>
-<button class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer">END</button>
-<button class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer">INVALID (0)</button>
-</div>
-<div class="relative">
-<span class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]">search</span>
-<input id="sniffer-search" class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-full sm:w-44" placeholder="Frame ID or type..." type="text"/>
-</div>
-<button class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer" title="Collapse / Expand Drawer">
-<span class="material-symbols-outlined text-[18px]">expand_more</span>
-</button>
-</div>
-</div>
-<div id="sniffer-table-container" class="overflow-x-auto max-h-56">
-<table class="data-table w-full text-left border-collapse">
-<thead>
-<tr class="bg-surface-container-low font-mono-caption text-[10px] text-outline uppercase tracking-wider border-b border-black/[0.08]">
-<th class="py-2 px-space-md font-medium">Time (UTC)</th>
-<th class="py-2 px-space-sm font-medium">Frame ID</th>
-<th class="py-2 px-space-sm font-medium">Carrier</th>
-<th class="py-2 px-space-sm font-medium">Type</th>
-<th class="py-2 px-space-sm font-medium">Payload hex preview</th>
-<th class="py-2 px-space-sm font-medium">Integrity</th>
-<th class="py-2 px-space-md font-medium text-right">Latency</th>
-</tr>
-</thead>
-<tbody id="sniffer-table-body" class="font-mono-data text-[11px] divide-y divide-black/[0.05]">
-<tr>
-<td colspan="7" class="py-8 text-center text-on-surface-variant text-mono-data">
-  <div class="flex flex-col items-center justify-center gap-1">
-    <span class="material-symbols-outlined text-[20px] text-outline">memory</span>
-    <span>Waiting for optical frames...</span>
-    <span class="text-[10px] text-outline">Transmitted and received frames will appear here in real time.</span>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative"
+  >
+    <div
+      class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]"
+    >
+      <div class="flex items-center gap-2">
+        <span class="font-title-sm text-title-sm font-semibold text-on-surface"
+          >Realtime transmission speed</span
+        >
+      </div>
+      <div class="flex items-center gap-3 font-mono-caption text-[11px]">
+        <div class="flex items-center gap-1">
+          <span class="w-2.5 h-[2px] bg-primary"></span>
+          <span class="text-on-surface-variant">Throughput (KB/s)</span>
+        </div>
+      </div>
+    </div>
+    <div class="relative w-full h-44 flex items-center justify-center">
+      <canvas id="live-speed-chart" class="w-full h-full"></canvas>
+    </div>
+    <div
+      class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]"
+    >
+      <span>30s ago</span>
+      <span>20s ago</span>
+      <span>10s ago</span>
+      <span>Now</span>
+    </div>
   </div>
-</td>
-</tr>
-</tbody>
-</table>
+  <div
+    class="bg-surface-container-lowest rounded-lg p-space-md border border-black/[0.08] flex flex-col justify-between relative"
+  >
+    <div
+      class="flex items-center justify-between pb-2 mb-2 border-b border-black/[0.06]"
+    >
+      <div class="flex items-center gap-2">
+        <span class="font-title-sm text-title-sm font-semibold text-on-surface"
+          >Optical frame latency (RTT)</span
+        >
+      </div>
+      <div class="flex items-center gap-3 font-mono-caption text-[11px]">
+        <div class="flex items-center gap-1">
+          <span class="w-2.5 h-[2px] bg-secondary"></span>
+          <span class="text-on-surface-variant">RTT (ms)</span>
+        </div>
+      </div>
+    </div>
+    <div class="relative w-full h-44 flex items-center justify-center">
+      <canvas id="live-rtt-chart" class="w-full h-full"></canvas>
+    </div>
+    <div
+      class="flex justify-between font-mono-caption text-[10px] text-outline pt-2 border-t border-black/[0.06]"
+    >
+      <span>30s ago</span>
+      <span>20s ago</span>
+      <span>10s ago</span>
+      <span>Now</span>
+    </div>
+  </div>
 </div>
-<div class="px-space-md py-1.5 bg-surface-container-low border-t border-black/[0.08] flex flex-wrap items-center justify-between gap-2 font-mono-caption text-[10px] text-on-surface-variant">
-<div class="flex flex-wrap items-center gap-3">
-<span>Auto-scroll active</span>
-<span>Ring buffer: 65536 bytes</span>
-<span>COM1 optical 8-N-1</span>
-</div>
-<span>OPEN-LOOP / no checksum</span>
-</div>
+<div
+  class="bg-surface-container-lowest rounded-lg border border-black/[0.08] flex flex-col overflow-hidden"
+>
+  <div
+    class="p-space-sm px-space-md bg-surface-container-lowest border-b border-black/[0.08] flex flex-wrap items-center justify-between gap-space-sm"
+  >
+    <div class="flex items-center gap-2">
+      <span
+        class="material-symbols-outlined text-on-surface-variant text-[18px]"
+        >terminal</span
+      >
+      <span class="font-title-sm text-title-sm font-semibold text-on-surface"
+        >Raw optical frame sniffer</span
+      >
+      <span
+        id="sniffer-frame-count"
+        class="font-mono-caption text-[10px] text-on-surface-variant"
+        >0 frames captured</span
+      >
+    </div>
+    <div class="flex items-center gap-space-sm">
+      <div
+        id="sniffer-filter-bar"
+        class="flex flex-wrap items-center bg-surface-container-low p-0.5 rounded-md border border-black/[0.08] font-mono-caption text-[10px]"
+      >
+        <button
+          class="px-2 py-1 rounded bg-surface-container-lowest text-on-surface font-semibold shadow-xs cursor-pointer"
+        >
+          ALL
+        </button>
+        <button
+          class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer"
+        >
+          HEADER
+        </button>
+        <button
+          class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer"
+        >
+          DATA
+        </button>
+        <button
+          class="px-2 py-1 rounded text-on-surface-variant hover:text-on-surface cursor-pointer"
+        >
+          END
+        </button>
+        <button
+          class="px-2 py-1 rounded text-error hover:bg-error-container/30 cursor-pointer"
+        >
+          INVALID (0)
+        </button>
+      </div>
+      <div class="relative">
+        <span
+          class="material-symbols-outlined absolute left-2 top-1/2 -translate-y-1/2 text-outline text-[14px]"
+          >search</span
+        >
+        <input
+          id="sniffer-search"
+          class="h-[28px] pl-6 pr-2 rounded-md bg-surface-container-lowest border border-black/[0.1] font-mono-data text-[11px] text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none w-full sm:w-44"
+          placeholder="Frame ID or type..."
+          type="text"
+        />
+      </div>
+      <button
+        class="p-1 rounded hover:bg-surface-container text-on-surface-variant cursor-pointer"
+        title="Collapse / Expand Drawer"
+      >
+        <span class="material-symbols-outlined text-[18px]">expand_more</span>
+      </button>
+    </div>
+  </div>
+  <div id="sniffer-table-container" class="overflow-x-auto max-h-56">
+    <table class="data-table w-full text-left border-collapse">
+      <thead>
+        <tr
+          class="bg-surface-container-low font-mono-caption text-[10px] text-outline uppercase tracking-wider border-b border-black/[0.08]"
+        >
+          <th class="py-2 px-space-md font-medium">Time (UTC)</th>
+          <th class="py-2 px-space-sm font-medium">Frame ID</th>
+          <th class="py-2 px-space-sm font-medium">Carrier</th>
+          <th class="py-2 px-space-sm font-medium">Type</th>
+          <th class="py-2 px-space-sm font-medium">Payload hex preview</th>
+          <th class="py-2 px-space-sm font-medium">Integrity</th>
+          <th class="py-2 px-space-md font-medium text-right">Latency</th>
+        </tr>
+      </thead>
+      <tbody
+        id="sniffer-table-body"
+        class="font-mono-data text-[11px] divide-y divide-black/[0.05]"
+      >
+        <tr>
+          <td
+            colspan="7"
+            class="py-8 text-center text-on-surface-variant text-mono-data"
+          >
+            <div class="flex flex-col items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-[20px] text-outline"
+                >memory</span
+              >
+              <span>Waiting for optical frames...</span>
+              <span class="text-[10px] text-outline"
+                >Transmitted and received frames will appear here in real
+                time.</span
+              >
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div
+    class="px-space-md py-1.5 bg-surface-container-low border-t border-black/[0.08] flex flex-wrap items-center justify-between gap-2 font-mono-caption text-[10px] text-on-surface-variant"
+  >
+    <div class="flex flex-wrap items-center gap-3">
+      <span>Auto-scroll active</span>
+      <span>Ring buffer: 65536 bytes</span>
+      <span>COM1 optical 8-N-1</span>
+    </div>
+    <span>OPEN-LOOP / no checksum</span>
+  </div>
 </div>
 
         </div>
@@ -889,90 +1645,215 @@
     </div>
   </div>
 
-  <div id="settings-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
-  <div id="settings-backdrop" class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"></div>
-  <div id="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title"
-    class="relative w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col gap-space-md transition-all">
+  <div
+  id="settings-overlay"
+  class="fixed inset-0 z-[10000] hidden items-center justify-center p-4"
+>
+  <div
+    id="settings-backdrop"
+    class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"
+  ></div>
+  <div
+    id="settings-card"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="settings-title"
+    class="relative w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col gap-space-md transition-all"
+  >
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-space-sm">
-        <div class="w-10 h-10 rounded-xl bg-surface-container text-primary flex items-center justify-center shadow-sm">
+        <div
+          class="w-10 h-10 rounded-xl bg-surface-container text-primary flex items-center justify-center shadow-sm"
+        >
           <span class="material-symbols-outlined text-[22px]">settings</span>
         </div>
         <div>
-          <h3 id="settings-title" class="font-headline-md text-headline-md text-on-surface">Transfer Settings</h3>
-          <p class="font-mono-caption text-mono-caption text-on-surface-variant">OPTICAL LINK • PERSISTED LOCALLY</p>
+          <h3
+            id="settings-title"
+            class="font-headline-md text-headline-md text-on-surface"
+          >
+            Transfer Settings
+          </h3>
+          <p
+            class="font-mono-caption text-mono-caption text-on-surface-variant"
+          >
+            OPTICAL LINK • PERSISTED LOCALLY
+          </p>
         </div>
       </div>
-      <button id="settings-close" class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer" title="Close settings">
+      <button
+        id="settings-close"
+        class="p-1 rounded hover:bg-surface-container-high text-on-surface-variant transition-colors cursor-pointer"
+        title="Close settings"
+      >
         <span class="material-symbols-outlined text-[18px]">close</span>
       </button>
     </div>
     <div class="space-y-space-md">
       <div class="space-y-1.5">
-        <label for="settings-dir" class="block font-label-sm text-label-sm text-on-surface-variant font-medium">Default receive directory (Files only)</label>
+        <label
+          for="settings-dir"
+          class="block font-label-sm text-label-sm text-on-surface-variant font-medium"
+          >Default receive directory (Files only)</label
+        >
         <div class="flex items-center gap-2">
-          <input id="settings-dir" type="text" placeholder="Type or browse a receive folder" spellcheck="false" autocomplete="off"
-            class="flex-1 bg-surface-container-low border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all" />
-          <button id="settings-browse" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer">
-            <span class="material-symbols-outlined text-[16px]">folder_open</span>
+          <input
+            id="settings-dir"
+            type="text"
+            placeholder="Type or browse a receive folder"
+            spellcheck="false"
+            autocomplete="off"
+            class="flex-1 bg-surface-container-low border border-black/[0.12] rounded-lg px-3 py-1.5 text-on-surface font-mono-data text-mono-data focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+          />
+          <button
+            id="settings-browse"
+            class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium flex items-center gap-1.5 active:scale-[0.98] transition-all cursor-pointer"
+          >
+            <span class="material-symbols-outlined text-[16px]"
+              >folder_open</span
+            >
             <span>Browse</span>
           </button>
         </div>
-        <p class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed">Only files received over the optical link are saved here. Chat history, logs and telemetry always stay in the app's <span class="font-mono-data">data/</span> folder.</p>
-        <button id="settings-reset" type="button" class="self-start font-title-sm text-title-sm font-medium text-primary hover:underline cursor-pointer">Reset to default</button>
+        <p
+          class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed"
+        >
+          Only files received over the optical link are saved here. Chat
+          history, logs and telemetry always stay in the app's
+          <span class="font-mono-data">data/</span> folder.
+        </p>
+        <button
+          id="settings-reset"
+          type="button"
+          class="self-start font-title-sm text-title-sm font-medium text-primary hover:underline cursor-pointer"
+        >
+          Reset to default
+        </button>
       </div>
-      <p id="settings-error" class="hidden font-body-md text-body-md text-error"></p>
+      <p
+        id="settings-error"
+        class="hidden font-body-md text-body-md text-error"
+      ></p>
     </div>
     <div class="pt-space-xs border-t border-black/[0.06]">
-      <button id="btn-toggle-debug" type="button" class="w-full px-3 py-2.5 bg-surface-container-low hover:bg-surface-container text-on-surface border border-black/[0.1] rounded-xl font-title-sm text-title-sm font-semibold flex items-center justify-between active:scale-[0.99] transition-all cursor-pointer">
+      <button
+        id="btn-toggle-debug"
+        type="button"
+        class="w-full px-3 py-2.5 bg-surface-container-low hover:bg-surface-container text-on-surface border border-black/[0.1] rounded-xl font-title-sm text-title-sm font-semibold flex items-center justify-between active:scale-[0.99] transition-all cursor-pointer"
+      >
         <div class="flex items-center gap-2">
-          <span class="material-symbols-outlined text-primary text-[20px]">bug_report</span>
+          <span class="material-symbols-outlined text-primary text-[20px]"
+            >bug_report</span
+          >
           <span>Debug / Diagnostics</span>
-          <span class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/10 text-primary border border-primary/20">LIVE RAW LOGS</span>
+          <span
+            class="px-2 py-0.5 rounded text-[10px] font-mono font-medium bg-primary/10 text-primary border border-primary/20"
+            >LIVE RAW LOGS</span
+          >
         </div>
-        <span id="debug-toggle-chevron" class="material-symbols-outlined text-[20px] text-on-surface-variant transition-transform">expand_more</span>
+        <span
+          id="debug-toggle-chevron"
+          class="material-symbols-outlined text-[20px] text-on-surface-variant transition-transform"
+          >expand_more</span
+        >
       </button>
     </div>
-    <div id="settings-debug-panel" class="hidden flex-col gap-space-sm p-3 bg-surface-container-low/70 rounded-xl border border-black/[0.06]">
-      <div class="flex flex-wrap items-center justify-between gap-2 bg-surface-container-lowest p-2.5 rounded-lg border border-black/[0.06]">
+    <div
+      id="settings-debug-panel"
+      class="hidden flex-col gap-space-sm p-3 bg-surface-container-low/70 rounded-xl border border-black/[0.06]"
+    >
+      <div
+        class="flex flex-wrap items-center justify-between gap-2 bg-surface-container-lowest p-2.5 rounded-lg border border-black/[0.06]"
+      >
         <div class="flex flex-wrap items-center gap-3">
           <div class="flex items-center gap-1.5 font-mono text-[11px]">
-            <span class="text-on-surface-variant font-medium">Physical UART:</span>
-            <span id="debug-physical-baud" class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold">115200 bps</span>
+            <span class="text-on-surface-variant font-medium"
+              >Physical UART:</span
+            >
+            <span
+              id="debug-physical-baud"
+              class="px-2 py-0.5 rounded bg-surface-container-high text-on-surface font-semibold"
+              >115200 bps</span
+            >
           </div>
           <div class="h-3 w-px bg-outline-variant/50"></div>
           <div class="flex items-center gap-1.5 font-mono text-[11px]">
-            <span class="text-on-surface-variant font-medium">Optical Channel:</span>
-            <span id="debug-optical-baud" class="px-2 py-0.5 rounded bg-primary-container text-white font-semibold">9600 bps</span>
+            <span class="text-on-surface-variant font-medium"
+              >Optical Channel:</span
+            >
+            <span
+              id="debug-optical-baud"
+              class="px-2 py-0.5 rounded bg-primary-container text-white font-semibold"
+              >9600 bps</span
+            >
           </div>
         </div>
-        <span id="debug-log-count" class="font-mono text-[11px] text-on-surface-variant">0 logs</span>
+        <span
+          id="debug-log-count"
+          class="font-mono text-[11px] text-on-surface-variant"
+          >0 logs</span
+        >
       </div>
       <div class="flex items-center justify-between gap-2">
         <div class="flex items-center gap-1.5">
-          <button id="btn-clear-debug-logs" type="button" class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer" title="Clear logs">
+          <button
+            id="btn-clear-debug-logs"
+            type="button"
+            class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+            title="Clear logs"
+          >
             <span class="material-symbols-outlined text-[14px]">delete</span>
             <span>Clear</span>
           </button>
-          <button id="btn-copy-debug-logs" type="button" class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer" title="Copy raw logs">
-            <span class="material-symbols-outlined text-[14px]">content_copy</span>
+          <button
+            id="btn-copy-debug-logs"
+            type="button"
+            class="h-[28px] px-2.5 bg-surface-container-lowest hover:bg-surface-container-high text-on-surface border border-black/[0.12] rounded-md font-mono text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+            title="Copy raw logs"
+          >
+            <span class="material-symbols-outlined text-[14px]"
+              >content_copy</span
+            >
             <span>Copy</span>
           </button>
         </div>
-        <label class="flex items-center gap-1.5 font-mono text-[11px] text-on-surface-variant cursor-pointer select-none">
-          <input id="chk-autoscroll-debug" type="checkbox" checked class="rounded border-black/[0.2] text-primary focus:ring-0 cursor-pointer" />
+        <label
+          class="flex items-center gap-1.5 font-mono text-[11px] text-on-surface-variant cursor-pointer select-none"
+        >
+          <input
+            id="chk-autoscroll-debug"
+            type="checkbox"
+            checked
+            class="rounded border-black/[0.2] text-primary focus:ring-0 cursor-pointer"
+          />
           <span>Auto-scroll</span>
         </label>
       </div>
-      <div id="debug-log-console" class="h-60 overflow-y-auto p-2 bg-[#0C1222] text-[#E2E8F0] rounded-lg border border-black/20 font-mono text-[11px] leading-relaxed flex flex-col gap-1 select-text">
-        <div id="debug-log-empty" class="text-slate-500 py-8 text-center italic">Waiting for serial traffic (TX/RX)...</div>
+      <div
+        id="debug-log-console"
+        class="h-60 overflow-y-auto p-2 bg-[#0C1222] text-[#E2E8F0] rounded-lg border border-black/20 font-mono text-[11px] leading-relaxed flex flex-col gap-1 select-text"
+      >
+        <div
+          id="debug-log-empty"
+          class="text-slate-500 py-8 text-center italic"
+        >
+          Waiting for serial traffic (TX/RX)...
+        </div>
       </div>
     </div>
-    <div class="flex items-center justify-end gap-space-sm pt-space-xs border-t border-black/[0.04]">
-      <button id="settings-cancel" class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium active:scale-[0.98] transition-all cursor-pointer">
+    <div
+      class="flex items-center justify-end gap-space-sm pt-space-xs border-t border-black/[0.04]"
+    >
+      <button
+        id="settings-cancel"
+        class="h-[32px] px-space-md bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12] rounded-lg font-title-sm text-title-sm font-medium active:scale-[0.98] transition-all cursor-pointer"
+      >
         Cancel
       </button>
-      <button id="settings-save" class="h-[32px] px-space-md bg-primary-container hover:bg-primary text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm active:scale-[0.98] transition-all cursor-pointer">
+      <button
+        id="settings-save"
+        class="h-[32px] px-space-md bg-primary-container hover:bg-primary text-white font-title-sm text-title-sm font-semibold rounded-lg shadow-sm active:scale-[0.98] transition-all cursor-pointer"
+      >
         Save
       </button>
     </div>
@@ -980,18 +1861,51 @@
 </div>
 
 
-  <div id="toast-container" class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none" aria-live="polite"></div>
-<div id="modal-overlay" class="fixed inset-0 z-[10000] hidden items-center justify-center p-4">
-  <div id="modal-backdrop" class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"></div>
-  <div id="modal-card" role="dialog" aria-modal="true"
-    class="relative w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2">
-    <div id="modal-icon-wrap" class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm">
-      <span id="modal-icon" class="material-symbols-outlined text-[26px]">check_circle</span>
+  <div
+  id="toast-container"
+  class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 items-end pointer-events-none"
+  aria-live="polite"
+></div>
+<div
+  id="modal-overlay"
+  class="fixed inset-0 z-[10000] hidden items-center justify-center p-4"
+>
+  <div
+    id="modal-backdrop"
+    class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"
+  ></div>
+  <div
+    id="modal-card"
+    role="dialog"
+    aria-modal="true"
+    class="relative w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2"
+  >
+    <div
+      id="modal-icon-wrap"
+      class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm"
+    >
+      <span id="modal-icon" class="material-symbols-outlined text-[26px]"
+        >check_circle</span
+      >
     </div>
-    <h3 id="modal-title" class="font-headline-md text-headline-md text-on-surface">Done</h3>
-    <p id="modal-message" class="font-body-md text-body-md text-on-surface-variant leading-relaxed"></p>
-    <p id="modal-details" class="hidden font-mono-data text-mono-data text-outline bg-surface-container-low border border-black/[0.04] rounded-lg px-2.5 py-1.5 max-w-full break-all"></p>
-    <div id="modal-actions" class="flex items-center justify-center gap-2 mt-2 w-full"></div>
+    <h3
+      id="modal-title"
+      class="font-headline-md text-headline-md text-on-surface"
+    >
+      Done
+    </h3>
+    <p
+      id="modal-message"
+      class="font-body-md text-body-md text-on-surface-variant leading-relaxed"
+    ></p>
+    <p
+      id="modal-details"
+      class="hidden font-mono-data text-mono-data text-outline bg-surface-container-low border border-black/[0.04] rounded-lg px-2.5 py-1.5 max-w-full break-all"
+    ></p>
+    <div
+      id="modal-actions"
+      class="flex items-center justify-center gap-2 mt-2 w-full"
+    ></div>
   </div>
 </div>
 
