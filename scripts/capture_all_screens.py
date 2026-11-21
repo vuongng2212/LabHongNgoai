@@ -1,4 +1,4 @@
-"""Captures high-resolution pixel-perfect screenshots of all 4 views with live active states."""
+"""Công cụ tự động chụp ảnh màn hình 4 tab giao diện của phần mềm lưu vào thư mục tài liệu docs/screenshots/."""
 
 import os
 import time

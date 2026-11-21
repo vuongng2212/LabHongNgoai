@@ -1,10 +1,10 @@
-"""Dịch vụ giám sát viễn trắc quang học và phân tích gói tin thời gian thực (Telemetry & Packet Sniffer).
+"""Bộ đo thông số đường truyền: tính tốc độ thực tế (KB/giây), tỷ lệ rớt gói (packet loss %) và bảng bắt gói tin quang học (packet sniffer).
 
-Thu thập và tính toán các chỉ số chất lượng kênh truyền Open-Loop:
-- Thông lượng tức thời (Throughput KB/s) theo cửa sổ trượt thời gian 3.0s.
-- Tỷ lệ rớt gói (Packet Loss Rate %) và đếm lỗi khung truyền UART.
-- Độ trễ khứ hồi ước lượng (RTT ms) và bộ đệm bắt gói tin (Live Packet Sniffer 200 bản ghi).
-- Định kỳ lưu trữ mẫu đo lường viễn trắc xuống cơ sở dữ liệu và xuất báo cáo CSV.
+Chuyên theo dõi chất lượng đường truyền quang giữa hai máy tính qua tia hồng ngoại:
+- Đo tốc độ truyền thực tế (KB/s): đếm lượng byte bay qua không khí trong 3 giây gần nhất để hiển thị biểu đồ thời gian thực.
+- Theo dõi tỷ lệ rớt gói (packet loss %): đếm số gói bị mất tín hiệu hoặc lỗi checksum CRC để kỹ sư biết tia quang có bị lệch hướng hay vật cản không.
+- Bảng bắt gói tin (Packet Sniffer): hiển thị trực tiếp 200 khung tin quang gần nhất (ID gói, loại gói HEADER/DATA/END, độ trễ ms) giống như một máy phân tích logic thu nhỏ.
+- Định kỳ tự động lưu số liệu đo đạc vào ổ cứng và cho phép bấm nút xuất báo cáo ra file Excel (.csv).
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ OPEN_LOOP_STATUS = "OPEN-LOOP"
 
 
 class SnifferRecord(TypedDict):
-    """Bản ghi siêu dữ liệu bắt gói tin (sniffer record) cho một khung truyền quang thô."""
+    """Bản ghi tóm tắt của một khung tin quang học bắt được trên đường truyền (thời gian, mã khung, loại gói tin, xem trước dữ liệu, độ trễ)."""
 
     time_str: str
     frame_id: str
@@ -50,7 +50,7 @@ class SnifferRecord(TypedDict):
 
 
 class TelemetrySummary(TypedDict):
-    """Bản sao trạng thái tổng hợp các chỉ số viễn trắc kênh truyền hiện tại."""
+    """Bảng số liệu tổng hợp về chất lượng kênh quang (tốc độ KB/s, tỷ lệ rớt gói %, tổng số gói đã gửi/nhận/rớt)."""
 
     throughput_kbps: float
     rtt_ms: float
@@ -63,7 +63,7 @@ class TelemetrySummary(TypedDict):
 
 
 def frame_type_name(sequence: int) -> str:
-    """Ánh xạ mã định danh sequence của khung truyền thành nhãn chuỗi trực quan.
+    """Đổi mã số sequence thành tên loại gói tin dễ đọc: FILE_HEADER (gói mở đầu), FILE_END (gói kết thúc), DATA_CHUNK (gói dữ liệu 256 byte).
 
     Args:
         sequence: Mã sequence nhị phân từ tiêu đề khung truyền.
@@ -79,7 +79,7 @@ def frame_type_name(sequence: int) -> str:
 
 
 class TelemetryService(QObject):
-    """Tính toán đo lường viễn trắc kênh truyền Open-Loop và quản lý bộ bắt gói tin Sniffer."""
+    """Bộ đo thông số đường truyền: tính tốc độ thực tế (KB/giây), tỷ lệ rớt gói (packet loss %) và bảng bắt gói tin quang học (packet sniffer)."""
 
     telemetry_updated: ClassVar[Signal] = Signal(float, float, float, int, int)
 
@@ -93,12 +93,12 @@ class TelemetryService(QObject):
         sample_interval_ms: int = 1000,
         window_sec: float = 3.0,
     ) -> None:
-        """Khởi tạo dịch vụ viễn trắc và định thời tính toán chu kỳ.
+        """Khởi tạo bộ đo thông số đường truyền quang và bắt đầu chu kỳ tính toán 1 giây/lần.
 
         Args:
             storage_service: Dịch vụ lưu trữ bền vững để ghi nhận mẫu viễn trắc.
             sample_interval_ms: Chu kỳ định thời tính toán số liệu tính bằng mili-giây (mặc định 1000 ms).
-            window_sec: Kích thước cửa sổ trượt tính thông lượng tính bằng giây (mặc định 3.0s).
+            window_sec: Khoảng thời gian cửa sổ trượt tính tốc độ tức thời (mặc định 3 giây gần nhất).
         """
         super().__init__()
         self._storage = storage_service or StorageService()
@@ -133,46 +133,46 @@ class TelemetryService(QObject):
 
     @property
     def current_throughput_kbps(self) -> float:
-        """Thông lượng truyền nhận dữ liệu tức thời tính bằng KB/s."""
+        """Tốc độ truyền nhận dữ liệu thực tế đo được qua tia hồng ngoại tính bằng KB/giây."""
         return self._current_throughput_kbps
 
     @property
     def last_rtt_ms(self) -> float:
-        """Độ trễ khứ hồi (RTT) đo lường gần nhất tính bằng mili-giây (ms)."""
+        """Độ trễ truyền nhận ước lượng tính bằng mili-giây (ms)."""
         return self._last_rtt_ms
 
     @property
     def packet_loss_rate(self) -> float:
-        """Tỷ lệ phần trăm gói tin bị mất (trong khoảng từ 0.0 đến 100.0%)."""
+        """Tỷ lệ phần trăm gói tin bị mất trên tia quang (trong khoảng từ 0.0% đến 100.0%)."""
         return self._current_loss_rate
 
     @property
     def total_packets_sent(self) -> int:
-        """Tổng số lượng gói tin đã phát qua đường truyền quang."""
+        """Tổng số gói tin đã phát ra mắt phát quang."""
         return self._total_packets_sent
 
     @property
     def total_packets_received(self) -> int:
-        """Tổng số lượng gói tin hợp lệ đã thu nhận thành công."""
+        """Tổng số gói tin hợp lệ mắt thu quang đã nhặt được thành công."""
         return self._total_packets_received
 
     @property
     def total_packets_lost(self) -> int:
-        """Tổng số lượng gói tin bị ghi nhận rớt trên đường truyền."""
+        """Tổng số gói tin bị rớt do nhiễu môi trường, lệch góc tia sáng hoặc lỗi khung truyền."""
         return self._total_packets_lost
 
     @property
     def total_chunks_transferred(self) -> int:
-        """Tổng số lượng chunk dữ liệu file đã chuyển giao thành công."""
+        """Tổng số lượng chunk dữ liệu 256 byte đã chuyển giao thành công."""
         return self._total_chunks_transferred
 
     @property
     def total_frames_captured(self) -> int:
-        """Tổng số lượng khung truyền quang đã bắt được bởi bộ Sniffer."""
+        """Tổng số khung tin quang học đã bắt được và hiển thị trên bảng Sniffer."""
         return self._total_frames_captured
 
     def record_bytes_sent(self, count: int) -> None:
-        """Ghi nhận số byte vừa phát vào cửa sổ trượt tính thông lượng.
+        """Ghi nhận số byte vừa đẩy ra mắt phát quang vào bộ tính tốc độ tức thời.
 
         Args:
             count: Số lượng byte vừa truyền đi.
@@ -183,7 +183,7 @@ class TelemetryService(QObject):
         self._tx_window_bytes += count
 
     def record_bytes_received(self, count: int) -> None:
-        """Ghi nhận số byte vừa thu nhận vào cửa sổ trượt tính thông lượng.
+        """Ghi nhận số byte vừa nhận từ mắt thu quang vào bộ tính tốc độ tức thời.
 
         Args:
             count: Số lượng byte vừa nhận được.
@@ -194,7 +194,7 @@ class TelemetryService(QObject):
         self._rx_window_bytes += count
 
     def record_packet_sent(self, sequence: int, length: int) -> None:
-        """Ghi nhận một khung truyền vừa phát đi và thêm vào hàng đợi Sniffer.
+        """Ghi nhận một khung tin vừa phát ra đường quang và đưa vào bảng bắt gói tin Sniffer.
 
         Args:
             sequence: Mã định danh sequence của khung truyền.
@@ -215,7 +215,7 @@ class TelemetryService(QObject):
         self._append_sniffer(sequence, type_str, f"[TX len={length}B]", self._last_rtt_ms)
 
     def record_packet_received(self, pkt: WinFormPacket, latency_ms: float = 0.0) -> None:
-        """Ghi nhận một khung truyền vừa thu nhận thành công và cập nhật bộ Sniffer.
+        """Ghi nhận một khung tin quang thu được và đưa vào bảng bắt gói tin Sniffer để kỹ sư xem trước vài byte đầu.
 
         Args:
             pkt: Đối tượng WinFormPacket đã giải mã.
@@ -244,7 +244,7 @@ class TelemetryService(QObject):
     def _append_sniffer(
         self, sequence: int, type_str: str, payload_preview: str, latency_ms: float
     ) -> None:
-        """Lưu trữ và phát tín hiệu cho một bản ghi bắt gói tin Sniffer."""
+        """Thêm một dòng nhật ký vào bảng bắt gói tin quang (sniffer) và phát tín hiệu cho giao diện cập nhật bảng."""
         time_str = time.strftime("%H:%M:%S")
         frame_id = f"#0x{sequence:08X}"
         rec: SnifferRecord = {
@@ -269,7 +269,7 @@ class TelemetryService(QObject):
         )
 
     def record_framer_error(self, kind: str, count: int = 1) -> None:
-        """Tính toán các byte nhiễu kênh quang bị loại bỏ như hiện tượng rớt gói tiềm ẩn.
+        """Ghi nhận các byte nhiễu quang học hoặc byte rác không đúng định dạng bị loại bỏ khỏi luồng.
 
         Args:
             kind: Nhãn phân loại loại nhiễu phục vụ ghi log.
@@ -287,7 +287,7 @@ class TelemetryService(QObject):
         )
 
     def record_packet_lost(self) -> None:
-        """Ghi nhận sự kiện một gói tin bị mất hoặc không hoàn tất trên kênh truyền."""
+        """Ghi nhận sự kiện một gói tin bị rớt trên đường truyền quang và tính lại tỷ lệ rớt gói (loss %)."""
         self._total_packets_lost += 1
         total_attempts = self._total_packets_sent + self._total_packets_lost
         loss_rate = (self._total_packets_lost / total_attempts * 100.0) if total_attempts else 0.0
@@ -300,7 +300,7 @@ class TelemetryService(QObject):
         )
 
     def record_rtt(self, rtt_ms: float) -> None:
-        """Cập nhật giá trị độ trễ khứ hồi đo lường được.
+        """Cập nhật giá trị độ trễ ước lượng (tính bằng ms).
 
         Args:
             rtt_ms: Độ trễ RTT tính bằng mili-giây (ms).
@@ -308,11 +308,11 @@ class TelemetryService(QObject):
         self._last_rtt_ms = max(rtt_ms, 0.1)
 
     def record_chunk_transferred(self) -> None:
-        """Ghi nhận việc hoàn tất chuyển giao thành công một chunk dữ liệu file."""
+        """Tăng số lượng chunk dữ liệu file 256 byte đã chuyển giao thành công thêm 1."""
         self._total_chunks_transferred += 1
 
     def reset_counters(self) -> None:
-        """Đặt lại toàn bộ các bộ đếm đo lường và xóa sạch bộ đệm bắt gói tin Sniffer."""
+        """Đặt lại toàn bộ các bộ đếm đo lường tốc độ, xóa sạch bảng bắt gói tin quang (sniffer) về số 0 khi người dùng bấm nút Reset."""
         self._tx_byte_events.clear()
         self._rx_byte_events.clear()
         self._tx_window_bytes = 0
@@ -335,7 +335,7 @@ class TelemetryService(QObject):
         self.telemetry_updated.emit(0.0, 0.0, self._last_rtt_ms, 0, 0)
 
     def get_summary(self) -> TelemetrySummary:
-        """Tổng hợp và trả về bản sao các chỉ số viễn trắc đo lường tức thời.
+        """Tổng hợp nhanh toàn bộ số liệu đo đạc (tốc độ, tỷ lệ rớt gói, tổng gói gửi/nhận) thành một từ điển.
 
         Returns:
             Từ điển TelemetrySummary chứa các trường số liệu chi tiết.
@@ -352,7 +352,7 @@ class TelemetryService(QObject):
         )
 
     def get_sniffer_records(self, limit: int = 100) -> list[SnifferRecord]:
-        """Lấy danh sách các bản ghi Sniffer gần nhất lên tới số lượng giới hạn.
+        """Lấy danh sách các khung tin quang học bắt được gần nhất (tối đa theo số lượng limit) để đưa lên giao diện.
 
         Args:
             limit: Số lượng bản ghi tối đa cần lấy.
@@ -364,7 +364,7 @@ class TelemetryService(QObject):
         return records[-limit:]
 
     def export_telemetry_csv(self, output_path: Path | None = None) -> str:
-        """Xuất lịch sử đo lường viễn trắc kênh truyền ra tệp định dạng CSV.
+        """Xuất lịch sử đo lường tốc độ truyền và rớt gói ra file bảng tính CSV.
 
         Args:
             output_path: Đường dẫn tệp đích tùy chọn.
@@ -377,7 +377,7 @@ class TelemetryService(QObject):
         return self._storage.export_telemetry_csv(output_path)
 
     def export_sniffer_csv(self, output_path: Path | None = None) -> str:
-        """Xuất danh sách các khung truyền bắt được bởi Sniffer ra tệp CSV.
+        """Xuất danh sách các khung tin quang bắt được từ bộ sniffer ra tệp CSV để kỹ sư phân tích tín hiệu trên Excel.
 
         Args:
             output_path: Đường dẫn tệp đích tùy chọn.
@@ -426,7 +426,7 @@ class TelemetryService(QObject):
         return csv_text
 
     def _on_tick(self) -> None:
-        """Định kỳ tính toán lại thông lượng, tỷ lệ mất gói và lưu mẫu viễn trắc."""
+        """Định kỳ 1 giây/lần tự động tính lại tốc độ truyền thực tế (KB/s), tỷ lệ rớt gói (%) trong 3 giây qua và lưu vào ổ cứng."""
         now = time.time()
         cutoff = now - self._window_sec
 

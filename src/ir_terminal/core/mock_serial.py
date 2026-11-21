@@ -1,8 +1,9 @@
-"""Trình giả lập hai cổng nối tiếp COM1/COM2 trong bộ nhớ phục vụ kiểm thử (Mock Serial).
+"""Bộ giả lập hai cổng COM trong bộ nhớ máy tính để kiểm thử khi không có mạch phần cứng (Mock Serial).
 
-Mô phỏng kênh dữ liệu quang COM1 và kênh điều khiển STM32 COM2 trong cùng một đối tượng transport.
-Hỗ trợ tái tạo trễ đường truyền (simulated latency), rớt gói do nhiễu (loss rate), che khuất tầm nhìn (LOS blockage)
-và tự động phản hồi lặp vòng (auto-respond echo) để kiểm thử toàn diện mà không cần thiết bị phần cứng thực tế.
+Mô phỏng đầy đủ hoạt động của cổng dữ liệu quang COM1 và cổng điều khiển vi điều khiển STM32 COM2 ngay trong RAM:
+- Giúp chạy thử phần mềm, gửi nhận file, gửi chat mà không cần cắm mạch hay dây cáp.
+- Hỗ trợ mô phỏng các lỗi thực tế ngoài đời như: rớt gói tin do bụi/lệch hướng (loss rate), che khuất tia sáng (LOS blockage), trễ đường truyền (latency).
+- Tự động phản hồi dữ liệu vòng lặp (loopback echo) để kiểm tra tính toàn vẹn của thuật toán đóng/mở gói tin.
 """
 
 from __future__ import annotations

@@ -1,12 +1,10 @@
-"""Dịch vụ nhắn tin quang thời gian thực qua bao thư file ảo (Virtual File Chat Envelope).
+"""Dịch vụ nhắn tin quang học thời gian thực qua cơ chế bao thư file ảo (Virtual File Chat Envelope).
 
-Giao thức phần cứng chuẩn WinForm C# và STM32 vốn chỉ hỗ trợ các gói truyền file (HEADER, DATA, END).
-Để truyền tin nhắn văn bản tức thời hai chiều mà không phải sửa đổi 1 bit cấu trúc wire format 8 byte
-hay nạp lại firmware cho MCU, tin nhắn UTF-8 được đóng gói trong bộ nhớ RAM thành một file ảo mang tên:
-    _chat_<YYYYMMDD_HHMMSS>_<StationName>.txt
-
-Phía nhận phát hiện tiền tố '_chat_' sẽ xử lý trực tiếp trong RAM (in-memory) và hiển thị lên giao diện
-chat trong thời gian < 100 ms mà không cần ghi file tạm xuống ổ cứng.
+Tin nhắn chat được đóng gói giả vờ như một file văn bản mang tên _chat_..., truyền đi y hệt như gửi file thật để vi điều khiển STM32 không cần phải sửa code firmware mà vẫn hiểu:
+1. Giao thức phần cứng chuẩn WinForm C# và STM32 vốn chỉ hỗ trợ các gói truyền file (HEADER, DATA, END).
+2. Khi người dùng gửi tin nhắn, hệ thống đóng gói nội dung vào bộ nhớ RAM thành file ảo:
+    _chat_<YYYYMMDD_HHMMSS>_<TênTrạm>.txt
+3. Phía nhận phát hiện tên file bắt đầu bằng '_chat_' sẽ xử lý trực tiếp trong RAM và hiển thị lên khung chat ngay lập tức (< 100 ms) mà không cần ghi file tạm xuống ổ cứng.
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatService(QObject):
-    """Chat service streaming messages through virtual file envelopes."""
+    """Dịch vụ nhắn tin qua tia sáng hồng ngoại sử dụng cơ chế bao thư file ảo."""
 
     message_received: ClassVar[Signal] = Signal(str, str, bool)
 
@@ -39,14 +37,14 @@ class ChatService(QObject):
         remote_name: str = "Remote Station Bravo",
         file_transfer_service: FileTransferService | None = None,
     ) -> None:
-        """Initializes the chat service wired through virtual file envelopes.
+        """Khởi tạo dịch vụ nhắn tin qua tia quang.
 
         Args:
-            serial_manager: Active serial coordinator.
-            storage_service: Optional persistent storage repository.
-            local_name: Local station label used for outgoing metadata and history.
-            remote_name: Remote station label used for incoming history.
-            file_transfer_service: Optional FileTransferService instance.
+            serial_manager: Bộ não điều phối kết nối cổng COM.
+            storage_service: Dịch vụ lưu trữ lịch sử tin nhắn vào ổ cứng.
+            local_name: Tên hiển thị của trạm cục bộ (ví dụ: 'Trạm A').
+            remote_name: Tên hiển thị của trạm đối tác (ví dụ: 'Trạm B').
+            file_transfer_service: Động cơ truyền file dùng để bơm gói tin ảo.
         """
         super().__init__()
         self._serial_manager = serial_manager
@@ -67,14 +65,14 @@ class ChatService(QObject):
 
     @property
     def file_transfer_service(self) -> FileTransferService | None:
-        """Returns the configured FileTransferService instance."""
+        """Trả về đối tượng FileTransferService đang kết nối."""
         return self._file_service
 
     def set_file_transfer_service(self, file_service: FileTransferService) -> None:
-        """Attaches the file transfer service and connects completion signals.
+        """Gắn động cơ truyền file và đăng ký nhận sự kiện khi nhận xong file ảo trong RAM.
 
         Args:
-            file_service: Active FileTransferService used for virtual streaming.
+            file_service: Thể hiện FileTransferService dùng để truyền nhận file ảo.
         """
         if self._file_service is file_service:
             return
@@ -91,7 +89,7 @@ class ChatService(QObject):
         )
 
     def send_message(self, text: str) -> bool:
-        """Đóng gói nội dung tin nhắn văn bản UTF-8 vào bao thư file ảo và truyền qua kênh quang.
+        """Tin nhắn chat được đóng gói giả vờ như một file văn bản mang tên _chat_..., truyền đi y hệt như gửi file thật để vi điều khiển không cần phải sửa code mà vẫn hiểu.
 
         Tạo tên file theo định dạng: _chat_<timestamp>_<station>.txt
         Kích hoạt FileTransferService gửi phiên file in-memory với trình tự: HEADER -> DATA -> END.
@@ -138,11 +136,11 @@ class ChatService(QObject):
         return True
 
     def _on_virtual_transfer_completed(self, virtual_name: str, payload_bytes: bytes) -> None:
-        """Handles completed reception of an in-memory virtual envelope.
+        """Xử lý khi đã nhận trọn vẹn file tin nhắn ảo từ đường quang: giải mã UTF-8 và hiển thị lên màn hình chat.
 
         Args:
-            virtual_name: Envelope name carrying metadata.
-            payload_bytes: In-memory byte payload.
+            virtual_name: Tên file ảo mang siêu dữ liệu định dạng _chat_...
+            payload_bytes: Dòng byte nội dung tin nhắn lưu tạm trong RAM.
         """
         if not is_chat_envelope_name(virtual_name):
             return
@@ -167,13 +165,13 @@ class ChatService(QObject):
         )
 
     def _extract_sender(self, virtual_name: str) -> str:
-        """Extracts the sender station slug from a chat envelope name.
+        """Bóc tách tên trạm gửi từ tên file ảo _chat_<thời gian>_<tên trạm>.txt.
 
         Args:
-            virtual_name: Declared envelope name.
+            virtual_name: Tên file ảo nhận được.
 
         Returns:
-            Extracted sender station name or default remote station name.
+            Tên trạm gửi bóc tách được hoặc tên trạm đối tác mặc định.
         """
         clean = virtual_name.strip()
         if clean.endswith(".txt"):
@@ -184,9 +182,9 @@ class ChatService(QObject):
         return self._remote_name
 
     def handle_packet(self, pkt: object) -> None:
-        """Ignores direct raw frames; chat reception is routed through FileTransferService.
+        """Bỏ qua việc nhận trực tiếp gói tin thô vì toàn bộ luồng chat đã được gom gói qua FileTransferService.
 
         Args:
-            pkt: Frame emitted by the serial worker.
+            pkt: Gói tin do serial worker phát ra.
         """
         logger.debug("%s Direct chat frame ignored: type=%s", LogTag.CHAT_SVC, type(pkt).__name__)

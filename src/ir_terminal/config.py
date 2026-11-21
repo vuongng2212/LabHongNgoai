@@ -1,10 +1,9 @@
-"""Cấu hình khởi động và ngữ cảnh cô lập cho từng tiến trình (Launch Configuration & Instance Isolation).
+"""Cấu hình khởi động và phân tách độc lập hai máy trạm Node A / Node B trên cùng 1 máy tính (Launch Configuration & Instance Isolation).
 
-Hỗ trợ chạy ứng dụng ở chế độ đơn lẻ (single production app) hoặc chạy song song hai node
-độc lập (--instance A / --instance B) trên cùng một máy tính cá nhân.
-Module này là nguồn chân lý duy nhất (single source of truth) cho việc:
-- Phân tích tham số dòng lệnh CLI và biến môi trường (LaunchConfig và parse_launch_args).
-- Phân tách độc lập hệ thống tệp tin, dữ liệu, logs và WebEngine profile (InstanceContext và build_instance_context).
+Giúp việc chạy thử nghiệm và vận hành phần mềm thuận tiện:
+- Chế độ cắm mạch thật (Production): mở app bình thường, chọn cổng COM1 (dữ liệu quang) và COM2 (điều khiển STM32).
+- Chế độ chạy thử nghiệm hai trạm (Dual-Node A/B): khởi chạy 2 cửa sổ độc lập (Node A và Node B) song song trên cùng 1 máy tính.
+- Tự động phân chia thư mục lưu file nhận, nhật ký và cấu hình riêng biệt cho từng trạm để không bị xung đột hay tranh chấp tài nguyên.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
-"""Cơ chế khóa tiến trình (Instance Lock) bảo vệ thư mục dữ liệu ứng dụng.
+"""Khóa chống mở đè ứng dụng trên cùng một cổng COM và thư mục dữ liệu (Instance Lock).
 
-Ngăn chặn việc mở trùng lặp hai tiến trình trên cùng một thư mục dữ liệu data/instances/<id>/
-nhằm tránh xung đột ghi đè các tệp JSON và tranh chấp cổng nối tiếp COM.
-Sử dụng QLockFile theo từng thư mục để vẫn cho phép Node A và Node B chạy song song đồng thời.
+Ngăn người dùng vô tình bấm mở 2 lần cùng một trạm, dẫn đến xung đột cổng COM phần cứng (báo lỗi 'Access is denied' hoặc 'Port already open') và tranh chấp file dữ liệu:
+- Sử dụng cơ chế khóa tệp tin app.lock.
+- Vẫn cho phép mở đồng thời Node A và Node B song song vì mỗi node có thư mục và cổng COM riêng.
 """
 
 from __future__ import annotations

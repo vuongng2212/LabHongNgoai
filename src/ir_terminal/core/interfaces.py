@@ -1,6 +1,11 @@
-"""Giao diện trừu tượng và hợp đồng giao thức cho tầng truyền tải phần cứng (ITransport).
+"""Quy chuẩn giao tiếp phần cứng chung cho các loại cổng truyền dẫn (ITransport).
 
-Quy định các hành vi chuẩn cho việc giao tiếp dòng byte (Serial vật lý, Cổng COM ảo, Mock Loopback, Socket Transport).
+Định nghĩa bộ hàm mẫu mà bất kỳ loại cổng kết nối nào (cổng COM thật nối dây USB, cổng COM ảo giả lập trong RAM, hay cổng Socket mạng LAN) đều phải có:
+- Mở cổng (open) và đóng cổng (close).
+- Đẩy byte ra chân phát TX (write) và nhặt byte từ chân thu RX (read).
+- Kiểm tra xem cổng đang có bao nhiêu byte chờ đọc (in_waiting).
+- Bắn lệnh đổi tốc độ Baudrate qua cổng điều khiển STM32 (send_baud_command).
+Nhờ quy chuẩn chung này, toàn bộ phần mềm có thể chuyển đổi mượt mà giữa việc cắm mạch thật và chạy mô phỏng giả lập mà không phải sửa một dòng code xử lý nào bên trên.
 """
 
 from __future__ import annotations
@@ -10,29 +15,29 @@ from collections.abc import Callable
 
 
 class ITransport(ABC):
-    """Lớp cơ sở trừu tượng (Abstract Base Class) quy định giao diện chuẩn cho tầng truyền tải."""
+    """Khuôn mẫu chung cho mọi cổng truyền dẫn tín hiệu (cổng COM thật hoặc giả lập)."""
 
     @property
     def poll_interval_ms(self) -> int:
-        """Chu kỳ định thời thăm dò (polling interval) nhận dữ liệu tính bằng mili-giây (ms)."""
+        """Thời gian định kỳ (10 mili-giây) để quay lại kiểm tra chân RX xem có byte nào mới hay không."""
         return 10
 
     @abstractmethod
     def open(self) -> None:
-        """Mở kết nối tới môi trường truyền thông vật lý hoặc logic."""
+        """Mở cổng kết nối ra ngoài mạch phần cứng hoặc mở đường truyền ảo."""
 
     @abstractmethod
     def close(self) -> None:
-        """Đóng kết nối và giải phóng tài nguyên phần cứng."""
+        """Đóng cổng và giải phóng cổng cho các phần mềm khác dùng."""
 
     @property
     @abstractmethod
     def is_open(self) -> bool:
-        """Kiểm tra xem kết nối truyền tải hiện có đang ở trạng thái mở hay không."""
+        """Kiểm tra xem cổng hiện tại có đang mở và thông suốt hay không."""
 
     @abstractmethod
     def write(self, data: bytes) -> int:
-        """Ghi dữ liệu nhị phân xuống kênh truyền.
+        """Đẩy một chuỗi byte ra chân phát TX.
 
         Args:
             data: Chuỗi byte thô cần truyền đi.
@@ -43,7 +48,7 @@ class ITransport(ABC):
 
     @abstractmethod
     def read(self, size: int | None = None) -> bytes:
-        """Đọc dữ liệu từ bộ đệm nhận của kênh truyền.
+        """Nhặt các byte đang nằm trong bộ đệm chân RX của cổng.
 
         Args:
             size: Số lượng byte tối đa cần đọc, hoặc None để đọc toàn bộ dữ liệu có sẵn.
@@ -55,14 +60,14 @@ class ITransport(ABC):
     @property
     @abstractmethod
     def in_waiting(self) -> int:
-        """Số lượng byte hiện có sẵn trong bộ đệm nhận để đọc."""
+        """Số byte hiện đang nằm chờ sẵn ở chân RX chưa đọc ra."""
 
     @abstractmethod
     def flush(self) -> None:
-        """Xả sạch toàn bộ dữ liệu trong hàng đợi phát xuống môi trường vật lý."""
+        """Ép phần cứng đẩy hết tất cả byte còn sót trong hàng đợi phát ra ngoài dây."""
 
     def send_baud_command(self, baud: int) -> str:
-        """Gửi lệnh chuyển đổi tốc độ Baud qua kênh điều khiển (ví dụ: COM2 STM32).
+        """Bắn mã lệnh ASCII ('00', '01', '10', '11') sang vi điều khiển STM32 để đổi tốc độ phần cứng.
 
         Args:
             baud: Tốc độ Baud quang học đích (2400, 4800, 9600, 19200 bps).
@@ -76,7 +81,7 @@ class ITransport(ABC):
         raise NotImplementedError(f"{type(self).__name__} does not expose a control channel")
 
     def reconfigure_data_baud(self, baud: int) -> None:
-        """Tái cấu hình tốc độ Baud của kênh dữ liệu quang (COM1).
+        """Chỉnh lại tốc độ Baudrate cho cổng dữ liệu quang COM1 trên máy tính cho khớp với vi điều khiển.
 
         Args:
             baud: Tốc độ Baud quang học mới cần áp dụng.

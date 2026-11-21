@@ -1,7 +1,11 @@
-"""Hệ thống ghi log có cấu trúc tích hợp thẻ phân loại IoT, xoay vòng file và phát tín hiệu Qt Signal.
+"""Hệ thống ghi nhật ký hoạt động thiết bị và chẩn đoán sự cố phần cứng (Hardware Diagnostics Logger).
 
-Cung cấp các thẻ LogTag giúp lọc và chẩn đoán sự cố phần cứng IoT nối tiếp, lớp vật lý quang,
-đóng khung giao thức WinForm, dịch vụ chat, truyền nhận file và cầu nối IPC.
+Cung cấp các thẻ LogTag phân loại trực quan để đội ngũ kỹ sư IoT dễ dàng lọc và tìm lỗi trên cổng nối tiếp COM, tầng quang học, mã lệnh đổi Baudrate hoặc các khung gói tin:
+- [HW_SERIAL]: Nhật ký mở/đóng cổng COM, quét cổng cắm/rút USB.
+- [OPTICAL_PHY]: Nhật ký lớp truyền dẫn tia quang (bắt byte, suy hao, rớt gói).
+- [BAUD_CTRL]: Nhật ký các chuỗi mã lệnh ASCII gửi sang STM32 để đổi tốc độ.
+- [PROTO_FRAME]: Nhật ký đóng/mở gói tin 8 byte tiêu đề chuẩn WinForm C#.
+- [CHAT_SVC] / [FILE_SVC]: Nhật ký tin nhắn và tiến độ gửi nhận file.
 """
 
 from __future__ import annotations

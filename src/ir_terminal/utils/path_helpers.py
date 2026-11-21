@@ -1,10 +1,9 @@
-"""Hàm trợ giúp phân giải đường dẫn hệ thống tệp, tài nguyên và lưu trữ dữ liệu bền vững.
+"""Hàm trợ giúp phân giải đường dẫn lưu trữ dữ liệu, file nhận và tài nguyên tĩnh của ứng dụng.
 
-Dữ liệu chạy thời gian thực (các tệp JSON, file nhận được, logs, xuất CSV) được lưu trữ
-cục bộ ngay cạnh ứng dụng thay vì ghi vào thư mục home của người dùng:
-- Bản đóng gói PyInstaller: <thư mục chứa IR_OWC_Lab_Terminal.exe>/data
-- Môi trường phát triển: <gốc dự án>/data
-- Biến môi trường IR_DATA_DIR có thể ghi đè thư mục cơ sở phục vụ kiểm thử tự động.
+Toàn bộ dữ liệu (file nhận được qua tia quang, nhật ký chat, log lỗi cổng COM) được lưu trữ gọn gàng ngay cạnh thư mục ứng dụng trong thư mục data/:
+- Khi chạy file .exe đóng gói: lưu tại thư mục chứa file .exe/data
+- Khi chạy trong mã nguồn Python: lưu tại gốc dự án/data
+- Phân chia thư mục độc lập cho Node A và Node B khi chạy thử nghiệm hai trạm trên 1 máy tính.
 """
 
 from __future__ import annotations

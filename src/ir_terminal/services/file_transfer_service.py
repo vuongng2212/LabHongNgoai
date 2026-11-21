@@ -1,15 +1,10 @@
-"""Động cơ truyền nhận file điều tốc vòng hở (Open-Loop Paced File Streaming) chuẩn WinForm C#.
+"""Động cơ truyền nhận file điều tốc vòng hở qua tia hồng ngoại (File Transfer Service).
 
 Module này chịu trách nhiệm:
-1. Phát file Open-Loop: Gửi tuần tự HEADER -> DATA (mỗi chunk 256 bytes) -> END.
-2. Điều tốc phát quang (Pacing Delay): Tính toán chính xác thời gian nghỉ giữa 2 khung liên tiếp
-   theo công thức danh định: ceil(len x 10 x 1000 ÷ baud) + 10 ms, giúp MCU không bị tràn buffer
-   mà không cần tín hiệu phản hồi ACK/NACK.
-3. Thu nhận và ghi file trực tiếp xuống đĩa (Direct Disk Streaming):
-   Ghi chunk nhận được vào file tạm .part tại offset tuyệt đối sequence x 256, chống lệch vị trí file
-   khi rớt gói trên đường truyền quang và tự động đánh dấu PARTIAL nếu thiếu dữ liệu.
-4. Tương thích Virtual File Chat Envelope: Tự động chuyển hướng xử lý tin nhắn chat in-memory
-   khi nhận diện tên file có tiền tố '_chat_' và đuôi '.txt'.
+1. Phát file Open-Loop: Gửi tuần tự HEADER -> DATA (mỗi gói 256 byte) -> END.
+2. Điều tốc phát quang (Pacing Delay): Bên gửi sau khi phát 1 gói 256 byte qua tia quang sẽ tự động tạm dừng một khoảng thời gian (ví dụ 148 mili-giây ở 19200) để chip STM32 kịp chép dữ liệu, tránh bị nghẽn hay tràn bộ nhớ của vi điều khiển.
+3. Thu nhận và ghi file trực tiếp xuống ổ đĩa: Ghi gói tin nhận được vào file tạm .part tại vị trí tuyệt đối (offset = sequence x 256), chống lệch vị trí file khi rớt gói trên đường truyền quang và tự động đánh dấu PARTIAL nếu bị mất gói giữa chừng.
+4. Tương thích tin nhắn chat: Tin nhắn chat được đóng gói giả vờ như một file văn bản mang tên _chat_..., truyền đi y hệt như gửi file thật để vi điều khiển không cần phải sửa code mà vẫn hiểu.
 """
 
 from __future__ import annotations
@@ -117,13 +112,13 @@ def is_chat_envelope_name(file_name: str) -> bool:
 
 
 def sanitize_received_name(file_name: str) -> str:
-    """Reduces an announced file name to a safe base name.
+    """Lọc sạch tên file nhận được từ đường quang: loại bỏ ký tự nguy hiểm, đường dẫn thư mục và ký tự điều khiển.
 
     Args:
-        file_name: Name carried by the HEADER frame.
+        file_name: Tên file mang trong gói tin HEADER.
 
     Returns:
-        Base name without separators or control characters.
+        Tên file an toàn để lưu xuống ổ cứng.
     """
     normalized = (file_name or "").replace("\\", "/")
     base = normalized.rsplit("/", 1)[-1].strip()
@@ -137,7 +132,7 @@ def sanitize_received_name(file_name: str) -> str:
 
 
 def _unique_path(path: Path) -> Path:
-    """Returns ``path`` or a numbered variant that does not exist yet."""
+    """Tự động thêm số thứ tự (1), (2)... nếu tên file đã tồn tại trên đĩa để không bị ghi đè mất file cũ."""
     if not path.exists():
         return path
     stem = path.stem
@@ -151,7 +146,7 @@ def _unique_path(path: Path) -> Path:
 
 
 class FileTransferService(QObject):
-    """Streams and receives files over the optical channel without ARQ."""
+    """Động cơ phát và thu nhận file qua đường truyền tia quang (không cần tín hiệu báo nhận ACK/NACK)."""
 
     progress_updated: ClassVar[Signal] = Signal(int, float, float, int, int)
 
@@ -170,13 +165,13 @@ class FileTransferService(QObject):
         storage_service: StorageService | None = None,
         transfers_dir: Path | None = None,
     ) -> None:
-        """Initializes the streaming engine.
+        """Khởi tạo động cơ truyền nhận file.
 
         Args:
-            serial_manager: Coordinator used to transmit framed packets.
-            chunk_size: DATA payload size; the firmware contract uses 256 bytes.
-            storage_service: Optional persistent storage repository.
-            transfers_dir: Optional receive directory override.
+            serial_manager: Bộ não điều phối gửi gói tin ra cổng COM.
+            chunk_size: Kích thước mỗi gói dữ liệu phát đi (chuẩn STM32 là 256 bytes).
+            storage_service: Dịch vụ lưu nhật ký vào ổ cứng.
+            transfers_dir: Thư mục chứa các file nhận được.
         """
         super().__init__()
         if not 1 <= chunk_size <= PACKET_SIZE:
@@ -222,51 +217,46 @@ class FileTransferService(QObject):
 
     @property
     def is_active(self) -> bool:
-        """Returns True while a transmission or reception is in progress."""
+        """Kiểm tra xem hệ thống có đang bận phát hoặc thu nhận file hay không."""
         return self._state.is_active
 
     @property
     def state(self) -> TransferState:
-        """Returns the current streaming engine state."""
+        """Trạng thái hiện tại của phiên truyền (IDLE, SENDING, RECEIVING, COMPLETED, FAILED, ABORTED)."""
         return self._state
 
     @property
     def chunk_size(self) -> int:
-        """Returns the configured DATA payload size in bytes."""
+        """Kích thước gói dữ liệu payload cấu hình (mặc định 256 bytes)."""
         return self._chunk_size
 
     @property
     def max_file_size_bytes(self) -> int:
-        """Returns the optional operator cap in bytes (0 means unlimited)."""
+        """Giới hạn dung lượng file tối đa cho phép nhận (0 = không giới hạn)."""
         return self._max_file_size_bytes
 
     @property
     def transfers_dir_path(self) -> Path:
-        """Returns the directory where received files are finalized."""
+        """Thư mục trên ổ cứng nơi lưu các file đã nhận hoàn tất."""
         return self._transfers_dir
 
     @property
     def default_transfers_dir_path(self) -> Path:
-        """Returns the immutable default receive directory."""
+        """Thư mục nhận file mặc định ban đầu của ứng dụng."""
         return self._default_transfers_dir
 
     @property
     def auto_save(self) -> bool:
-        """Returns True when incomplete receptions are kept on disk."""
+        """Cờ tự động lưu: True nếu cho phép giữ lại file chưa hoàn tất (.part) khi đường quang bị lỗi."""
         return self._auto_save
 
     @property
     def uses_extended_protocol(self) -> bool:
-        """Returns False because the WinForm wire format has no large-file mode."""
+        """Luôn là False vì giao thức chuẩn WinForm C# và STM32 không dùng chế độ mở rộng."""
         return False
 
     def get_config(self) -> dict[str, str | int | float | bool]:
-        """Returns the current transfer configuration.
-
-        Returns:
-            JSON-serializable mapping with the size cap, receive directory and
-            AutoSave flag.
-        """
+        """Lấy toàn bộ thông số cấu hình truyền file hiện tại gửi lên giao diện."""
         unlimited = self._max_file_size_bytes == 0
         return {
             "max_file_size_bytes": self._max_file_size_bytes,
@@ -280,10 +270,10 @@ class FileTransferService(QObject):
         }
 
     def load_settings(self) -> dict[str, str | int | float | bool]:
-        """Loads persisted transfer settings, falling back to safe defaults.
+        """Đọc các cài đặt truyền nhận file từ ổ cứng (kích thước tối đa, thư mục lưu, tự động lưu).
 
         Returns:
-            Current configuration mapping.
+            Từ điển chứa các thông số cấu hình truyền file hiện tại.
         """
         try:
             raw_limit = self._storage.get_setting(
@@ -332,16 +322,16 @@ class FileTransferService(QObject):
         return self.get_config()
 
     def set_max_file_size_bytes(self, size_bytes: int) -> int:
-        """Updates and persists the optional maximum accepted file size.
+        """Cập nhật và lưu lại giới hạn dung lượng file tối đa cho phép nhận (0 = không giới hạn).
 
         Args:
-            size_bytes: 0 for unlimited or a positive cap in bytes.
+            size_bytes: Dung lượng tối đa tính theo byte.
 
         Returns:
-            Effective cap after validation.
+            Dung lượng hiệu dụng sau khi kiểm tra hợp lệ.
 
         Raises:
-            ValueError: If ``size_bytes`` is negative.
+            ValueError: Nếu size_bytes là số âm.
         """
         size = int(size_bytes)
         if size < 0:
@@ -357,16 +347,16 @@ class FileTransferService(QObject):
         return clamped
 
     def set_transfers_dir(self, dir_path: str | Path) -> Path:
-        """Updates and persists the receive directory.
+        """Cập nhật và lưu lại đường dẫn thư mục lưu file nhận được trên máy tính.
 
         Args:
-            dir_path: Target directory path, created when missing.
+            dir_path: Đường dẫn thư mục đích.
 
         Returns:
-            Resolved absolute directory path.
+            Đường dẫn thư mục tuyệt đối đã được xác thực.
 
         Raises:
-            ValueError: If the path is empty, not a directory or not creatable.
+            ValueError: Nếu đường dẫn rỗng hoặc không thể tạo được thư mục.
         """
         if isinstance(dir_path, str) and not dir_path.strip():
             raise ValueError("Transfers directory path is empty")
@@ -389,13 +379,13 @@ class FileTransferService(QObject):
         return candidate
 
     def set_auto_save(self, enabled: bool) -> bool:
-        """Persists the AutoSave flag used when a reception does not complete.
+        """Lưu lại tùy chọn giữ lại file một phần khi đường truyền quang bị lỗi giữa chừng.
 
         Args:
-            enabled: True to keep partial files, False to discard them.
+            enabled: True để giữ lại file lỗi (.partial), False để xóa bỏ.
 
         Returns:
-            Stored flag value.
+            Giá trị cờ đã lưu.
         """
         self._auto_save = bool(enabled)
         self._storage.save_setting(SETTING_AUTO_SAVE, "1" if self._auto_save else "0")
@@ -408,15 +398,15 @@ class FileTransferService(QObject):
         transfers_dir: str | Path | None = None,
         auto_save: bool | None = None,
     ) -> dict[str, str | int | float | bool]:
-        """Applies a partial configuration update and persists valid fields.
+        """Áp dụng các thay đổi cấu hình từ màn hình cài đặt và lưu xuống ổ cứng.
 
         Args:
-            max_file_size_bytes: Optional new cap in bytes (0 means unlimited).
-            transfers_dir: Optional new receive directory.
-            auto_save: Optional AutoSave flag.
+            max_file_size_bytes: Dung lượng file tối đa mới (0 = không giới hạn).
+            transfers_dir: Thư mục nhận file mới.
+            auto_save: Tùy chọn giữ lại file một phần.
 
         Returns:
-            Current configuration mapping after the update.
+            Toàn bộ cấu hình sau khi cập nhật.
         """
         if max_file_size_bytes is not None:
             self.set_max_file_size_bytes(int(max_file_size_bytes))
@@ -427,14 +417,13 @@ class FileTransferService(QObject):
         return self.get_config()
 
     def start_transfer(self, file_path_str: str) -> None:
-        """Starts an open-loop paced transmission of a local file.
+        """Bắt đầu quá trình phát file qua tia hồng ngoại: chia file thành các gói 256 byte và gửi gói mở đầu HEADER.
 
         Args:
-            file_path_str: Path of the file to stream.
+            file_path_str: Đường dẫn file trên ổ cứng máy tính cần gửi đi.
 
         Raises:
-            ValueError: If a transfer is active, the file is missing, or the
-                file exceeds the configured size cap.
+            ValueError: Nếu hệ thống đang bận gửi file khác, không tìm thấy file hoặc file vượt quá kích thước cho phép.
         """
         if self._state.is_active:
             raise ValueError(f"A transfer is already active: {self._state.name}")
@@ -482,14 +471,14 @@ class FileTransferService(QObject):
         self._tx_timer.start(paced_delay_ms(HEADER_OVERHEAD + len(header_payload), self._baudrate()))
 
     def start_virtual_transfer(self, virtual_name: str, payload: bytes) -> bool:
-        """Starts an open-loop paced transmission of an in-memory virtual payload.
+        """Bắt đầu phát gói tin file ảo trong RAM (dùng cho tin nhắn chat).
 
         Args:
-            virtual_name: Virtual file envelope name announced in the HEADER.
-            payload: Raw bytes to stream.
+            virtual_name: Tên file ảo mang siêu dữ liệu báo trong gói HEADER.
+            payload: Chuỗi byte nội dung tin nhắn cần gửi.
 
         Returns:
-            True if the transmission started successfully, False if busy or failed.
+            True nếu phát thành công gói mở đầu; False nếu hệ thống đang bận.
         """
         if self._state.is_active:
             logger.warning(
@@ -533,7 +522,7 @@ class FileTransferService(QObject):
         return True
 
     def cancel_transfer(self) -> None:
-        """Cancels the active transmission or reception immediately."""
+        """Hủy bỏ ngay lập tức phiên phát hoặc nhận file quang học đang diễn ra."""
         if self._state is TransferState.SENDING:
             self._fail_tx("Transfer cancelled by user", status="ABORTED", aborted=True)
             return
@@ -543,11 +532,11 @@ class FileTransferService(QObject):
         logger.debug("%s Cancel ignored: state=%s", LogTag.FILE_SVC, self._state.name)
 
     def abort_transfer(self) -> None:
-        """Backward-compatible alias of :meth:`cancel_transfer`."""
+        """Tên gọi tương thích ngược cho hàm cancel_transfer."""
         self.cancel_transfer()
 
     def _baudrate(self) -> int:
-        """Returns the active optical baudrate, falling back to the default."""
+        """Tốc độ Baud quang hiện hành của kênh COM1 dùng để tính khoảng nghỉ an toàn (pacing delay) giữa 2 gói tin."""
         value = getattr(self._serial_manager, "current_baud", DEFAULT_BAUDRATE)
         try:
             baud = int(value)
@@ -556,7 +545,7 @@ class FileTransferService(QObject):
         return baud if baud > 0 else DEFAULT_BAUDRATE
 
     def _set_state(self, new_state: TransferState) -> None:
-        """Stores a new state and announces it to the UI."""
+        """Cập nhật trạng thái phiên truyền và phát tín hiệu cho giao diện hiển thị."""
         previous = self._state
         self._state = new_state
         if previous is not new_state:
@@ -610,7 +599,7 @@ class FileTransferService(QObject):
         self._tx_timer.start(paced_delay_ms(HEADER_OVERHEAD + len(payload), self._baudrate()))
 
     def _send_end(self) -> None:
-        """Sends the END frame, persists the run and reports completion."""
+        """Gửi gói tin kết thúc SEQ_END, lưu nhật ký truyền file vào ổ cứng và phát tín hiệu hoàn tất."""
         try:
             self._serial_manager.send_packet(SEQ_END, b"")
         except Exception as exc:
@@ -663,7 +652,7 @@ class FileTransferService(QObject):
             )
 
     def _emit_progress(self) -> None:
-        """Emits the current transmission progress snapshot."""
+        """Tính toán phần trăm tiến độ, tốc độ thực tế (KB/s), thời gian còn lại (ETA) và phát tín hiệu lên thanh tiến trình."""
         total = self._tx_total_packets
         elapsed = max(time.monotonic() - self._tx_started_at, 0.0)
         pct = int(self._tx_next_index * 100 / total) if total else 0
@@ -675,7 +664,7 @@ class FileTransferService(QObject):
         )
 
     def _close_tx_file(self) -> None:
-        """Closes the transmission file handle if it is open."""
+        """Đóng an toàn tệp tin nguồn đang đọc để tránh rò rỉ bộ nhớ."""
         handle = self._tx_file
         self._tx_file = None
         self._tx_is_virtual = False
@@ -687,7 +676,7 @@ class FileTransferService(QObject):
                 logger.warning("%s TX file close warning: %s", LogTag.FILE_SVC, exc)
 
     def _fail_tx(self, reason: str, status: str = "FAILED", aborted: bool = False) -> None:
-        """Aborts a transmission, releases the file and notifies listeners."""
+        """Xử lý khi việc gửi file bị lỗi hoặc người dùng bấm Hủy: dừng bộ hẹn giờ, đóng file và ghi nhận trạng thái FAILED/ABORTED."""
         self._tx_timer.stop()
         filename = (
             self._tx_name
@@ -725,10 +714,10 @@ class FileTransferService(QObject):
         )
 
     def _handle_packet(self, pkt: object) -> None:
-        """Routes one decoded WinForm frame to the RX engine.
+        """Tiếp nhận và phân loại khung tin do serial worker gửi lên (gói mở đầu HEADER, gói kết thúc END, hay gói dữ liệu DATA).
 
         Args:
-            pkt: Frame emitted by the serial worker.
+            pkt: Gói tin khung truyền WinForm do worker giải mã.
         """
         if not isinstance(pkt, WinFormPacket):
             logger.debug(
@@ -867,7 +856,7 @@ class FileTransferService(QObject):
             self.progress_updated.emit(min(pct, 100), speed_kbps, eta_sec, received, total)
 
     def _finish_virtual_receive(self) -> None:
-        """Finalizes an in-memory virtual envelope reception."""
+        """Hoàn tất việc thu nhận file ảo trong RAM (tin nhắn chat), phát tín hiệu để hiển thị lên khung chat."""
         if self._state is not TransferState.RECEIVING:
             return
         self._rx_timer.stop()
@@ -890,7 +879,7 @@ class FileTransferService(QObject):
         self.virtual_transfer_completed.emit(file_name, payload_bytes)
 
     def _finish_receive(self) -> None:
-        """Finalizes a received file after the END frame arrives."""
+        """Hoàn tất quá trình nhận file sau khi nhận được gói tin kết thúc SEQ_END: đổi tên file tạm .part thành file chính thức."""
         if self._state is not TransferState.RECEIVING:
             logger.debug("%s RX end ignored: state=%s", LogTag.FILE_SVC, self._state.name)
             return
@@ -958,7 +947,7 @@ class FileTransferService(QObject):
         self.transfer_completed.emit(destination.name, size_bytes, elapsed, "")
 
     def _on_rx_timeout(self) -> None:
-        """Applies the inactivity watchdog when END never arrives."""
+        """Kích hoạt bộ định thời giám sát (watchdog) tự động kết thúc nếu quá 3 giây không có byte nào mới từ tia quang."""
         if self._state is not TransferState.RECEIVING:
             return
         received = len(self._rx_received)
@@ -969,7 +958,7 @@ class FileTransferService(QObject):
         self._fail_rx(reason, status="FAILED", aborted=False)
 
     def _fail_rx(self, reason: str, status: str = "FAILED", aborted: bool = False) -> None:
-        """Aborts a reception, optionally keeping the partial file."""
+        """Xử lý khi việc nhận file bị gián đoạn: lưu lại file một phần nếu bật AutoSave hoặc dọn sạch file tạm."""
         self._rx_timer.stop()
         if self._rx_is_chat:
             self._discard_rx(keep_partial=False)
@@ -1013,7 +1002,7 @@ class FileTransferService(QObject):
         self.transfer_failed.emit(reason)
 
     def _discard_rx(self, keep_partial: bool) -> None:
-        """Closes and removes the staging file unless it must be kept."""
+        """Đóng và xóa tệp tin tạm thời đang nhận nếu không cần giữ lại."""
         handle = self._rx_handle
         self._rx_handle = None
         self._rx_is_chat = False
@@ -1041,7 +1030,7 @@ class FileTransferService(QObject):
         duration_sec: float,
         status: str,
     ) -> None:
-        """Persists one transfer audit record with a flat-memory write."""
+        """Lưu bản ghi nhật ký truyền nhận file vào tệp lịch sử trên ổ đĩa."""
         try:
             record_id = self._storage.save_file_transfer(
                 filename=filename,

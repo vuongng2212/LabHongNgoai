@@ -1,11 +1,10 @@
-"""Khởi tạo ứng dụng, nạp cấu hình và thiết lập liên kết phụ thuộc (Application Bootstrap & Dependency Injection).
+"""Điểm xuất phát khởi động toàn bộ ứng dụng phần mềm (Application Bootstrap & Wiring).
 
-Module này chịu trách nhiệm:
-1. Phân tích cấu hình khởi động và thiết lập ngữ cảnh cô lập instance (Node A / Node B).
-2. Chiếm giữ khóa tệp tin chống mở trùng tiến trình (InstanceLock).
-3. Khởi động tiến trình LinkBroker nếu chạy ở vai trò Host (liên kết quang ảo).
-4. Khởi tạo và liên kết các thành phần kiến trúc: StorageService, SerialManager, FileTransferService,
-   ChatService, TelemetryService, BackendBridge và cửa sổ WebMainWindow.
+Đảm nhiệm việc ráp nối các mảnh ghép của hệ thống:
+1. Đọc cấu hình dòng lệnh và xác định xem trạm đang chạy ở chế độ đơn lẻ hay chạy song song Node A / Node B.
+2. Kiểm tra khóa file app.lock để chống mở đè hai lần trên cùng một cổng COM.
+3. Nếu chạy chế độ thử nghiệm tia quang ảo (Host), tự động bật trạm trung chuyển LinkBroker.
+4. Ráp nối các khối xử lý: Bộ nhớ StorageService, Bộ não SerialManager, Động cơ truyền file FileTransferService, Dịch vụ chat ChatService, Bộ đo TelemetryService và Cầu nối BackendBridge lên cửa sổ màn hình WebMainWindow.
 """
 
 from __future__ import annotations

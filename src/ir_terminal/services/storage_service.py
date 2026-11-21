@@ -1,11 +1,11 @@
-"""Dịch vụ lưu trữ dữ liệu bền vững trên tệp tin JSON và xuất báo cáo CSV (Storage Service).
+"""Bộ phận ghi nhớ: lưu lịch sử gửi nhận file và tin nhắn vào ổ cứng để tắt app mở lại không bị mất (Storage Service).
 
-Lưu trữ các tập dữ liệu người dùng dưới dạng các tệp JSON nguyên tử (atomic write thông qua tệp tạm):
-- Lịch sử tin nhắn nhắn tin quang học (chat_history.json).
-- Nhật ký các phiên truyền và nhận file (file_transfers.json).
-- Mẫu lịch sử viễn trắc đo lường kênh truyền (telemetry_samples.json).
-- Cấu hình cài đặt người dùng (settings.json).
-Bảo vệ bằng khóa threading.Lock đảm bảo an toàn truy cập đồng thời từ các luồng Qt Worker.
+Lưu trữ dữ liệu an toàn dưới dạng các file JSON trong thư mục data:
+- chat_history.json: Giữ lại toàn bộ tin nhắn văn bản đã trao đổi qua tia quang.
+- file_transfers.json: Nhật ký chi tiết từng lần gửi/nhận file (tên file, dung lượng byte, mã kiểm tra CRC-32, tốc độ KB/s, trạng thái thành công/thất bại).
+- telemetry_samples.json: Dữ liệu đo tốc độ đường truyền và tỷ lệ rớt gói theo thời gian.
+- settings.json: Ghi nhớ các tùy chọn cài đặt của người dùng (thư mục nhận file, tốc độ Baudrate quen dùng).
+Áp dụng cơ chế ghi file tạm (.tmp) rồi đổi tên (atomic write) để đảm bảo không bị hỏng dữ liệu kể cả khi máy tính bị mất điện đột ngột.
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ def _utc_now_iso() -> str:
 
 
 class StorageService:
-    """Quản lý các kho lưu trữ tệp tin JSON cục bộ và xuất báo cáo dữ liệu định dạng CSV."""
+    """Bộ phận ghi nhớ: lưu lịch sử gửi nhận file và tin nhắn vào ổ cứng để tắt app mở lại không bị mất."""
 
     def __init__(self, data_dir: Path | None = None) -> None:
         """Khởi tạo dịch vụ lưu trữ với thư mục dữ liệu được chỉ định hoặc mặc định.

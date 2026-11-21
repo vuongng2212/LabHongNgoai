@@ -1,9 +1,11 @@
-"""Tiến trình Broker điều phối liên kết quang ảo nội bộ (In-App Virtual Optical Link Broker).
+"""Trạm trung chuyển dữ liệu tia sáng ảo giữa hai máy tính (Virtual Optical Link Broker).
 
-Mô phỏng đường truyền hồng ngoại giữa hai trạm Node A (cổng LINK_A) và Node B (cổng LINK_B)
-trên cùng một máy tính cá nhân thông qua giao thức TCP loopback.
-Chuyển tiếp nguyên vẹn các khung byte hai chiều mà không cần cài đặt driver kernel hay quyền quản trị viên (Admin).
-Tích hợp sẵn các mô hình suy hao kênh: độ trễ (latency ms), rớt gói (loss rate) và che khuất tầm nhìn (LOS blockage).
+Mô phỏng đường truyền tia hồng ngoại giữa hai trạm Node A (cổng LINK_A) và Node B (cổng LINK_B) trên cùng 1 máy tính:
+- Làm trung gian chuyển tiếp từng byte từ trạm A sang trạm B và ngược lại qua mạng nội bộ.
+- Hỗ trợ mô phỏng các hiện tượng vật lý ngoài đời thực:
+  + Độ trễ không khí (latency): giả lập thời gian tia sáng bay qua khoảng cách xa.
+  + Tỷ lệ rớt gói (loss rate): giả lập hiện tượng bụi bẩn hoặc lệch góc thu phát quang làm rơi rớt byte.
+  + Che khuất tầm nhìn (LOS blockage): giả lập khi có bàn tay hoặc vật cản chắn ngang đường đi của tia hồng ngoại (tia sáng bị ngắt hoàn toàn).
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 def _close_quietly(sock: socket.socket | None) -> None:
-    """Đóng an toàn một socket và bỏ qua các ngoại lệ hệ điều hành khi tắt."""
+    """Đóng an toàn kết nối socket mạng và bỏ qua lỗi nếu socket đã bị đóng trước đó."""
     if sock is None:
         return
     try:
@@ -42,7 +44,7 @@ def _close_quietly(sock: socket.socket | None) -> None:
 
 
 class LinkBroker:
-    """Bộ chuyển tiếp TCP hai chiều mô phỏng tia hồng ngoại giữa hai trạm Node A và Node B."""
+    """Trạm trung chuyển dữ liệu tia sáng ảo giữa hai trạm Node A và Node B."""
 
     def __init__(
         self,
@@ -54,15 +56,15 @@ class LinkBroker:
         latency_ms: float = DEFAULT_LATENCY_MS,
         token: str | None = None,
     ) -> None:
-        """Khởi tạo cấu hình các endpoint và tham số kênh truyền ảo.
+        """Khởi tạo trạm trung chuyển tia quang ảo với các tham số mô phỏng môi trường.
 
         Args:
-            port_a: Cổng TCP dành cho Node A (LINK_A).
-            port_b: Cổng TCP dành cho Node B (LINK_B).
-            host: Địa chỉ IP lắng nghe loopback (mặc định 127.0.0.1; tuyệt đối không dùng 0.0.0.0).
-            loss_rate: Xác suất rớt gói ngẫu nhiên trên mỗi chunk dữ liệu trong khoảng 0.0 đến 1.0.
-            latency_ms: Độ trễ nhân tạo bổ sung cho mỗi chunk dữ liệu tính bằng mili-giây (ms).
-            token: Khóa bí mật chia sẻ tùy chọn cho bước bắt tay xác thực client.
+            port_a: Cổng mạng TCP dành cho Node A (cổng LINK_A).
+            port_b: Cổng mạng TCP dành cho Node B (cổng LINK_B).
+            host: Địa chỉ IP lắng nghe nội bộ (mặc định 127.0.0.1).
+            loss_rate: Xác suất rớt gói ngẫu nhiên do nhiễu môi trường (từ 0.0 đến 1.0).
+            latency_ms: Độ trễ nhân tạo thêm vào đường truyền (tính bằng mili-giây ms).
+            token: Mã khóa xác thực tùy chọn giữa các trạm.
         """
         self._port_a = int(port_a)
         self._port_b = int(port_b)

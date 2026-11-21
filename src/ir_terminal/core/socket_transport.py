@@ -1,8 +1,9 @@
-"""Tầng truyền tải TCP Socket phục vụ liên kết quang giả lập hai tiến trình (LINK_A / LINK_B).
+"""Đường truyền mạng ảo giả lập tia quang giữa 2 tiến trình trên máy tính (Socket Transport).
 
-Kênh truyền tải phần cứng thực tế (DualSerialTransport) hoàn toàn độc lập. Module này chỉ được
-kích hoạt khi tên cổng bắt đầu bằng tiền tố "LINK_" (ví dụ: LINK_A, LINK_B). Kết nối tới tiến trình
-broker trung gian để chuyển tiếp luồng byte hai chiều A và B, mô phỏng tia hồng ngoại trên cùng 1 PC.
+Thay vì phải cắm dây cáp nối mạch quang thật giữa 2 máy tính, module này mở cổng mạng TCP nội bộ (loopback 127.0.0.1):
+- Kích hoạt khi người dùng chọn cổng ảo LINK_A hoặc LINK_B trên màn hình.
+- Đóng vai trò như một sợi dây nối ảo giữa trạm phát và trạm thu, chuyển tiếp từng byte y hệt như tia hồng ngoại bắn trong không khí.
+- Giúp kỹ sư kiểm thử được toàn bộ tính năng nhắn tin, gửi nhận file khi chỉ có 1 chiếc máy tính xách tay và không có mạch phần cứng bên cạnh.
 """
 
 from __future__ import annotations

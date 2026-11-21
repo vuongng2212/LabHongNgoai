@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standalone desktop binary build script using PyInstaller for IR-OWC Lab Terminal."""
+"""Kịch bản đóng gói ứng dụng thành tệp thực thi độc lập .exe chạy trên Windows bằng PyInstaller."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ LAUNCHER_SCRIPTS: tuple[str, ...] = ("Start_Dual_Demo.cmd", "Start_Com_Pair.cmd"
 
 
 def build() -> int:
-    """Executes PyInstaller build process and verifies output binary directory.
+    """Thực thi quy trình đóng gói PyInstaller và sao chép các tệp lệnh khởi động vào thư mục đầu ra dist/.
 
     Returns:
-        0 on success, non-zero on failure.
+        0 nếu thành công, mã lỗi khác 0 nếu thất bại.
     """
     root_dir = Path(__file__).resolve().parent.parent
     spec_path = root_dir / "ir_terminal.spec"

@@ -1,13 +1,7 @@
-"""Standalone CLI wrapper for the in-app virtual optical link broker.
+"""Tệp lệnh chạy trạm trung chuyển tia quang ảo (LinkBroker) độc lập từ dòng lệnh.
 
-The implementation now lives in :mod:`ir_terminal.core.link_broker` so it is
-bundled into the packaged ``.exe`` (the host node starts it in-process). This
-script remains for development workflows that run the broker separately.
-
-Usage:
-    uv run python scripts/virtual_optical_link.py [--loss 0.0] [--latency-ms 5]
-
-Type ``b`` + Enter on stdin to toggle LOS blockage (emulates a blocked beam).
+Dành cho kỹ sư kiểm thử khi muốn khởi động riêng trạm trung chuyển ảo bên ngoài ứng dụng chính.
+Hỗ trợ kiểm tra việc giả lập che khuất tia sáng (bấm 'b' + Enter để giả lập vật cản chắn tia quang).
 """
 
 from __future__ import annotations

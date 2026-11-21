@@ -1,7 +1,9 @@
-"""Cửa sổ ứng dụng chính tích hợp QWebEngineView hiển thị giao diện Web SPA với lõi Python.
+"""Cửa sổ giao diện chính của phần mềm kết hợp giao diện Web hiện đại với lõi điều khiển phần cứng Python (Main Window).
 
-Khởi tạo môi trường Chromium nhúng, đăng ký đối tượng cầu nối BackendBridge thông qua QWebChannel,
-nạp trang chủ index.html và quản lý vòng đời ứng dụng giao diện (thu phóng, đóng cửa sổ, giải phóng luồng).
+Đảm nhiệm:
+- Hiển thị toàn bộ giao diện điều khiển, biểu đồ tốc độ và khung chat bằng Chromium nhúng.
+- Đăng ký cầu nối BackendBridge qua QWebChannel để các nút bấm chuột trên màn hình điều khiển được mạch phần cứng bên dưới.
+- Quản lý đóng mở cửa sổ an toàn: khi người dùng tắt ứng dụng, tự động yêu cầu dừng truyền nhận và đóng các cổng COM phần cứng để không bị treo cổng.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebAppPage(QWebEnginePage):
-    """Trang WebEngine mở rộng hỗ trợ chuyển tiếp thông báo log console từ JavaScript sang Python logger."""
+    """Trang hiển thị hỗ trợ chuyển tiếp thông báo log từ màn hình sang hệ thống ghi nhật ký của Python."""
 
     def javaScriptConsoleMessage(
         self,
@@ -34,7 +36,7 @@ class WebAppPage(QWebEnginePage):
         line_number: int,
         source_id: str,
     ) -> None:
-        """Chuyển tiếp đầu ra console của JavaScript sang hệ thống logging chuẩn của Python.
+        """Chuyển tiếp thông điệp log từ console JavaScript sang hệ thống ghi nhật ký Python.
 
         Args:
             level: Cấp độ cảnh báo lỗi của console.
@@ -52,7 +54,7 @@ class WebAppPage(QWebEnginePage):
 
 
 class WebMainWindow(QMainWindow):
-    """Cửa sổ ứng dụng chính chứa trình duyệt Chromium WebEngine và cầu nối QWebChannel."""
+    """Cửa sổ ứng dụng chính chứa giao diện màn hình và các kết nối điều khiển."""
 
     def __init__(
         self,
@@ -60,7 +62,7 @@ class WebMainWindow(QMainWindow):
         bridge: BackendBridge | None = None,
         instance_context: InstanceContext | None = None,
     ) -> None:
-        """Khởi tạo cửa sổ ứng dụng Web.
+        """Khởi tạo cửa sổ màn hình và nạp cầu nối BackendBridge kết nối với cổng COM.
 
         Args:
             serial_manager: Bộ quản lý kết nối nối tiếp điều phối luồng worker I/O.
@@ -90,7 +92,7 @@ class WebMainWindow(QMainWindow):
         )
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        """Đảm bảo dừng an toàn luồng worker thread và các bộ định thời khi đóng cửa sổ."""
+        """Tự động ngắt kết nối cổng COM và dừng an toàn các tiến trình chạy ngầm khi người dùng bấm tắt cửa sổ."""
         logger.info(
             "%s WebMainWindow close requested; shutting down bridge+serial", LogTag.IPC_BRIDGE
         )
@@ -115,7 +117,7 @@ class WebMainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _init_window(self) -> None:
-        """Cấu hình các thuộc tính hình học của cửa sổ, giới hạn kích thước tối thiểu và tiêu đề."""
+        """Thiết lập kích thước màn hình hiển thị (1380x880 pixel) và tiêu đề cửa sổ theo trạm Node A hoặc Node B."""
         title = (
             self._instance_context.window_title
             if self._instance_context is not None
@@ -126,7 +128,7 @@ class WebMainWindow(QMainWindow):
         self.setMinimumSize(720, 600)
 
     def _create_page(self) -> WebAppPage:
-        """Khởi tạo trang WebEngine và cô lập profile lưu trữ/cookies riêng biệt cho từng tiến trình."""
+        """Tạo hồ sơ lưu trữ riêng biệt (profile) cho từng trạm để khi mở song song 2 node trên cùng 1 máy không bị trùng bộ nhớ đệm."""
         ctx = self._instance_context
         if ctx is None:
             return WebAppPage(self._view)
@@ -148,7 +150,7 @@ class WebMainWindow(QMainWindow):
         return WebAppPage(profile, self._view)
 
     def _init_webengine(self) -> None:
-        """Khởi tạo thành phần hiển thị QWebEngineView, đăng ký cầu nối QWebChannel và tải trang index.html."""
+        """Khởi chạy trình duyệt hiển thị giao diện, nối cầu nối QWebChannel với mã nguồn Python và nạp trang giao diện index.html."""
         central_widget = QWidget(self)
         layout = QVBoxLayout(central_widget)
         layout.setContentsMargins(0, 0, 0, 0)

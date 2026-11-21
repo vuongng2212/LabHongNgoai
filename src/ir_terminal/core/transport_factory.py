@@ -1,9 +1,9 @@
-"""Nhà máy khởi tạo tầng truyền tải (Transport Factory) lựa chọn đối tượng ITransport phù hợp.
+"""Bộ lựa chọn đường truyền phần cứng hoặc đường truyền giả lập (Transport Factory).
 
-Dựa trên tiền tố và định dạng của tên cổng COM do người dùng chọn:
-- Cổng bắt đầu bằng "MOCK": Khởi tạo MockSerialPort giả lập trong bộ nhớ.
-- Cổng bắt đầu bằng "LINK_": Khởi tạo SocketTransport kết nối TCP loopback tới Broker.
-- Cổng COM phần cứng chuẩn: Khởi tạo DualSerialTransport giao tiếp trực tiếp qua driver Serial.
+Tự động chọn loại kết nối phù hợp dựa trên tên cổng COM mà người dùng bấm chọn trên màn hình:
+- Tên cổng có chữ "MOCK": Tạo cổng ảo MockSerialPort chạy trong RAM máy tính để test thử logic.
+- Tên cổng bắt đầu bằng "LINK_": Tạo kết nối mạng ảo SocketTransport qua cổng TCP để giả lập 2 máy tính truyền tia quang cho nhau trên cùng 1 PC.
+- Tên cổng COM thực tế (như COM3, COM4 trên Windows hoặc /dev/ttyUSB0 trên Linux): Mở driver DualSerialTransport để giao tiếp trực tiếp với mạch thật.
 """
 
 from __future__ import annotations
@@ -39,23 +39,23 @@ def create_transport(
     tx_port: str | None = None,
     rx_port: str | None = None,
 ) -> ITransport:
-    """Khởi tạo đối tượng truyền tải ITransport tương ứng cho kênh dữ liệu COM1 và điều khiển COM2.
+    """Khởi tạo đối tượng giao tiếp tương ứng cho cổng dữ liệu quang COM1 và cổng điều khiển STM32 COM2.
 
     Args:
-        data_port: Tên định danh cổng nối tiếp dữ liệu quang COM1.
-        ctrl_port: Tên định danh cổng nối tiếp điều khiển STM32 COM2, hoặc None.
-        baudrate: Tốc độ Baud quang học áp dụng cho COM1.
-        ctrl_baudrate: Tốc độ Baud vi điều khiển áp dụng cho COM2 (115200 bps).
+        data_port: Tên cổng dữ liệu quang COM1 (ví dụ: 'COM3', 'MOCK_COM1', 'LINK_A').
+        ctrl_port: Tên cổng điều khiển STM32 COM2 (ví dụ: 'COM4', 'MOCK_COM2', hoặc None nếu không dùng).
+        baudrate: Tốc độ Baud quang học áp dụng cho COM1 (2400, 4800, 9600, 19200 bps).
+        ctrl_baudrate: Tốc độ Baud vi điều khiển áp dụng cho COM2 (cố định 115200 bps).
         link_endpoints: Bảng ánh xạ tùy chọn cổng ảo LINK_* tới địa chỉ (host, port).
         link_connect_retries: Số lần thử lại kết nối cho cổng LINK.
         link_retry_interval_sec: Khoảng thời gian giãn cách giữa các lần thử kết nối LINK (giây).
         link_connect_timeout_sec: Thời gian chờ tối đa cho mỗi lần kết nối socket LINK (giây).
-        link_token: Token xác thực tùy chọn khi bắt tay với LinkBroker.
+        link_token: Mã khóa bảo mật tùy chọn khi bắt tay với trạm trung chuyển ảo LinkBroker.
         tx_port: Tên thay thế tương thích ngược cho data_port.
         rx_port: Tên thay thế tương thích ngược cho ctrl_port.
 
     Returns:
-        Đối tượng cụ thể kế thừa ITransport đã được khởi tạo (chưa mở cổng).
+        Đối tượng cụ thể kế thừa ITransport đã được khởi tạo (sẵn sàng gọi lệnh open để mở cổng).
     """
     data_name = (data_port or tx_port or "").strip()
     ctrl_name = (ctrl_port if ctrl_port is not None else rx_port) or ""

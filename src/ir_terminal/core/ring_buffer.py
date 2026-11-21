@@ -1,7 +1,9 @@
-"""Bộ đệm vòng byte hiệu năng cao (Byte Ring Buffer) an toàn đa luồng.
+"""Thùng chứa dữ liệu đệm vòng: chứa các byte nhận về từ UART trước khi đem ra phân tích gói tin (Byte Ring Buffer).
 
-Được thiết kế để tích lũy dòng byte tốc độ cao từ cổng UART phần cứng, ngăn ngừa tràn bộ nhớ RAM
-khi nhận các loạt gói tin burst frame liên tục từ vi điều khiển MCU.
+Đóng vai trò như một kho chứa đệm dung lượng cố định 64 KB (FIFO) nằm giữa phần cứng UART và bộ giải mã gói tin:
+- Khi mạch thu quang TFDU4101 nhận dữ liệu dồn dập, các byte sẽ được đổ tạm vào thùng chứa này trước.
+- Giúp dữ liệu không bị nghẽn hay tràn RAM của máy tính.
+- Nếu ứng dụng bận xử lý tác vụ khác khiến thùng chứa bị đầy tràn (overflow), bộ đệm sẽ tự động bỏ các byte cũ nhất để chứa byte mới và ghi nhận số lượng byte bị rớt (dropped bytes) để báo lên biểu đồ viễn trắc.
 """
 
 from __future__ import annotations
@@ -10,17 +12,13 @@ import threading
 
 
 class ByteRingBuffer:
-    """Bộ đệm vòng tuần hoàn kích thước cố định để tích lũy dòng byte nối tiếp.
-
-    Hỗ trợ cơ chế khóa đa luồng threading.Lock, tự động đẩy bỏ các byte cũ nhất khi bị tràn
-    và ghi nhận số byte bị rớt (dropped bytes) phục vụ công tác chẩn đoán viễn trắc.
-    """
+    """Thùng chứa dữ liệu đệm vòng: chứa các byte nhận về từ UART trước khi đem ra phân tích gói tin."""
 
     def __init__(self, capacity: int = 65536) -> None:
-        """Khởi tạo bộ đệm vòng với dung lượng bộ nhớ cố định.
+        """Khởi tạo thùng chứa đệm vòng với sức chứa cố định (mặc định 64 KB = 65536 bytes).
 
         Args:
-            capacity: Dung lượng tối đa của bộ đệm tính theo byte (mặc định 64 KB = 65536 bytes).
+            capacity: Sức chứa tối đa của thùng đệm tính theo byte.
         """
         self._capacity = capacity
         self._buffer = bytearray(capacity)
@@ -32,30 +30,30 @@ class ByteRingBuffer:
 
     @property
     def capacity(self) -> int:
-        """Dung lượng tối đa (sức chứa) của bộ đệm vòng tính theo byte."""
+        """Sức chứa tối đa của thùng đệm (byte)."""
         return self._capacity
 
     def __len__(self) -> int:
-        """Số lượng byte hợp lệ hiện đang có sẵn trong bộ đệm để đọc."""
+        """Số lượng byte thực tế hiện đang nằm trong thùng chờ lấy ra xử lý."""
         with self._lock:
             return self._size
 
     @property
     def dropped_bytes(self) -> int:
-        """Tổng số byte lũy kế đã bị loại bỏ do tràn bộ đệm vòng."""
+        """Tổng số byte bị tràn thùng và buộc phải bỏ đi do mạch quang gửi về quá nhanh."""
         with self._lock:
             return self._dropped
 
     def write(self, data: bytes) -> int:
-        """Ghi chuỗi byte vào bộ đệm vòng tuần hoàn.
+        """Đổ thêm các byte mới nhận từ cổng UART vào thùng đệm vòng.
 
-        Nếu dữ liệu mới vượt quá dung lượng còn trống, các byte cũ nhất sẽ tự động bị ghi đè.
+        Nếu dữ liệu mới nhiều hơn dung lượng còn trống, thùng đệm sẽ tự động ghi đè lên các byte cũ nhất.
 
         Args:
-            data: Chuỗi byte nhị phân cần ghi vào bộ đệm.
+            data: Chuỗi byte nhị phân vừa nhặt được từ chân RX.
 
         Returns:
-            Số lượng byte thực tế đã được tiếp nhận.
+            Số lượng byte thực tế đã nhét vào thùng.
         """
         with self._lock:
             data_len = len(data)
@@ -83,13 +81,13 @@ class ByteRingBuffer:
             return data_len
 
     def read(self, max_bytes: int | None = None) -> bytes:
-        """Đọc và trích xuất dữ liệu ra khỏi bộ đệm vòng (xóa khỏi buffer).
+        """Lấy bớt các byte trong thùng đệm ra để đem đi ráp khung gói tin (dữ liệu lấy ra sẽ được xóa khỏi thùng).
 
         Args:
-            max_bytes: Số byte tối đa cần đọc. Nếu truyền None, đọc toàn bộ byte hiện có.
+            max_bytes: Số byte tối đa muốn lấy ra. Nếu để None sẽ lấy toàn bộ byte đang có trong thùng.
 
         Returns:
-            Chuỗi byte nhị phân đã trích xuất từ bộ đệm.
+            Chuỗi byte nhị phân đã lấy ra theo thứ tự vào trước - ra trước (FIFO).
         """
         with self._lock:
             if self._size == 0:
@@ -108,7 +106,7 @@ class ByteRingBuffer:
             return bytes(result)
 
     def peek(self) -> bytes:
-        """Xem trước toàn bộ dữ liệu hiện có trong bộ đệm mà không làm thay đổi con trỏ đọc.
+        """Nhìn lén dữ liệu hiện có trong thùng mà không rút byte nào ra khỏi thùng.
 
         Returns:
             Bản sao của chuỗi byte hiện có theo đúng thứ tự FIFO.
@@ -127,7 +125,7 @@ class ByteRingBuffer:
             return bytes(result)
 
     def clear(self) -> None:
-        """Xóa sạch bộ đệm và đặt lại các con trỏ head, tail về vị trí ban đầu."""
+        """Đổ sạch toàn bộ dữ liệu trong thùng đệm và đặt các con trỏ đầu/cuối về vị trí ban đầu."""
         with self._lock:
             self._head = 0
             self._tail = 0

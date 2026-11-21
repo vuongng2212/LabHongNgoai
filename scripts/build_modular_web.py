@@ -1,4 +1,4 @@
-"""Component-based modular Web UI builder with Pixel-Perfect Design Matching for IR-OWC Lab Terminal."""
+"""Công cụ tự động ghép nối các khối thành phần giao diện Web HTML/CSS/JS thành trang hoàn chỉnh index.html."""
 
 import re
 from pathlib import Path
