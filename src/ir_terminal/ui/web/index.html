@@ -1033,6 +1033,7 @@
     </div>
     <div class="flex items-center justify-end gap-space-sm pt-space-xs">
       <button
+        id="btn-file-primary"
         class="flex-1 h-[30px] px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary transition-colors text-label-md font-label-md font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer"
       >
         <span class="material-symbols-outlined text-[15px]" data-icon="send"
@@ -1041,6 +1042,7 @@
         <span>Transmit</span>
       </button>
       <button
+        id="btn-file-secondary"
         class="h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-black/[0.12] text-on-surface-variant hover:text-error hover:border-error/40 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer"
       >
         <span class="material-symbols-outlined text-[15px]" data-icon="close"
@@ -1730,6 +1732,27 @@
           Reset to default
         </button>
       </div>
+      <div class="pt-space-xs border-t border-black/[0.06] flex items-center justify-between">
+        <div class="pr-space-md">
+          <label
+            for="settings-checkpoint-ack"
+            class="block font-label-sm text-label-sm text-on-surface font-medium cursor-pointer"
+          >
+            Bật kiểm tra mất tia quang (Checkpoint ACK)
+          </label>
+          <p
+            class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed"
+          >
+            Tự động tạm dừng khi mất tia để tiếp tục sau (Resume). Tắt để chạy thuần Open-Loop.
+          </p>
+        </div>
+        <input
+          id="settings-checkpoint-ack"
+          type="checkbox"
+          checked
+          class="w-4 h-4 rounded border-black/[0.2] text-primary focus:ring-0 cursor-pointer shrink-0"
+        />
+      </div>
       <p
         id="settings-error"
         class="hidden font-body-md text-body-md text-error"
@@ -1872,39 +1895,58 @@
 >
   <div
     id="modal-backdrop"
-    class="ui-modal-backdrop absolute inset-0 bg-on-surface/20"
+    class="ui-modal-backdrop absolute inset-0 bg-slate-900/60"
   ></div>
   <div
     id="modal-card"
     role="dialog"
     aria-modal="true"
-    class="relative w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface-container-lowest rounded-2xl border border-black/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.12)] p-space-lg flex flex-col items-center text-center gap-2"
+    class="relative w-full max-w-lg bg-white rounded-xl shadow-2xl border border-slate-200 p-6 flex flex-col gap-4 z-10 select-none text-left"
   >
-    <div
-      id="modal-icon-wrap"
-      class="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm"
-    >
-      <span id="modal-icon" class="material-symbols-outlined text-[26px]"
-        >check_circle</span
+    <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+      <div class="flex items-center gap-3">
+        <div
+          id="modal-icon-wrap"
+          class="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0 shadow-xs"
+        >
+          <span id="modal-icon" class="material-symbols-outlined text-[22px]">warning</span>
+        </div>
+        <div class="min-w-0">
+          <h3
+            id="modal-title"
+            class="text-base font-bold text-slate-900 leading-snug"
+          >
+            Cảnh báo mất tín hiệu quang (LOS Blocked)
+          </h3>
+          <p
+            id="modal-subtitle"
+            class="text-[11px] font-mono font-medium text-slate-500 uppercase tracking-wider"
+          >
+            OPTICAL LINK • STATUS ALERT
+          </p>
+        </div>
+      </div>
+      <button
+        id="modal-close-btn"
+        class="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+        title="Đóng hộp thoại"
       >
+        <span class="material-symbols-outlined text-[18px]">close</span>
+      </button>
     </div>
-    <h3
-      id="modal-title"
-      class="font-headline-md text-headline-md text-on-surface"
-    >
-      Done
-    </h3>
-    <p
-      id="modal-message"
-      class="font-body-md text-body-md text-on-surface-variant leading-relaxed"
-    ></p>
-    <p
-      id="modal-details"
-      class="hidden font-mono-data text-mono-data text-outline bg-surface-container-low border border-black/[0.04] rounded-lg px-2.5 py-1.5 max-w-full break-all"
-    ></p>
+    <div class="space-y-3">
+      <p
+        id="modal-message"
+        class="text-sm font-medium text-slate-800 leading-relaxed break-words"
+      ></p>
+      <div
+        id="modal-details"
+        class="hidden font-mono text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-1.5 leading-relaxed break-words whitespace-pre-wrap select-text"
+      ></div>
+    </div>
     <div
       id="modal-actions"
-      class="flex items-center justify-center gap-2 mt-2 w-full"
+      class="flex items-center justify-end gap-3 pt-2 border-t border-slate-100"
     ></div>
   </div>
 </div>

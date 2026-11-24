@@ -32,10 +32,26 @@
   };
 
   var MODAL_STYLE = {
-    success: { wrap: "bg-secondary/10 text-secondary", icon: "check_circle" },
-    error: { wrap: "bg-error/10 text-error", icon: "error" },
-    info: { wrap: "bg-surface-container text-primary", icon: "info" },
-    confirm: { wrap: "bg-tertiary/10 text-tertiary", icon: "warning" },
+    success: {
+      wrap: "bg-emerald-50 text-emerald-600 border border-emerald-200",
+      icon: "check_circle",
+    },
+    error: {
+      wrap: "bg-red-50 text-red-600 border border-red-200",
+      icon: "error",
+    },
+    info: {
+      wrap: "bg-blue-50 text-blue-600 border border-blue-200",
+      icon: "info",
+    },
+    warning: {
+      wrap: "bg-amber-50 text-amber-600 border border-amber-200",
+      icon: "warning",
+    },
+    confirm: {
+      wrap: "bg-amber-50 text-amber-600 border border-amber-200",
+      icon: "warning",
+    },
   };
 
   function ensureContainers() {
@@ -113,19 +129,25 @@
     opts = opts || {};
     var variant = MODAL_STYLE[opts.variant] ? opts.variant : "info";
     var ms = MODAL_STYLE[variant];
+    var isPersistent = Boolean(opts.persistent);
 
     var iconWrap = document.getElementById("modal-icon-wrap");
     var icon = document.getElementById("modal-icon");
     var title = document.getElementById("modal-title");
+    var subtitle = document.getElementById("modal-subtitle");
     var message = document.getElementById("modal-message");
     var details = document.getElementById("modal-details");
     var actionsBox = document.getElementById("modal-actions");
+    var closeBtn = document.getElementById("modal-close-btn");
 
     iconWrap.className =
-      "w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm " +
+      "w-10 h-10 rounded-xl flex items-center justify-center shadow-sm " +
       ms.wrap;
     icon.innerText = opts.icon || ms.icon;
     title.innerText = opts.title || "";
+    if (subtitle) {
+      subtitle.innerText = opts.subtitle || "OPTICAL LINK • STATUS ALERT";
+    }
     message.innerText = opts.message || "";
     if (opts.details) {
       details.innerText = opts.details;
@@ -137,15 +159,39 @@
     actionsBox.innerHTML = "";
 
     var closed = false;
-    function close() {
+    function close(actionId) {
       if (closed) return;
       closed = true;
       c.overlay.classList.add("hidden");
       c.overlay.classList.remove("flex");
       document.removeEventListener("keydown", onKey);
+      if (typeof opts.onClose === "function") {
+        opts.onClose(actionId);
+      }
     }
     function onKey(e) {
-      if (e.key === "Escape" && variant !== "confirm") close();
+      if (e.key === "Escape" && !isPersistent) {
+        close("escape");
+      }
+    }
+
+    if (closeBtn) {
+      if (isPersistent) {
+        closeBtn.classList.add("hidden");
+      } else {
+        closeBtn.classList.remove("hidden");
+      }
+      closeBtn.onclick = function () {
+        if (isPersistent) {
+          if (typeof opts.onCancel === "function") {
+            opts.onCancel(close);
+          } else {
+            close("close_btn");
+          }
+        } else {
+          close("close_btn");
+        }
+      };
     }
 
     var actions =
@@ -154,18 +200,11 @@
         : [{ id: "ok", label: "OK", kind: "primary" }];
     actions.forEach(function (a) {
       var b = document.createElement("button");
-      var base =
-        "h-[32px] px-4 rounded-lg font-title-sm text-title-sm font-semibold active:scale-[0.98] transition-all cursor-pointer ";
-      if (a.kind === "danger")
-        b.className =
-          base + "bg-error hover:bg-on-error-container text-white shadow-sm";
-      else if (a.kind === "secondary")
-        b.className =
-          base +
-          "bg-white hover:bg-[#F8FAFC] text-on-surface border border-black/[0.12]";
-      else
-        b.className =
-          base + "bg-primary-container hover:bg-primary text-white shadow-sm";
+      if (a.kind === "secondary") {
+        b.className = "modal-action-btn-secondary";
+      } else {
+        b.className = "modal-action-btn-primary";
+      }
       b.innerText = a.label;
       b.addEventListener("click", function () {
         if (typeof a.onClick === "function") a.onClick(close);
@@ -175,7 +214,7 @@
     });
 
     document.getElementById("modal-backdrop").onclick = function () {
-      if (variant !== "confirm") close();
+      if (!isPersistent) close("backdrop");
     };
     document.addEventListener("keydown", onKey);
     c.overlay.classList.remove("hidden");
@@ -188,12 +227,23 @@
   function confirmModal(opts) {
     opts = opts || {};
     return new Promise(function (resolve) {
+      var settled = false;
+      function finish(val) {
+        if (!settled) {
+          settled = true;
+          resolve(val);
+        }
+      }
+
       showModal({
         variant: "confirm",
         icon: opts.icon || "warning",
         title: opts.title || "Are you sure?",
         message: opts.message || "",
         details: opts.details,
+        onClose: function () {
+          finish(false);
+        },
         actions: [
           {
             id: "cancel",
@@ -201,7 +251,7 @@
             kind: "secondary",
             onClick: function (close) {
               close();
-              resolve(false);
+              finish(false);
             },
           },
           {
@@ -210,7 +260,7 @@
             kind: opts.danger ? "danger" : "primary",
             onClick: function (close) {
               close();
-              resolve(true);
+              finish(true);
             },
           },
         ],

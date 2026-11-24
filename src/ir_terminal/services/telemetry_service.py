@@ -19,7 +19,13 @@ from typing import ClassVar, TypedDict
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from ir_terminal.protocol.constants import SEQ_END, SEQ_HEADER
+from ir_terminal.protocol.constants import (
+    SEQ_CHECKPOINT_ACK,
+    SEQ_CHECKPOINT_PROBE,
+    SEQ_END,
+    SEQ_HEADER,
+    SEQ_RESUME_REQUEST,
+)
 from ir_terminal.protocol.packet import WinFormPacket
 from ir_terminal.services.storage_service import StorageService
 from ir_terminal.utils.logger import LogTag, format_hex_preview
@@ -75,6 +81,12 @@ def frame_type_name(sequence: int) -> str:
         return "FILE_HEADER"
     if sequence == SEQ_END:
         return "FILE_END"
+    if sequence == SEQ_CHECKPOINT_ACK:
+        return "CHECKPOINT_ACK"
+    if sequence == SEQ_CHECKPOINT_PROBE:
+        return "CHECKPOINT_PROBE"
+    if sequence == SEQ_RESUME_REQUEST:
+        return "RESUME_REQUEST"
     return "DATA_CHUNK"
 
 

@@ -187,6 +187,8 @@ class TestReception:
         manager.deliver(0, b"Q" * 20)
 
         service._on_rx_timeout()
+        assert service.state.name == "PAUSED"
+        service._on_rx_recovery_timeout()
 
         assert service.state is TransferState.FAILED
         assert (tmp_path / "transfers" / "timeout.bin.partial").read_bytes() == b"Q" * 20
@@ -197,6 +199,8 @@ class TestReception:
         manager.deliver(0, b"Q" * 20)
 
         service._on_rx_timeout()
+        assert service.state.name == "PAUSED"
+        service._on_rx_recovery_timeout()
 
         assert service.state is TransferState.FAILED
         assert not (tmp_path / "transfers" / "timeout.bin.partial").exists()

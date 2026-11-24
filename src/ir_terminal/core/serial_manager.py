@@ -94,13 +94,16 @@ class SerialManager(QObject):
         self._sig_set_baud.connect(self._worker.set_baud)
 
         self._worker.connected.connect(self.connected)
+        self._worker.ports_connected.connect(self._on_ports_connected)
         self._worker.ports_connected.connect(self.ports_connected)
+        self._worker.disconnected.connect(self._on_disconnected)
         self._worker.disconnected.connect(self.disconnected)
         self._worker.error_occurred.connect(self.error_occurred)
         self._worker.raw_data_sent.connect(self.raw_tx)
         self._worker.raw_data_received.connect(self.raw_rx)
         self._worker.packet_received.connect(self.packet_received)
         self._worker.ports_changed.connect(self.ports_changed)
+        self._worker.baud_changed.connect(self._on_baud_changed)
         self._worker.baud_changed.connect(self.baud_changed)
         self._worker.baud_command_sent.connect(self.baud_command_sent)
 
@@ -110,9 +113,6 @@ class SerialManager(QObject):
         self._current_ctrl_port = ""
         self._current_baud = DEFAULT_BAUDRATE
         self._current_ctrl_baud = CONTROL_BAUDRATE
-        self.ports_connected.connect(self._on_ports_connected)
-        self._worker.disconnected.connect(self._on_disconnected)
-        self._worker.baud_changed.connect(self._on_baud_changed)
         logger.debug(
             "%s Manager worker thread started: running=%s",
             LogTag.HW_SERIAL,
