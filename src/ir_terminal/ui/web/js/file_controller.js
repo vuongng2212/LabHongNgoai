@@ -95,6 +95,7 @@ function initFileController() {
       TX: "PACED TX",
       RECEIVING: "RECEIVING RX",
       RX: "RECEIVING RX",
+      PAUSED: "LOS BLOCKED (PAUSED)",
       COMPLETED: "STREAM COMPLETE",
       COMPLETE: "STREAM COMPLETE",
       FAILED: "STREAM FAILED",
@@ -108,13 +109,49 @@ function initFileController() {
     const key = String(state || "").toUpperCase();
     if (key === "COMPLETED" || key === "COMPLETE") return "success";
     if (key === "FAILED") return "error";
+    if (key === "PAUSED") return "warning";
     if (key === "ABORTED" || key === "IDLE") return "neutral";
     return "info";
+  }
+
+  function updateActionButtons(isPaused) {
+    const btnPrimary = document.getElementById("btn-file-primary");
+    const btnSecondary = document.getElementById("btn-file-secondary");
+    if (isPaused) {
+      if (btnPrimary) {
+        btnPrimary.innerHTML =
+          '<span class="material-symbols-outlined text-[15px]" data-icon="play_arrow">play_arrow</span><span>Tiếp tục (Resume)</span>';
+        btnPrimary.className =
+          "flex-1 h-[30px] px-space-md rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors text-label-md font-label-md font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer";
+      }
+      if (btnSecondary) {
+        btnSecondary.innerHTML =
+          '<span class="material-symbols-outlined text-[15px]" data-icon="close">close</span><span>Hủy (Abort)</span>';
+        btnSecondary.className =
+          "h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-error/30 text-error hover:bg-error/10 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer";
+      }
+    } else {
+      if (btnPrimary) {
+        btnPrimary.innerHTML =
+          '<span class="material-symbols-outlined text-[15px]" data-icon="send">send</span><span>Transmit</span>';
+        btnPrimary.className =
+          "flex-1 h-[30px] px-space-md rounded-lg bg-primary-container hover:bg-primary text-on-primary transition-colors text-label-md font-label-md font-semibold flex items-center justify-center gap-1.5 active:scale-[0.98] cursor-pointer";
+      }
+      if (btnSecondary) {
+        btnSecondary.innerHTML =
+          '<span class="material-symbols-outlined text-[15px]" data-icon="close">close</span><span>Cancel</span>';
+        btnSecondary.className =
+          "h-[30px] px-space-md rounded-lg bg-surface-container-lowest border border-black/[0.12] text-on-surface-variant hover:text-error hover:border-error/40 transition-colors text-label-md font-label-md flex items-center gap-1 active:scale-[0.98] cursor-pointer";
+      }
+    }
   }
 
   function setActiveStatus(label, tone) {
     const resolvedTone = tone || streamTone(label);
     const resolvedLabel = streamLabel(label);
+    const isPaused =
+      resolvedLabel.includes("PAUSED") || String(label).toUpperCase() === "PAUSED";
+    updateActionButtons(isPaused);
     if (window.UIBadge) {
       window.UIBadge.set("file-active-status", {
         tone: resolvedTone,
@@ -226,6 +263,16 @@ function initFileController() {
         });
       }
     } else if (
+      btn.innerText.includes("Resume") ||
+      btn.innerText.includes("Tiếp tục")
+    ) {
+      if (
+        window.bridge &&
+        typeof window.bridge.resumeFileTransfer === "function"
+      ) {
+        window.bridge.resumeFileTransfer();
+      }
+    } else if (
       btn.innerText.includes("Cancel") ||
       btn.innerText.includes("Abort")
     ) {
@@ -314,8 +361,14 @@ function initFileController() {
       },
     );
 
+    let losModalCloser = null;
+
     window.bridge.transferCompleted.connect(
       (filename, bytesSent, elapsedSec, crcHex) => {
+        if (typeof losModalCloser === "function") {
+          losModalCloser();
+          losModalCloser = null;
+        }
         const newRec = {
           filename: filename,
           size_bytes: bytesSent,
@@ -340,6 +393,10 @@ function initFileController() {
 
     window.bridge.transferFailed.connect((reason) => {
       console.error(`File Transfer Failed: ${reason}`);
+      if (typeof losModalCloser === "function") {
+        losModalCloser();
+        losModalCloser = null;
+      }
       setActiveStatus("FAILED");
       if (window.UIFeedback) {
         window.UIFeedback.showModal({
@@ -364,6 +421,90 @@ function initFileController() {
         });
       }
     });
+
+    if (
+      window.bridge.transferPaused &&
+      typeof window.bridge.transferPaused.connect === "function"
+    ) {
+      window.bridge.transferPaused.connect(
+        (filename, lastAcked, totalPackets, percent, reason) => {
+          setActiveStatus("PAUSED", "warning");
+          if (window.UIFeedback) {
+            if (typeof losModalCloser === "function") {
+              losModalCloser();
+              losModalCloser = null;
+            }
+            const pctVal = Math.round(percent);
+            losModalCloser = window.UIFeedback.showModal({
+              persistent: true,
+              variant: "warning",
+              title: "Cảnh báo mất tín hiệu quang (LOS Blocked)",
+              message:
+                "Phát hiện vật cản che chắn tia hồng ngoại tại gói " +
+                lastAcked +
+                "/" +
+                totalPackets +
+                " (" +
+                pctVal +
+                "%). Phiên truyền đã tạm dừng an toàn.",
+              details:
+                "Tập tin: " +
+                filename +
+                "\nLý do: " +
+                reason +
+                "\n\nVui lòng kiểm tra đường ngắm giữa hai đầu thu phát hồng ngoại, loại bỏ vật cản hoặc căn chỉnh lại góc chiếu, sau đó chọn Tiếp tục để truyền nối tiếp an toàn.",
+              actions: [
+                {
+                  id: "abort",
+                  label: "Hủy bỏ (Abort)",
+                  kind: "secondary",
+                  onClick: (close) => {
+                    close();
+                    losModalCloser = null;
+                    if (window.bridge) window.bridge.abortFileTransfer();
+                  },
+                },
+                {
+                  id: "resume",
+                  label: "Tiếp tục (Resume)",
+                  kind: "primary",
+                  onClick: (close) => {
+                    close();
+                    losModalCloser = null;
+                    if (
+                      window.bridge &&
+                      typeof window.bridge.resumeFileTransfer === "function"
+                    ) {
+                      window.bridge.resumeFileTransfer();
+                    }
+                  },
+                },
+              ],
+            });
+          }
+        },
+      );
+    }
+
+    if (
+      window.bridge.transferResumed &&
+      typeof window.bridge.transferResumed.connect === "function"
+    ) {
+      window.bridge.transferResumed.connect((filename, resumeSeq) => {
+        if (typeof losModalCloser === "function") {
+          losModalCloser();
+          losModalCloser = null;
+        }
+        setActiveStatus("SENDING");
+        if (window.UIFeedback) {
+          window.UIFeedback.showToast(
+            "info",
+            "Đã tiếp tục phiên truyền",
+            "Tiếp tục phát " + filename + " từ gói tin " + resumeSeq + ".",
+          );
+        }
+      });
+    }
 
     window.bridge.transferStateChanged.connect((state) => {
       setActiveStatus(state);

@@ -20,6 +20,14 @@ SYNC_BYTE_2: int = 0x55
 # Mã định danh sequence đặc biệt
 SEQ_HEADER: int = 0xFFFFFFFF
 SEQ_END: int = 0xFFFFFFFE
+SEQ_CHECKPOINT_ACK: int = 0xFFFFFFFD
+SEQ_CHECKPOINT_PROBE: int = 0xFFFFFFFC
+SEQ_RESUME_REQUEST: int = 0xFFFFFFF9
+
+CHECKPOINT_WINDOW_CHUNKS: int = 16
+CHECKPOINT_QUIESCENT_MS: int = 20
+CHECKPOINT_ACK_TIMEOUT_MS: int = 600
+CHECKPOINT_MAX_PROBE_RETRIES: int = 2
 
 # Kích thước chunk dữ liệu tiêu chuẩn (256 bytes payload / frame)
 PACKET_SIZE: int = 256

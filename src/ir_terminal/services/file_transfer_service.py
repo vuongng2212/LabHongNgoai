@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import re
+import struct
 import time
 from enum import Enum
 from pathlib import Path
@@ -23,6 +24,10 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from ir_terminal.core.serial_manager import SerialManager
 from ir_terminal.protocol.constants import (
+    CHECKPOINT_ACK_TIMEOUT_MS,
+    CHECKPOINT_MAX_PROBE_RETRIES,
+    CHECKPOINT_QUIESCENT_MS,
+    CHECKPOINT_WINDOW_CHUNKS,
     DEFAULT_BAUDRATE,
     HEADER_OVERHEAD,
     MAX_CONFIGURABLE_FILE_SIZE_BYTES,
@@ -30,8 +35,11 @@ from ir_terminal.protocol.constants import (
     PACED_DELAY_SAFETY_MS,
     PACKET_SIZE,
     RX_INACTIVITY_TIMEOUT_SEC,
+    SEQ_CHECKPOINT_ACK,
+    SEQ_CHECKPOINT_PROBE,
     SEQ_END,
     SEQ_HEADER,
+    SEQ_RESUME_REQUEST,
 )
 from ir_terminal.protocol.framer import pack_header_payload, unpack_header_payload
 from ir_terminal.protocol.packet import WinFormPacket
@@ -47,6 +55,10 @@ SETTING_TRANSFERS_DIR = "transfers_dir"
 
 SETTING_AUTO_SAVE = "auto_save"
 
+SETTING_CHECKPOINT_ACK_ENABLED = "checkpoint_ack_enabled"
+
+RX_RECOVERY_TIMEOUT_SEC: float = 60.0
+
 _RX_FLUSH_INTERVAL: int = 16
 
 _UNSAFE_NAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -60,6 +72,7 @@ class TransferState(Enum):
     IDLE = "IDLE"
     SENDING = "SENDING"
     RECEIVING = "RECEIVING"
+    PAUSED = "PAUSED"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     ABORTED = "ABORTED"
@@ -67,7 +80,11 @@ class TransferState(Enum):
     @property
     def is_active(self) -> bool:
         """Kiểm tra xem hệ thống có đang bận truyền hoặc nhận file hay không."""
-        return self in (TransferState.SENDING, TransferState.RECEIVING)
+        return self in (
+            TransferState.SENDING,
+            TransferState.RECEIVING,
+            TransferState.PAUSED,
+        )
 
 
 def paced_delay_ms(packet_length: int, baudrate: int) -> int:
@@ -156,6 +173,10 @@ class FileTransferService(QObject):
 
     transfer_failed: ClassVar[Signal] = Signal(str)
 
+    transfer_paused: ClassVar[Signal] = Signal(str, int, int, float, str)
+
+    transfer_resumed: ClassVar[Signal] = Signal(str, int)
+
     state_changed: ClassVar[Signal] = Signal(str)
 
     def __init__(
@@ -198,6 +219,24 @@ class FileTransferService(QObject):
         self._tx_timer.setSingleShot(True)
         self._tx_timer.timeout.connect(self._send_next_chunk)
 
+        self._tx_last_acked = -1
+        self._tx_has_ack = False
+        self._tx_checkpoint_window = CHECKPOINT_WINDOW_CHUNKS
+        self._tx_checkpoint_enabled = True
+        self._checkpoint_ack_enabled = True
+        self._tx_probe_retries = 0
+        self._quiescent_ms = CHECKPOINT_QUIESCENT_MS
+        self._tx_ack_timeout_ms = CHECKPOINT_ACK_TIMEOUT_MS
+        self._max_probe_retries = CHECKPOINT_MAX_PROBE_RETRIES
+
+        self._tx_quiescent_timer = QTimer(self)
+        self._tx_quiescent_timer.setSingleShot(True)
+        self._tx_quiescent_timer.timeout.connect(self._enter_checkpoint_wait)
+
+        self._tx_ack_timer = QTimer(self)
+        self._tx_ack_timer.setSingleShot(True)
+        self._tx_ack_timer.timeout.connect(self._on_checkpoint_ack_timeout)
+
         self._rx_name = ""
         self._rx_is_chat = False
         self._rx_total_packets = 0
@@ -207,10 +246,20 @@ class FileTransferService(QObject):
         self._rx_highest_end = 0
         self._rx_write_count = 0
         self._rx_started_at = 0.0
+        self._rx_last_checkpoint_seq = -1
         self._rx_timer = QTimer(self)
         self._rx_timer.setSingleShot(True)
         self._rx_timer.setInterval(int(RX_INACTIVITY_TIMEOUT_SEC * 1000))
         self._rx_timer.timeout.connect(self._on_rx_timeout)
+
+        self._rx_recovery_timer = QTimer(self)
+        self._rx_recovery_timer.setSingleShot(True)
+        self._rx_recovery_timer.setInterval(int(RX_RECOVERY_TIMEOUT_SEC * 1000))
+        self._rx_recovery_timer.timeout.connect(self._on_rx_recovery_timeout)
+
+        self._rx_ack_timer = QTimer(self)
+        self._rx_ack_timer.setSingleShot(True)
+        self._rx_ack_timer.timeout.connect(self._send_checkpoint_ack)
 
         self._serial_manager.packet_received.connect(self._handle_packet)
         self.load_settings()
@@ -229,6 +278,15 @@ class FileTransferService(QObject):
     def chunk_size(self) -> int:
         """Kích thước gói dữ liệu payload cấu hình (mặc định 256 bytes)."""
         return self._chunk_size
+
+    @property
+    def checkpoint_window(self) -> int:
+        """Kích thước cửa sổ khối kiểm tra định kỳ tính theo số gói dữ liệu."""
+        return self._tx_checkpoint_window
+
+    @checkpoint_window.setter
+    def checkpoint_window(self, value: int) -> None:
+        self._tx_checkpoint_window = max(1, int(value))
 
     @property
     def max_file_size_bytes(self) -> int:
@@ -251,6 +309,15 @@ class FileTransferService(QObject):
         return self._auto_save
 
     @property
+    def checkpoint_ack_enabled(self) -> bool:
+        """Cờ cấu hình cho phép kiểm tra điểm mốc Checkpoint ACK hay chạy thuần Open-Loop."""
+        return self._checkpoint_ack_enabled
+
+    @checkpoint_ack_enabled.setter
+    def checkpoint_ack_enabled(self, value: bool) -> None:
+        self.set_checkpoint_ack_enabled(value)
+
+    @property
     def uses_extended_protocol(self) -> bool:
         """Luôn là False vì giao thức chuẩn WinForm C# và STM32 không dùng chế độ mở rộng."""
         return False
@@ -267,10 +334,11 @@ class FileTransferService(QObject):
             "transfers_dir": str(self._transfers_dir),
             "default_transfers_dir": str(self._default_transfers_dir),
             "auto_save": self._auto_save,
+            "checkpoint_ack_enabled": self._checkpoint_ack_enabled,
         }
 
     def load_settings(self) -> dict[str, str | int | float | bool]:
-        """Đọc các cài đặt truyền nhận file từ ổ cứng (kích thước tối đa, thư mục lưu, tự động lưu).
+        """Đọc các cài đặt truyền nhận file từ ổ cứng (kích thước tối đa, thư mục lưu, tự động lưu, checkpoint ACK).
 
         Returns:
             Từ điển chứa các thông số cấu hình truyền file hiện tại.
@@ -287,6 +355,14 @@ class FileTransferService(QObject):
 
         raw_auto_save = self._storage.get_setting(SETTING_AUTO_SAVE, "1")
         self._auto_save = raw_auto_save.strip().lower() not in ("0", "false", "no", "off")
+
+        raw_checkpoint = self._storage.get_setting(SETTING_CHECKPOINT_ACK_ENABLED, "1")
+        self._checkpoint_ack_enabled = raw_checkpoint.strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
 
         raw_dir = self._storage.get_setting(SETTING_TRANSFERS_DIR, "")
         if raw_dir.strip():
@@ -392,11 +468,28 @@ class FileTransferService(QObject):
         logger.info("%s AutoSave set: %s", LogTag.FILE_SVC, self._auto_save)
         return self._auto_save
 
+    def set_checkpoint_ack_enabled(self, enabled: bool) -> bool:
+        """Cập nhật và lưu lại tùy chọn kiểm tra mất tia quang bằng Checkpoint ACK.
+
+        Args:
+            enabled: True để bật cơ chế Checkpoint ACK phát hiện mất tia quang; False để chạy thuần Open-Loop.
+
+        Returns:
+            Giá trị cờ đã lưu.
+        """
+        self._checkpoint_ack_enabled = bool(enabled)
+        self._storage.save_setting(
+            SETTING_CHECKPOINT_ACK_ENABLED, "1" if self._checkpoint_ack_enabled else "0"
+        )
+        logger.info("%s Checkpoint ACK enabled set: %s", LogTag.FILE_SVC, self._checkpoint_ack_enabled)
+        return self._checkpoint_ack_enabled
+
     def update_config(
         self,
         max_file_size_bytes: int | None = None,
         transfers_dir: str | Path | None = None,
         auto_save: bool | None = None,
+        checkpoint_ack_enabled: bool | None = None,
     ) -> dict[str, str | int | float | bool]:
         """Áp dụng các thay đổi cấu hình từ màn hình cài đặt và lưu xuống ổ cứng.
 
@@ -404,6 +497,7 @@ class FileTransferService(QObject):
             max_file_size_bytes: Dung lượng file tối đa mới (0 = không giới hạn).
             transfers_dir: Thư mục nhận file mới.
             auto_save: Tùy chọn giữ lại file một phần.
+            checkpoint_ack_enabled: Tùy chọn kiểm tra mất tia quang Checkpoint ACK.
 
         Returns:
             Toàn bộ cấu hình sau khi cập nhật.
@@ -414,6 +508,8 @@ class FileTransferService(QObject):
             self.set_transfers_dir(transfers_dir)
         if auto_save is not None:
             self.set_auto_save(bool(auto_save))
+        if checkpoint_ack_enabled is not None:
+            self.set_checkpoint_ack_enabled(bool(checkpoint_ack_enabled))
         return self.get_config()
 
     def start_transfer(self, file_path_str: str) -> None:
@@ -448,7 +544,12 @@ class FileTransferService(QObject):
         self._tx_total_packets = (size + self._chunk_size - 1) // self._chunk_size
         self._tx_next_index = 0
         self._tx_bytes_sent = 0
+        self._tx_last_acked = -1
+        self._tx_has_ack = False
+        self._tx_checkpoint_enabled = self._checkpoint_ack_enabled
+        self._tx_probe_retries = 0
         self._tx_started_at = time.monotonic()
+        self._rx_recovery_timer.stop()
         self._set_state(TransferState.SENDING)
         self.progress_updated.emit(0, 0.0, 0.0, 0, self._tx_total_packets)
 
@@ -497,7 +598,12 @@ class FileTransferService(QObject):
         self._tx_total_packets = (size + self._chunk_size - 1) // self._chunk_size if size else 0
         self._tx_next_index = 0
         self._tx_bytes_sent = 0
+        self._tx_last_acked = -1
+        self._tx_has_ack = False
+        self._tx_checkpoint_enabled = False
+        self._tx_probe_retries = 0
         self._tx_started_at = time.monotonic()
+        self._rx_recovery_timer.stop()
         self._set_state(TransferState.SENDING)
 
         header_payload = pack_header_payload(clean_name, self._tx_total_packets)
@@ -522,12 +628,21 @@ class FileTransferService(QObject):
         return True
 
     def cancel_transfer(self) -> None:
-        """Hủy bỏ ngay lập tức phiên phát hoặc nhận file quang học đang diễn ra."""
+        """Hủy bỏ ngay lập tức phiên phát hoặc nhận file quang học đang diễn ra hoặc đang tạm dừng."""
         if self._state is TransferState.SENDING:
             self._fail_tx("Transfer cancelled by user", status="ABORTED", aborted=True)
             return
         if self._state is TransferState.RECEIVING:
             self._fail_rx("Incoming transfer cancelled by user", status="ABORTED", aborted=True)
+            return
+        if self._state is TransferState.PAUSED:
+            if self._tx_file is not None:
+                self._fail_tx("Transfer cancelled by user while paused", status="ABORTED", aborted=True)
+                return
+            if self._rx_handle is not None:
+                self._fail_rx("Incoming transfer cancelled by user while paused", status="ABORTED", aborted=True)
+                return
+            self._set_state(TransferState.ABORTED)
             return
         logger.debug("%s Cancel ignored: state=%s", LogTag.FILE_SVC, self._state.name)
 
@@ -595,6 +710,13 @@ class FileTransferService(QObject):
             self._tx_timer.start(
                 paced_delay_ms(HEADER_OVERHEAD + len(payload), self._baudrate())
             )
+            return
+        if (
+            not self._tx_is_virtual
+            and self._tx_checkpoint_enabled
+            and (self._tx_next_index % self._tx_checkpoint_window == 0)
+        ):
+            self._tx_quiescent_timer.start(self._quiescent_ms)
             return
         self._tx_timer.start(paced_delay_ms(HEADER_OVERHEAD + len(payload), self._baudrate()))
 
@@ -665,6 +787,8 @@ class FileTransferService(QObject):
 
     def _close_tx_file(self) -> None:
         """Đóng an toàn tệp tin nguồn đang đọc để tránh rò rỉ bộ nhớ."""
+        self._tx_quiescent_timer.stop()
+        self._tx_ack_timer.stop()
         handle = self._tx_file
         self._tx_file = None
         self._tx_is_virtual = False
@@ -678,6 +802,8 @@ class FileTransferService(QObject):
     def _fail_tx(self, reason: str, status: str = "FAILED", aborted: bool = False) -> None:
         """Xử lý khi việc gửi file bị lỗi hoặc người dùng bấm Hủy: dừng bộ hẹn giờ, đóng file và ghi nhận trạng thái FAILED/ABORTED."""
         self._tx_timer.stop()
+        self._tx_quiescent_timer.stop()
+        self._tx_ack_timer.stop()
         filename = (
             self._tx_name
             if self._tx_is_virtual
@@ -713,6 +839,209 @@ class FileTransferService(QObject):
             reason,
         )
 
+    def _enter_checkpoint_wait(self) -> None:
+        """Bắt đầu chờ gói tin xác nhận Checkpoint ACK từ phía nhận."""
+        if self._state is not TransferState.SENDING:
+            return
+        if self._tx_has_ack and self._tx_last_acked == self._tx_next_index - 1:
+            QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+            return
+        self._tx_ack_timer.start(self._tx_ack_timeout_ms)
+
+    def _on_checkpoint_ack_timeout(self) -> None:
+        """Xử lý khi hết hạn chờ Checkpoint ACK: gửi probe thử lại tối đa 2 lần, sau đó tạm dừng phiên truyền."""
+        if self._state is not TransferState.SENDING:
+            return
+        if self._tx_probe_retries < self._max_probe_retries:
+            self._tx_probe_retries += 1
+            probe_payload = struct.pack("<i", self._tx_last_acked)
+            try:
+                self._serial_manager.send_packet(SEQ_CHECKPOINT_PROBE, probe_payload)
+            except Exception as exc:
+                logger.warning(
+                    "%s Failed to send checkpoint probe: %s", LogTag.FILE_SVC, exc
+                )
+            self._tx_ack_timer.start(self._tx_ack_timeout_ms)
+            return
+        if not self._tx_has_ack:
+            logger.info(
+                "%s Peer does not support ACK (standalone STM32/Open-Loop). Falling back to pure open-loop streaming.",
+                LogTag.FILE_SVC,
+            )
+            self._tx_checkpoint_enabled = False
+            QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+            return
+        self._pause_tx("Optical LOS Blocked / Beam obstructed")
+
+    def _pause_tx(self, reason: str) -> None:
+        """Tạm dừng phiên phát khi phát hiện mất tia quang, giữ nguyên file handle để sẵn sàng resume."""
+        self._tx_timer.stop()
+        self._tx_quiescent_timer.stop()
+        self._tx_ack_timer.stop()
+        self._set_state(TransferState.PAUSED)
+        total = self._tx_total_packets
+        acked_display = max(self._tx_last_acked, 0)
+        pct = round(acked_display * 100.0 / total, 1) if total else 0.0
+        logger.warning(
+            "%s TX paused: file=%s last_acked=%d/%d (%.1f%%) reason=%s",
+            LogTag.FILE_SVC,
+            self._tx_name,
+            self._tx_last_acked,
+            total,
+            pct,
+            reason,
+        )
+        self.transfer_paused.emit(
+            self._tx_name, acked_display, total, pct, reason
+        )
+
+    def _pause_rx(self, reason: str) -> None:
+        """Tạm dừng phiên nhận khi phát hiện mất tia quang, giữ nguyên file tạm .part."""
+        self._rx_timer.stop()
+        self._rx_ack_timer.stop()
+        self._rx_recovery_timer.start()
+        self._set_state(TransferState.PAUSED)
+        total = self._rx_total_packets
+        received = len(self._rx_received)
+        pct = round(received * 100.0 / total, 1) if total else 0.0
+        logger.warning(
+            "%s RX paused: file=%s received=%d/%d (%.1f%%) reason=%s",
+            LogTag.FILE_SVC,
+            self._rx_name,
+            received,
+            total,
+            pct,
+            reason,
+        )
+        self.transfer_paused.emit(
+            self._rx_name, received, total, pct, reason
+        )
+
+    def pause_transfer(self, reason: str = "Optical LOS Blocked / Beam obstructed") -> None:
+        """Tạm dừng phiên phát hoặc nhận file quang học đang diễn ra."""
+        if self._state is TransferState.SENDING:
+            self._pause_tx(reason)
+            return
+        if self._state is TransferState.RECEIVING:
+            self._pause_rx(reason)
+            return
+        logger.debug("%s Pause ignored: state=%s", LogTag.FILE_SVC, self._state.name)
+
+    def resume_transfer(self) -> bool:
+        """Tiếp tục phiên truyền file từ điểm kiểm tra đã xác nhận sau khi bị tạm dừng."""
+        if self._state is not TransferState.PAUSED:
+            logger.warning(
+                "%s Resume rejected: transfer is not paused (%s)",
+                LogTag.FILE_SVC,
+                self._state.name,
+            )
+            return False
+        if self._tx_file is None:
+            self._fail_tx("Cannot resume: transmission file handle is closed")
+            return False
+        resume_index = 0 if self._tx_last_acked < 0 else self._tx_last_acked + 1
+        if resume_index >= self._tx_total_packets:
+            resume_index = max(self._tx_total_packets - 1, 0)
+        try:
+            self._tx_file.seek(resume_index * self._chunk_size)
+        except OSError as exc:
+            self._fail_tx(f"Failed to seek file for resume: {exc}")
+            return False
+        self._tx_next_index = resume_index
+        self._tx_bytes_sent = resume_index * self._chunk_size
+        self._tx_probe_retries = 0
+        resume_payload = struct.pack("<I", resume_index)
+        try:
+            self._serial_manager.send_packet(SEQ_RESUME_REQUEST, resume_payload)
+        except Exception as exc:
+            logger.warning(
+                "%s Failed to send resume request: %s", LogTag.FILE_SVC, exc
+            )
+        self._set_state(TransferState.SENDING)
+        self.transfer_resumed.emit(self._tx_name, resume_index)
+        logger.info(
+            "%s TX resumed: file=%s from packet %d/%d",
+            LogTag.FILE_SVC,
+            self._tx_name,
+            resume_index,
+            self._tx_total_packets,
+        )
+        QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+        return True
+
+    def _highest_contiguous_rx_seq(self) -> int:
+        """Tính chuỗi gói tin liên tục lớn nhất nhận được bắt đầu từ gói 0."""
+        seq = 0
+        while seq in self._rx_received:
+            seq += 1
+        return seq - 1
+
+    def _handle_checkpoint_ack(self, pkt: WinFormPacket) -> None:
+        """Xử lý khi phía phát nhận được gói tin xác nhận Checkpoint ACK từ phía nhận."""
+        if self._tx_is_virtual or self._tx_file is None:
+            return
+        if len(pkt.data) >= 4:
+            acked_seq = struct.unpack("<i", pkt.data[:4])[0]
+        else:
+            acked_seq = self._tx_next_index - 1
+        self._tx_last_acked = acked_seq
+        self._tx_has_ack = True
+        self._tx_probe_retries = 0
+        self._tx_quiescent_timer.stop()
+        self._tx_ack_timer.stop()
+        if self._state is TransferState.SENDING:
+            if acked_seq < self._tx_next_index - 1:
+                rewind_to = max(0, acked_seq + 1)
+                self._tx_next_index = rewind_to
+                self._tx_bytes_sent = rewind_to * self._chunk_size
+                try:
+                    self._tx_file.seek(rewind_to * self._chunk_size)
+                except OSError as exc:
+                    self._fail_tx(f"Failed to seek file for rewind: {exc}")
+                    return
+            QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+
+    def _handle_checkpoint_probe(self, pkt: WinFormPacket) -> None:
+        """Xử lý khi phía nhận nhận được gói tin thăm dò Checkpoint Probe từ phía phát."""
+        if self._rx_is_chat or self._rx_handle is None:
+            return
+        self._rx_last_checkpoint_seq = self._highest_contiguous_rx_seq()
+        self._rx_ack_timer.start(self._quiescent_ms)
+
+    def _handle_resume_request(self, pkt: WinFormPacket) -> None:
+        """Xử lý khi phía nhận nhận được gói tin yêu cầu tiếp tục Resume Request từ phía phát."""
+        if self._rx_is_chat or self._rx_handle is None:
+            return
+        self._rx_recovery_timer.stop()
+        if self._state in (TransferState.PAUSED, TransferState.RECEIVING):
+            self._set_state(TransferState.RECEIVING)
+            self._rx_timer.start()
+            contiguous_seq = self._highest_contiguous_rx_seq()
+            self._rx_last_checkpoint_seq = contiguous_seq
+            self.transfer_resumed.emit(self._rx_name, contiguous_seq)
+            logger.info(
+                "%s RX resumed via SEQ_RESUME_REQUEST: file=%s contiguous_seq=%d",
+                LogTag.FILE_SVC,
+                self._rx_name,
+                contiguous_seq,
+            )
+            self._rx_ack_timer.start(self._quiescent_ms)
+
+    def _send_checkpoint_ack(self) -> None:
+        """Gửi gói tin xác nhận Checkpoint ACK về phía phát sau khoảng trễ chuyển mạch an toàn."""
+        if self._rx_is_chat or self._rx_handle is None:
+            return
+        ack_payload = struct.pack("<i", self._rx_last_checkpoint_seq)
+        try:
+            self._serial_manager.send_packet(SEQ_CHECKPOINT_ACK, ack_payload)
+        except Exception as exc:
+            logger.warning(
+                "%s Failed to send checkpoint ACK for seq %d: %s",
+                LogTag.FILE_SVC,
+                self._rx_last_checkpoint_seq,
+                exc,
+            )
+
     def _handle_packet(self, pkt: object) -> None:
         """Tiếp nhận và phân loại khung tin do serial worker gửi lên (gói mở đầu HEADER, gói kết thúc END, hay gói dữ liệu DATA).
 
@@ -723,6 +1052,15 @@ class FileTransferService(QObject):
             logger.debug(
                 "%s Ignored non-WinFormPacket: type=%s", LogTag.FILE_SVC, type(pkt).__name__
             )
+            return
+        if pkt.is_checkpoint_ack:
+            self._handle_checkpoint_ack(pkt)
+            return
+        if pkt.is_checkpoint_probe:
+            self._handle_checkpoint_probe(pkt)
+            return
+        if pkt.is_resume_request:
+            self._handle_resume_request(pkt)
             return
         if pkt.is_header:
             self._begin_receive(pkt)
@@ -784,6 +1122,7 @@ class FileTransferService(QObject):
                 self._rx_handle = None
                 return
             self._rx_part_path = part_path
+        self._rx_recovery_timer.stop()
         self._set_state(TransferState.RECEIVING)
         self._rx_timer.start()
         if not self._rx_is_chat:
@@ -854,6 +1193,13 @@ class FileTransferService(QObject):
             remaining = max(total - received, 0)
             eta_sec = remaining * self._chunk_size / (self._baudrate() / 10.0)
             self.progress_updated.emit(min(pct, 100), speed_kbps, eta_sec, received, total)
+            if (
+                self._checkpoint_ack_enabled
+                and (sequence + 1) % self._tx_checkpoint_window == 0
+                and (sequence + 1) < self._rx_total_packets
+            ):
+                self._rx_last_checkpoint_seq = self._highest_contiguous_rx_seq()
+                self._rx_ack_timer.start(self._quiescent_ms)
 
     def _finish_virtual_receive(self) -> None:
         """Hoàn tất việc thu nhận file ảo trong RAM (tin nhắn chat), phát tín hiệu để hiển thị lên khung chat."""
@@ -884,6 +1230,8 @@ class FileTransferService(QObject):
             logger.debug("%s RX end ignored: state=%s", LogTag.FILE_SVC, self._state.name)
             return
         self._rx_timer.stop()
+        self._rx_recovery_timer.stop()
+        self._rx_ack_timer.stop()
         received = len(self._rx_received)
         total = self._rx_total_packets
         missing = max(total - received, 0)
@@ -947,8 +1295,15 @@ class FileTransferService(QObject):
         self.transfer_completed.emit(destination.name, size_bytes, elapsed, "")
 
     def _on_rx_timeout(self) -> None:
-        """Kích hoạt bộ định thời giám sát (watchdog) tự động kết thúc nếu quá 3 giây không có byte nào mới từ tia quang."""
+        """Kích hoạt bộ định thời giám sát watchdog khi hết thời gian chờ dữ liệu mới từ tia quang."""
         if self._state is not TransferState.RECEIVING:
+            return
+        if (
+            self._rx_handle is not None
+            and not self._rx_is_chat
+            and self._checkpoint_ack_enabled
+        ):
+            self._pause_rx("Optical beam timeout / possible blockage")
             return
         received = len(self._rx_received)
         reason = (
@@ -957,9 +1312,22 @@ class FileTransferService(QObject):
         )
         self._fail_rx(reason, status="FAILED", aborted=False)
 
+    def _on_rx_recovery_timeout(self) -> None:
+        """Hủy phiên nhận khi hết hạn chờ phục hồi tia quang sau khi tạm dừng."""
+        if self._state is not TransferState.PAUSED or self._rx_handle is None:
+            return
+        received = len(self._rx_received)
+        reason = (
+            f"Optical beam recovery timeout ({RX_RECOVERY_TIMEOUT_SEC:.0f}s expired) "
+            f"({received}/{self._rx_total_packets} packets received)"
+        )
+        self._fail_rx(reason, status="FAILED", aborted=False)
+
     def _fail_rx(self, reason: str, status: str = "FAILED", aborted: bool = False) -> None:
         """Xử lý khi việc nhận file bị gián đoạn: lưu lại file một phần nếu bật AutoSave hoặc dọn sạch file tạm."""
         self._rx_timer.stop()
+        self._rx_recovery_timer.stop()
+        self._rx_ack_timer.stop()
         if self._rx_is_chat:
             self._discard_rx(keep_partial=False)
             self._set_state(TransferState.ABORTED if aborted else TransferState.FAILED)
@@ -1003,6 +1371,8 @@ class FileTransferService(QObject):
 
     def _discard_rx(self, keep_partial: bool) -> None:
         """Đóng và xóa tệp tin tạm thời đang nhận nếu không cần giữ lại."""
+        self._rx_recovery_timer.stop()
+        self._rx_ack_timer.stop()
         handle = self._rx_handle
         self._rx_handle = None
         self._rx_is_chat = False

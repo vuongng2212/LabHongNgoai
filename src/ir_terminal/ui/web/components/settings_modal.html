@@ -83,6 +83,27 @@
           Reset to default
         </button>
       </div>
+      <div class="pt-space-xs border-t border-black/[0.06] flex items-center justify-between">
+        <div class="pr-space-md">
+          <label
+            for="settings-checkpoint-ack"
+            class="block font-label-sm text-label-sm text-on-surface font-medium cursor-pointer"
+          >
+            Bật kiểm tra mất tia quang (Checkpoint ACK)
+          </label>
+          <p
+            class="font-mono-caption text-mono-caption text-on-surface-variant leading-relaxed"
+          >
+            Tự động tạm dừng khi mất tia để tiếp tục sau (Resume). Tắt để chạy thuần Open-Loop.
+          </p>
+        </div>
+        <input
+          id="settings-checkpoint-ack"
+          type="checkbox"
+          checked
+          class="w-4 h-4 rounded border-black/[0.2] text-primary focus:ring-0 cursor-pointer shrink-0"
+        />
+      </div>
       <p
         id="settings-error"
         class="hidden font-body-md text-body-md text-error"

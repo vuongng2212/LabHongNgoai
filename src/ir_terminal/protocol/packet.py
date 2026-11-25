@@ -8,7 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ir_terminal.protocol.constants import SEQ_END, SEQ_HEADER
+from ir_terminal.protocol.constants import (
+    SEQ_CHECKPOINT_ACK,
+    SEQ_CHECKPOINT_PROBE,
+    SEQ_END,
+    SEQ_HEADER,
+    SEQ_RESUME_REQUEST,
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,27 @@ class WinFormPacket:
         return self.sequence == SEQ_END
 
     @property
+    def is_checkpoint_ack(self) -> bool:
+        """Kiểm tra gói tin có phải là xác nhận điểm kiểm tra (SEQ_CHECKPOINT_ACK) hay không."""
+        return self.sequence == SEQ_CHECKPOINT_ACK
+
+    @property
+    def is_checkpoint_probe(self) -> bool:
+        """Kiểm tra gói tin có phải là thăm dò điểm kiểm tra (SEQ_CHECKPOINT_PROBE) hay không."""
+        return self.sequence == SEQ_CHECKPOINT_PROBE
+
+    @property
+    def is_resume_request(self) -> bool:
+        """Kiểm tra gói tin có phải là yêu cầu tiếp tục truyền (SEQ_RESUME_REQUEST) hay không."""
+        return self.sequence == SEQ_RESUME_REQUEST
+
+    @property
     def is_data(self) -> bool:
-        """Kiểm tra gói tin có phải là chunk dữ liệu nội dung file (0 <= sequence < SEQ_END) hay không."""
-        return not self.is_header and not self.is_end
+        """Kiểm tra gói tin có phải là chunk dữ liệu nội dung file hay không."""
+        return (
+            not self.is_header
+            and not self.is_end
+            and not self.is_checkpoint_ack
+            and not self.is_checkpoint_probe
+            and not self.is_resume_request
+        )

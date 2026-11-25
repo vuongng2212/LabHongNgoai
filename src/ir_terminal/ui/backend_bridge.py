@@ -64,6 +64,8 @@ class BackendBridge(QObject):
     transferProgress: ClassVar[Signal] = Signal(int, float, float, int, int)
     transferCompleted: ClassVar[Signal] = Signal(str, int, float, str)
     transferFailed: ClassVar[Signal] = Signal(str)
+    transferPaused: ClassVar[Signal] = Signal(str, int, int, float, str)
+    transferResumed: ClassVar[Signal] = Signal(str, int)
     transferStateChanged: ClassVar[Signal] = Signal(str)
 
     opticalBaudChanged: ClassVar[Signal] = Signal(int)
@@ -146,6 +148,8 @@ class BackendBridge(QObject):
         self._file_service.progress_updated.connect(self._on_transfer_progress)
         self._file_service.transfer_completed.connect(self.transferCompleted)
         self._file_service.transfer_failed.connect(self._on_transfer_failed)
+        self._file_service.transfer_paused.connect(self.transferPaused)
+        self._file_service.transfer_resumed.connect(self.transferResumed)
         self._file_service.state_changed.connect(self.transferStateChanged)
 
         self._telemetry.telemetry_updated.connect(self.telemetryUpdated)
@@ -702,6 +706,44 @@ class BackendBridge(QObject):
             self.errorOccurred.emit(f"File transfer failed: {exc}")
 
     @Slot()
+    def resumeFileTransfer(self) -> None:
+        """Xử lý khi người dùng bấm nút Tiếp tục (Resume) truyền file sau khi khắc phục mất tia quang."""
+        try:
+            logger.info(
+                "%s UI resumeFileTransfer: stream_state=%s",
+                LogTag.FILE_SVC,
+                self._file_service.state.name,
+            )
+            self._file_service.resume_transfer()
+        except Exception as exc:
+            logger.exception(
+                "%s resumeFileTransfer FAILED (%s: %s)",
+                LogTag.FILE_SVC,
+                type(exc).__name__,
+                exc,
+            )
+            self.errorOccurred.emit(f"Resume failed: {exc}")
+
+    @Slot()
+    def pauseFileTransfer(self) -> None:
+        """Xử lý khi người dùng chủ động bấm Tạm dừng truyền file."""
+        try:
+            logger.info(
+                "%s UI pauseFileTransfer: stream_state=%s",
+                LogTag.FILE_SVC,
+                self._file_service.state.name,
+            )
+            self._file_service.pause_transfer()
+        except Exception as exc:
+            logger.exception(
+                "%s pauseFileTransfer FAILED (%s: %s)",
+                LogTag.FILE_SVC,
+                type(exc).__name__,
+                exc,
+            )
+            self.errorOccurred.emit(f"Pause failed: {exc}")
+
+    @Slot()
     def abortFileTransfer(self) -> None:
         """Xử lý khi người dùng bấm nút Hủy truyền file trên giao diện."""
         try:
@@ -775,6 +817,27 @@ class BackendBridge(QObject):
         except Exception as exc:
             logger.exception("%s setAutoSaveOption failed: %s", LogTag.IPC_BRIDGE, exc)
             self.errorOccurred.emit(f"AutoSave update failed: {exc}")
+            return json.dumps({"ok": False, "error": str(exc)})
+
+    @Slot(bool, result=str)
+    def setCheckpointAckOption(self, enabled: bool) -> str:
+        """Bật hoặc tắt cơ chế kiểm tra mất tia quang Checkpoint ACK.
+
+        Args:
+            enabled: True để bật cơ chế Checkpoint ACK phát hiện mất tia; False để chạy thuần Open-Loop.
+
+        Returns:
+            Chuỗi JSON chứa cấu hình truyền nhận file đã cập nhật.
+        """
+        try:
+            config = self._file_service.update_config(checkpoint_ack_enabled=bool(enabled))
+            payload = json.dumps(config)
+            self.settingsChanged.emit(payload)
+            logger.info("%s Checkpoint ACK set via UI: %s", LogTag.IPC_BRIDGE, enabled)
+            return payload
+        except Exception as exc:
+            logger.exception("%s setCheckpointAckOption failed: %s", LogTag.IPC_BRIDGE, exc)
+            self.errorOccurred.emit(f"Checkpoint ACK update failed: {exc}")
             return json.dumps({"ok": False, "error": str(exc)})
 
     def _dialog_parent(self) -> QWidget | None:
@@ -884,16 +947,25 @@ class BackendBridge(QObject):
                     auto_save = raw_flag.strip().lower() in ("1", "true", "yes", "on")
                 else:
                     auto_save = bool(raw_flag)
+            checkpoint_ack_enabled: bool | None = None
+            if "checkpoint_ack_enabled" in data:
+                raw_ack = data["checkpoint_ack_enabled"]
+                if isinstance(raw_ack, str):
+                    checkpoint_ack_enabled = raw_ack.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    checkpoint_ack_enabled = bool(raw_ack)
             if (
                 max_bytes is None
                 and (transfers_dir is None or not transfers_dir.strip())
                 and auto_save is None
+                and checkpoint_ack_enabled is None
             ):
                 return json.dumps({"ok": False, "error": "No settings to update"})
             config = self._file_service.update_config(
                 max_file_size_bytes=max_bytes,
                 transfers_dir=transfers_dir,
                 auto_save=auto_save,
+                checkpoint_ack_enabled=checkpoint_ack_enabled,
             )
             payload = json.dumps(config)
             self.settingsChanged.emit(payload)

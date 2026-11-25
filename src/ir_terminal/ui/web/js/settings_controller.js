@@ -54,9 +54,13 @@
 
   function fillForm(config) {
     const dirInput = $("settings-dir");
+    const cpAckInput = $("settings-checkpoint-ack");
     if (!config) return;
     if (dirInput && config.transfers_dir) dirInput.value = config.transfers_dir;
     if (config.default_transfers_dir) defaultDir = config.default_transfers_dir;
+    if (cpAckInput && config.checkpoint_ack_enabled !== undefined) {
+      cpAckInput.checked = Boolean(config.checkpoint_ack_enabled);
+    }
     applyUnlimitedHint();
   }
 
@@ -86,12 +90,12 @@
     if (dirInput) dirInput.focus();
   }
 
-  function persistDir(dir, successTitle) {
+  function persistSettings(settingsObj, successTitle) {
     if (!window.bridge || typeof window.bridge.saveSettings !== "function") {
       showError("Backend not connected.");
       return;
     }
-    const payload = JSON.stringify({ transfers_dir: dir });
+    const payload = JSON.stringify(settingsObj);
     window.bridge.saveSettings(payload, (raw) => {
       let result = null;
       try {
@@ -104,6 +108,7 @@
           defaultDir = result.default_transfers_dir;
         hideOverlay();
         applyUnlimitedHint();
+        const dir = settingsObj.transfers_dir || result.transfers_dir || "";
         toast(
           "success",
           successTitle,
@@ -115,25 +120,51 @@
     });
   }
 
+  function persistDir(dir, successTitle) {
+    const cpAckInput = $("settings-checkpoint-ack");
+    persistSettings(
+      {
+        transfers_dir: dir,
+        checkpoint_ack_enabled: cpAckInput ? cpAckInput.checked : true,
+      },
+      successTitle,
+    );
+  }
+
   function saveSettings() {
     const dirInput = $("settings-dir");
+    const cpAckInput = $("settings-checkpoint-ack");
     const dir = dirInput ? dirInput.value.trim() : "";
     if (!dir) {
       showError("Type or browse a receive directory before saving.");
       return;
     }
-    persistDir(dir, "Settings saved");
+    persistSettings(
+      {
+        transfers_dir: dir,
+        checkpoint_ack_enabled: cpAckInput ? cpAckInput.checked : true,
+      },
+      "Settings saved",
+    );
   }
 
   function resetToDefault() {
     const dirInput = $("settings-dir");
+    const cpAckInput = $("settings-checkpoint-ack");
     const applyDefault = (dir) => {
       if (!dir) {
         showError("Could not resolve the default directory.");
         return;
       }
       if (dirInput) dirInput.value = dir;
-      persistDir(dir, "Reset to default");
+      if (cpAckInput) cpAckInput.checked = true;
+      persistSettings(
+        {
+          transfers_dir: dir,
+          checkpoint_ack_enabled: true,
+        },
+        "Reset to default",
+      );
     };
     if (defaultDir) {
       applyDefault(defaultDir);
