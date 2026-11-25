@@ -108,6 +108,13 @@
           : statePending
             ? "bg-tertiary"
             : "bg-secondary";
+        const dirRaw = String(item.direction || "").toUpperCase();
+        const dirLabel =
+          dirRaw === "TX"
+            ? "Transmit"
+            : dirRaw === "RX"
+              ? "Receive"
+              : item.direction || "—";
         row.innerHTML = `
           <td class="px-space-md">
             <div class="flex items-center gap-2">
@@ -116,7 +123,7 @@
             </div>
           </td>
           <td class="px-space-md font-mono-data text-on-surface-variant">${sizeStr}</td>
-          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.direction || "—")}</td>
+          <td class="px-space-md font-mono-data text-on-surface-variant">${esc(dirLabel)}</td>
           <td class="px-space-md text-mono-caption font-mono-caption text-on-surface-variant">${esc(item.timestamp || "Today")}</td>
           <td class="px-space-md font-mono-data text-on-surface-variant">${esc(item.crc32_hex || "Open-Loop")}</td>
           <td class="px-space-md">
