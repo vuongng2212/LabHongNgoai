@@ -707,3 +707,178 @@ class TestBackendBridgeCheckpointIntegration:
         assert bool(service.checkpoint_ack_enabled) is True
         assert '"checkpoint_ack_enabled": true' in res2.lower()
         manager.shutdown()
+
+
+class TestResumeStabilityAndRxRecovery:
+    """Kiểm tra fix lỗi RX resume tự sát và TX rewind loop vô cực."""
+
+    def test_rx_resume_by_user_does_not_fail_and_sends_ack(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        service, manager = make_service(tmp_path, window=2)
+        service._quiescent_ms = 2
+
+        manager.deliver(SEQ_HEADER, pack_header_payload("rx_user_resume.bin", 4))
+        manager.deliver(0, b"A" * PACKET_SIZE)
+        manager.deliver(1, b"B" * PACKET_SIZE)
+
+        service._on_rx_timeout()
+        assert service.state == TransferState.PAUSED
+
+        resumed_args: list[tuple[str, int]] = []
+        service.transfer_resumed.connect(
+            lambda name, seq: resumed_args.append((name, seq))
+        )
+
+        ok = service.resume_transfer()
+        assert ok is True
+        assert service.state.name == "RECEIVING"
+        assert resumed_args == [("rx_user_resume.bin", 1)]
+
+        qtbot.waitUntil(
+            lambda: any(seq == SEQ_CHECKPOINT_ACK for seq, _ in manager.sent),
+            timeout=1000,
+        )
+
+        manager.deliver(2, b"C" * PACKET_SIZE)
+        manager.deliver(3, b"D" * PACKET_SIZE)
+        with qtbot.waitSignal(service.transfer_completed, timeout=2000):
+            manager.deliver(SEQ_END, b"")
+
+        assert service.state.name == "COMPLETED"
+        received = tmp_path / "transfers" / "rx_user_resume.bin"
+        assert received.read_bytes() == (
+            b"A" * PACKET_SIZE
+            + b"B" * PACKET_SIZE
+            + b"C" * PACKET_SIZE
+            + b"D" * PACKET_SIZE
+        )
+
+    def test_rewind_loop_protection_pauses_after_max_retries(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        service, manager = make_service(tmp_path, window=4)
+        service._quiescent_ms = 2
+        service._max_rewind_retries = 2
+
+        source = tmp_path / "rewind_loop.bin"
+        source.write_bytes(b"R" * (PACKET_SIZE * 8))
+
+        service.start_transfer(str(source))
+        service._tx_timer.stop()
+        service._tx_next_index = 4
+        service._tx_waiting_checkpoint = True
+
+        service._handle_checkpoint_ack(
+            WinFormPacket(sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", 1))
+        )
+        assert service.state == TransferState.SENDING
+        assert service._tx_next_index == 2
+        assert service._tx_rewind_count == 1
+
+        service._tx_timer.stop()
+        service._tx_next_index = 4
+        service._tx_waiting_checkpoint = True
+        service._handle_checkpoint_ack(
+            WinFormPacket(sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", 1))
+        )
+        assert service.state == TransferState.SENDING
+        assert service._tx_rewind_count == 2
+
+        service._tx_timer.stop()
+        service._tx_next_index = 4
+        service._tx_waiting_checkpoint = True
+        with qtbot.waitSignal(service.transfer_paused, timeout=1000):
+            service._handle_checkpoint_ack(
+                WinFormPacket(
+                    sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", 1)
+                )
+            )
+        assert service.state.name == "PAUSED"
+
+    def test_late_checkpoint_ack_does_not_restart_running_tx_timer(
+        self, tmp_path: Path
+    ) -> None:
+        service, manager = make_service(tmp_path, window=4)
+        source = tmp_path / "late_ack.bin"
+        source.write_bytes(b"L" * (PACKET_SIZE * 8))
+
+        service.start_transfer(str(source))
+        service._tx_next_index = 2
+        service._tx_waiting_checkpoint = False
+        service._tx_timer.start(500)
+
+        service._handle_checkpoint_ack(
+            WinFormPacket(sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", 1))
+        )
+        assert service._tx_last_acked == 1
+        assert service._tx_timer.remainingTime() > 100
+        service._handle_checkpoint_ack(
+            WinFormPacket(sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", 1))
+        )
+        assert service._tx_timer.remainingTime() > 100
+        service.cancel_transfer()
+
+    def test_resume_guard_delay_covers_half_duplex_turnaround_all_bauds(
+        self, tmp_path: Path
+    ) -> None:
+        from ir_terminal.protocol.constants import OPTICAL_BAUDRATES
+        from ir_terminal.services.file_transfer_service import paced_delay_ms
+
+        for baud in OPTICAL_BAUDRATES:
+            service, manager = make_service(tmp_path / str(baud), baud=baud, window=4)
+            source = tmp_path / f"guard_{baud}.bin"
+            source.write_bytes(b"G" * (PACKET_SIZE * 4))
+            service.start_transfer(str(source))
+            service.pause_transfer("Test guard")
+            service.resume_transfer()
+            guard_ms = service._tx_timer.interval()
+            wire_roundtrip_ms = 2 * paced_delay_ms(12, baud) + service._quiescent_ms
+            assert guard_ms > wire_roundtrip_ms
+            service.cancel_transfer()
+
+    def test_probe_ignored_when_rx_failed(self, qtbot: QtBot, tmp_path: Path) -> None:
+        service, manager = make_service(tmp_path, window=2)
+        service._quiescent_ms = 2
+        manager.deliver(SEQ_HEADER, pack_header_payload("probe_fail.bin", 4))
+        manager.deliver(0, b"A" * PACKET_SIZE)
+        service._set_state(TransferState.FAILED)
+        assert service._rx_handle is not None
+        sent_before = len(manager.sent)
+        manager.deliver(SEQ_CHECKPOINT_PROBE, struct.pack("<i", 0))
+        qtbot.wait(30)
+        assert len(manager.sent) == sent_before
+        service._discard_rx(keep_partial=False)
+
+    def test_oscillating_ack_hits_rewind_cap(
+        self, qtbot: QtBot, tmp_path: Path
+    ) -> None:
+        service, manager = make_service(tmp_path, window=4)
+        service._quiescent_ms = 2
+        service._max_rewind_retries = 2
+
+        source = tmp_path / "osc_loop.bin"
+        source.write_bytes(b"O" * (PACKET_SIZE * 10))
+        service.start_transfer(str(source))
+
+        for ack_seq in (2, 1):
+            service._tx_timer.stop()
+            service._tx_next_index = 6
+            service._tx_waiting_checkpoint = True
+            service._handle_checkpoint_ack(
+                WinFormPacket(
+                    sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", ack_seq)
+                )
+            )
+            assert service.state.name == "SENDING"
+
+        service._tx_timer.stop()
+        service._tx_next_index = 6
+        service._tx_waiting_checkpoint = True
+        with qtbot.waitSignal(service.transfer_paused, timeout=1000):
+            service._handle_checkpoint_ack(
+                WinFormPacket(
+                    sequence=SEQ_CHECKPOINT_ACK, length=4, data=struct.pack("<i", 2)
+                )
+            )
+        assert service.state.name == "PAUSED"

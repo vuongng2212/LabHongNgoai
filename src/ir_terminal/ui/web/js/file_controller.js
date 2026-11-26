@@ -336,6 +336,8 @@ function initFileController() {
   function wireBridgeSignals() {
     let progressFrame = null;
     let pendingProgress = null;
+    let lastStreamState = "IDLE";
+    let activeDirection = "";
 
     function renderProgress(pct, speedKbps, etaSec, curChunk, totalChunks) {
       if (progressBar) progressBar.style.width = `${pct}%`;
@@ -345,7 +347,13 @@ function initFileController() {
       if (etaLabel) etaLabel.innerText = `${Math.ceil(etaSec)}s`;
       if (packetsLabel)
         packetsLabel.innerHTML = `${curChunk}<span class="text-label-sm font-label-sm font-normal text-outline">/${totalChunks}</span>`;
-      setActiveStatus(pct >= 100 ? "COMPLETED" : "SENDING");
+      const nextStatus =
+        pct >= 100
+          ? "COMPLETED"
+          : lastStreamState === "RECEIVING" || activeDirection === "RX"
+            ? "RECEIVING"
+            : "SENDING";
+      setActiveStatus(nextStatus);
     }
 
     window.bridge.transferProgress.connect(
@@ -378,16 +386,27 @@ function initFileController() {
           duration_sec: elapsedSec,
           timestamp: "Just now",
         };
-        if (history) history.pushSuccess(newRec);
+        if (history) {
+          if (activeDirection === "RX") {
+            history.reload();
+          } else {
+            history.pushSuccess(newRec);
+          }
+        }
         setActiveStatus("COMPLETED");
         if (window.UIFeedback) {
+          const toastMsg =
+            activeDirection === "RX"
+              ? `${filename} received over the optical link in ${elapsedSec.toFixed(1)}s`
+              : `${filename} streamed over the optical link in ${elapsedSec.toFixed(1)}s (open-loop)`;
           window.UIFeedback.showToast(
             "success",
             "Transfer complete",
-            `${filename} streamed over the optical link in ${elapsedSec.toFixed(1)}s (open-loop)`,
+            toastMsg,
             { durationMs: 2800 },
           );
         }
+        activeDirection = "";
       },
     );
 
@@ -495,18 +514,25 @@ function initFileController() {
           losModalCloser();
           losModalCloser = null;
         }
-        setActiveStatus("SENDING");
         if (window.UIFeedback) {
           window.UIFeedback.showToast(
             "info",
             "Đã tiếp tục phiên truyền",
-            "Tiếp tục phát " + filename + " từ gói tin " + resumeSeq + ".",
+            "Tiếp tục xử lý " + filename + " từ gói tin " + resumeSeq + ".",
           );
         }
       });
     }
 
     window.bridge.transferStateChanged.connect((state) => {
+      lastStreamState = String(state || "IDLE").toUpperCase();
+      if (lastStreamState === "SENDING") {
+        activeDirection = "TX";
+      } else if (lastStreamState === "RECEIVING") {
+        activeDirection = "RX";
+      } else if (lastStreamState === "IDLE") {
+        activeDirection = "";
+      }
       setActiveStatus(state);
     });
 

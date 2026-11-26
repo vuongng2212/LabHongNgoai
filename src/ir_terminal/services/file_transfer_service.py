@@ -221,6 +221,11 @@ class FileTransferService(QObject):
 
         self._tx_last_acked = -1
         self._tx_has_ack = False
+        self._tx_waiting_checkpoint = False
+        self._tx_last_rewind_seq = -2
+        self._tx_rewind_count = 0
+        self._max_rewind_retries = 3
+        self._paused_direction = ""
         self._tx_checkpoint_window = CHECKPOINT_WINDOW_CHUNKS
         self._tx_checkpoint_enabled = True
         self._checkpoint_ack_enabled = True
@@ -546,6 +551,10 @@ class FileTransferService(QObject):
         self._tx_bytes_sent = 0
         self._tx_last_acked = -1
         self._tx_has_ack = False
+        self._tx_waiting_checkpoint = False
+        self._tx_last_rewind_seq = -2
+        self._tx_rewind_count = 0
+        self._paused_direction = ""
         self._tx_checkpoint_enabled = self._checkpoint_ack_enabled
         self._tx_probe_retries = 0
         self._tx_started_at = time.monotonic()
@@ -600,6 +609,9 @@ class FileTransferService(QObject):
         self._tx_bytes_sent = 0
         self._tx_last_acked = -1
         self._tx_has_ack = False
+        self._tx_waiting_checkpoint = False
+        self._tx_last_rewind_seq = -2
+        self._tx_rewind_count = 0
         self._tx_checkpoint_enabled = False
         self._tx_probe_retries = 0
         self._tx_started_at = time.monotonic()
@@ -716,8 +728,10 @@ class FileTransferService(QObject):
             and self._tx_checkpoint_enabled
             and (self._tx_next_index % self._tx_checkpoint_window == 0)
         ):
+            self._tx_waiting_checkpoint = True
             self._tx_quiescent_timer.start(self._quiescent_ms)
             return
+        self._tx_waiting_checkpoint = False
         self._tx_timer.start(paced_delay_ms(HEADER_OVERHEAD + len(payload), self._baudrate()))
 
     def _send_end(self) -> None:
@@ -804,6 +818,7 @@ class FileTransferService(QObject):
         self._tx_timer.stop()
         self._tx_quiescent_timer.stop()
         self._tx_ack_timer.stop()
+        self._tx_waiting_checkpoint = False
         filename = (
             self._tx_name
             if self._tx_is_virtual
@@ -844,8 +859,10 @@ class FileTransferService(QObject):
         if self._state is not TransferState.SENDING:
             return
         if self._tx_has_ack and self._tx_last_acked == self._tx_next_index - 1:
-            QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+            self._tx_waiting_checkpoint = False
+            self._tx_timer.start(self._quiescent_ms)
             return
+        self._tx_waiting_checkpoint = True
         self._tx_ack_timer.start(self._tx_ack_timeout_ms)
 
     def _on_checkpoint_ack_timeout(self) -> None:
@@ -869,7 +886,8 @@ class FileTransferService(QObject):
                 LogTag.FILE_SVC,
             )
             self._tx_checkpoint_enabled = False
-            QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+            self._tx_waiting_checkpoint = False
+            self._tx_timer.start(self._quiescent_ms)
             return
         self._pause_tx("Optical LOS Blocked / Beam obstructed")
 
@@ -878,6 +896,8 @@ class FileTransferService(QObject):
         self._tx_timer.stop()
         self._tx_quiescent_timer.stop()
         self._tx_ack_timer.stop()
+        self._tx_waiting_checkpoint = False
+        self._paused_direction = "TX"
         self._set_state(TransferState.PAUSED)
         total = self._tx_total_packets
         acked_display = max(self._tx_last_acked, 0)
@@ -900,6 +920,7 @@ class FileTransferService(QObject):
         self._rx_timer.stop()
         self._rx_ack_timer.stop()
         self._rx_recovery_timer.start()
+        self._paused_direction = "RX"
         self._set_state(TransferState.PAUSED)
         total = self._rx_total_packets
         received = len(self._rx_received)
@@ -928,7 +949,7 @@ class FileTransferService(QObject):
         logger.debug("%s Pause ignored: state=%s", LogTag.FILE_SVC, self._state.name)
 
     def resume_transfer(self) -> bool:
-        """Tiếp tục phiên truyền file từ điểm kiểm tra đã xác nhận sau khi bị tạm dừng."""
+        """Tiếp tục phiên truyền hoặc nhận file từ điểm kiểm tra đã xác nhận sau khi bị tạm dừng."""
         if self._state is not TransferState.PAUSED:
             logger.warning(
                 "%s Resume rejected: transfer is not paused (%s)",
@@ -936,6 +957,27 @@ class FileTransferService(QObject):
                 self._state.name,
             )
             return False
+        if self._paused_direction == "RX" or (
+            self._tx_file is None and self._rx_handle is not None
+        ):
+            if self._rx_handle is None:
+                self._fail_rx("Cannot resume: receive staging handle is closed")
+                return False
+            self._rx_recovery_timer.stop()
+            self._paused_direction = ""
+            self._set_state(TransferState.RECEIVING)
+            self._rx_timer.start()
+            contiguous_seq = self._highest_contiguous_rx_seq()
+            self._rx_last_checkpoint_seq = contiguous_seq
+            self.transfer_resumed.emit(self._rx_name, max(contiguous_seq, 0))
+            logger.info(
+                "%s RX resumed by user: file=%s contiguous_seq=%d",
+                LogTag.FILE_SVC,
+                self._rx_name,
+                contiguous_seq,
+            )
+            self._rx_ack_timer.start(self._quiescent_ms)
+            return True
         if self._tx_file is None:
             self._fail_tx("Cannot resume: transmission file handle is closed")
             return False
@@ -950,6 +992,13 @@ class FileTransferService(QObject):
         self._tx_next_index = resume_index
         self._tx_bytes_sent = resume_index * self._chunk_size
         self._tx_probe_retries = 0
+        self._tx_last_rewind_seq = -2
+        self._tx_rewind_count = 0
+        self._paused_direction = ""
+        self._tx_waiting_checkpoint = True
+        self._tx_timer.stop()
+        self._tx_quiescent_timer.stop()
+        self._tx_ack_timer.stop()
         resume_payload = struct.pack("<I", resume_index)
         try:
             self._serial_manager.send_packet(SEQ_RESUME_REQUEST, resume_payload)
@@ -966,7 +1015,11 @@ class FileTransferService(QObject):
             resume_index,
             self._tx_total_packets,
         )
-        QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+        frame_delay_ms = paced_delay_ms(
+            HEADER_OVERHEAD + len(resume_payload), self._baudrate()
+        )
+        resume_guard_ms = 2 * frame_delay_ms + 2 * self._quiescent_ms + 10
+        self._tx_timer.start(resume_guard_ms)
         return True
 
     def _highest_contiguous_rx_seq(self) -> int:
@@ -980,30 +1033,66 @@ class FileTransferService(QObject):
         """Xử lý khi phía phát nhận được gói tin xác nhận Checkpoint ACK từ phía nhận."""
         if self._tx_is_virtual or self._tx_file is None:
             return
+        if self._state not in (TransferState.SENDING, TransferState.PAUSED):
+            return
         if len(pkt.data) >= 4:
             acked_seq = struct.unpack("<i", pkt.data[:4])[0]
         else:
             acked_seq = self._tx_next_index - 1
+        if acked_seq < -1 or acked_seq >= self._tx_total_packets:
+            logger.warning(
+                "%s Ignored out-of-range checkpoint ACK: acked_seq=%d total=%d",
+                LogTag.FILE_SVC,
+                acked_seq,
+                self._tx_total_packets,
+            )
+            return
+        if not self._tx_waiting_checkpoint and acked_seq <= self._tx_last_acked:
+            return
         self._tx_last_acked = acked_seq
         self._tx_has_ack = True
         self._tx_probe_retries = 0
         self._tx_quiescent_timer.stop()
         self._tx_ack_timer.stop()
-        if self._state is TransferState.SENDING:
-            if acked_seq < self._tx_next_index - 1:
-                rewind_to = max(0, acked_seq + 1)
-                self._tx_next_index = rewind_to
-                self._tx_bytes_sent = rewind_to * self._chunk_size
-                try:
-                    self._tx_file.seek(rewind_to * self._chunk_size)
-                except OSError as exc:
-                    self._fail_tx(f"Failed to seek file for rewind: {exc}")
-                    return
-            QTimer.singleShot(self._quiescent_ms, self._send_next_chunk)
+        if self._state is not TransferState.SENDING:
+            return
+        need_rewind = acked_seq < self._tx_next_index - 1
+        if not self._tx_waiting_checkpoint and not need_rewind:
+            return
+        self._tx_timer.stop()
+        if need_rewind:
+            if acked_seq > self._tx_last_rewind_seq:
+                self._tx_last_rewind_seq = acked_seq
+                self._tx_rewind_count = 1
+            else:
+                self._tx_rewind_count += 1
+            if self._tx_rewind_count > self._max_rewind_retries:
+                self._tx_waiting_checkpoint = False
+                self._pause_tx(
+                    "Optical link unstable / repeated packet loss at checkpoint"
+                )
+                return
+            rewind_to = max(0, acked_seq + 1)
+            self._tx_next_index = rewind_to
+            self._tx_bytes_sent = rewind_to * self._chunk_size
+            try:
+                self._tx_file.seek(rewind_to * self._chunk_size)
+            except OSError as exc:
+                self._fail_tx(f"Failed to seek file for rewind: {exc}")
+                return
+        else:
+            self._tx_last_rewind_seq = -2
+            self._tx_rewind_count = 0
+        self._tx_waiting_checkpoint = False
+        self._tx_timer.start(self._quiescent_ms)
 
     def _handle_checkpoint_probe(self, pkt: WinFormPacket) -> None:
         """Xử lý khi phía nhận nhận được gói tin thăm dò Checkpoint Probe từ phía phát."""
-        if self._rx_is_chat or self._rx_handle is None:
+        if (
+            self._rx_is_chat
+            or self._rx_handle is None
+            or self._state not in (TransferState.RECEIVING, TransferState.PAUSED)
+        ):
             return
         self._rx_last_checkpoint_seq = self._highest_contiguous_rx_seq()
         self._rx_ack_timer.start(self._quiescent_ms)
@@ -1029,7 +1118,11 @@ class FileTransferService(QObject):
 
     def _send_checkpoint_ack(self) -> None:
         """Gửi gói tin xác nhận Checkpoint ACK về phía phát sau khoảng trễ chuyển mạch an toàn."""
-        if self._rx_is_chat or self._rx_handle is None:
+        if (
+            self._rx_is_chat
+            or self._rx_handle is None
+            or self._state not in (TransferState.RECEIVING, TransferState.PAUSED)
+        ):
             return
         ack_payload = struct.pack("<i", self._rx_last_checkpoint_seq)
         try:
@@ -1094,11 +1187,14 @@ class FileTransferService(QObject):
                 self._max_file_size_bytes,
             )
             return
-        if self._state is TransferState.RECEIVING:
+        if self._state in (TransferState.RECEIVING, TransferState.PAUSED) and (
+            self._rx_handle is not None or self._paused_direction == "RX"
+        ):
             logger.warning(
                 "%s RX restart: previous transfer '%s' replaced", LogTag.FILE_SVC, self._rx_name
             )
             self._discard_rx(keep_partial=False)
+        self._paused_direction = ""
         self._rx_is_chat = is_chat_envelope_name(file_name)
         safe_name = file_name.strip() if self._rx_is_chat else sanitize_received_name(file_name)
         self._rx_name = safe_name
@@ -1123,6 +1219,8 @@ class FileTransferService(QObject):
                 return
             self._rx_part_path = part_path
         self._rx_recovery_timer.stop()
+        self._rx_ack_timer.stop()
+        self._rx_last_checkpoint_seq = -1
         self._set_state(TransferState.RECEIVING)
         self._rx_timer.start()
         if not self._rx_is_chat:
